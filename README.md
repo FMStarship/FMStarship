@@ -1,5 +1,9 @@
 # FM Starship
 
+[![CI](https://github.com/FMStarship/FMStarship/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/FMStarship/FMStarship/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/FMStarship/FMStarship)](https://github.com/FMStarship/FMStarship/releases/latest)
+[![Licence: PolyForm Noncommercial](https://img.shields.io/badge/licence-PolyForm%20Noncommercial-blue)](LICENSE.md)
+
 A native Mac scouting and club-management companion for Football Manager 27. It reads your running save and shows everything
 the game knows about every player and member of staff, using the game's own rules for things like who would join you. On top of
 that it has a club dashboard, squad and staff overviews, a squad planner built on your own tactic, a best eleven, and tactic advice
@@ -196,6 +200,13 @@ Homebrew dependency. `Scripts/release.sh` makes the signed, notarized disk image
 - FM keeps some B teams (in Spain and the MLS, for example) as clubs of their own. Best eleven counts a club's players there, but
   other screens show them as on loan, the way FM's data has them.
 - Rule functions are tied to one FM build, so expect those features to switch off for a while after each patch.
+
+## Contributing
+
+Bug reports, fixes and ideas are all welcome, and a lot of the work doesn't need FM27. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to
+get set up, and the [good first issues](https://github.com/FMStarship/FMStarship/labels/good%20first%20issue) are the place to start.
+Questions go in [Discussions](https://github.com/FMStarship/FMStarship/discussions). If you use an AI coding agent, point it at
+[AGENTS.md](AGENTS.md).
 
 ## Licence
 

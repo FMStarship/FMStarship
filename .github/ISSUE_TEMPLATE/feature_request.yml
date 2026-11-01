@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest something FM Starship could do.
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Not sure yet? Try [Discussions](https://github.com/FMStarship/FMStarship/discussions) first.
+
+        FM Starship only reads the game, so it can't change anything in a save.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Start with the decision you're making in your save, and what makes it slow today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      placeholder: Which screen would it go on, and what would it show?
+    validations:
+      required: true
+  - type: dropdown
+    id: hidden
+    attributes:
+      label: Does it need hidden values?
+      description: With Hidden attributes off, nothing hidden may be shown or used, and that includes CA and PA.
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Screenshots, sketches, or how FM Moleman does it on Windows.

@@ -199,7 +199,7 @@ public struct CompareReport {
         text("Wage", each { .text($0.wage > 0 ? units.wageText($0.wage, suffix: true) : "-") })
         text("Contract ends", each { .text($0.contractEnd.map(NetFormat.numericDate) ?? "-") })
 
-        let clauses = people.map { [$0.releaseClause, $0.releaseForeign, $0.releaseDomestic].filter { $0 > 0 }.min() ?? 0 }
+        let clauses: [Int64] = people.map { [$0.releaseClause, $0.releaseForeign, $0.releaseDomestic].filter { $0 > 0 }.min() ?? 0 }
         if clauses.contains(where: { $0 > 0 }) {
             text("Release clause", clauses.map { .text($0 > 0 ? units.money($0) : "-") })
         }

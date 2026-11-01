@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in FM Starship is broken or shows the wrong thing.
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Please report Mac problems here, not to FM Moleman's author, who doesn't make or support this version.
+
+        **Please don't attach save files or snapshots.** They hold a whole game world. A screenshot is enough.
+  - type: input
+    id: app-version
+    attributes:
+      label: FM Starship version
+      description: Find it in FM Starship > About FM Starship.
+      placeholder: "27.0.1"
+    validations:
+      required: true
+  - type: input
+    id: fm-build
+    attributes:
+      label: FM build
+      description: Help > Compatibility shows what's working on your build.
+      placeholder: "27.0.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "14.5"
+    validations:
+      required: true
+  - type: dropdown
+    id: patch
+    attributes:
+      label: Did FM update recently?
+      description: Features that run FM's own code switch off after a patch until FM Starship catches up.
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      placeholder: Which screen were you on, and what did you see?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: If a number looks wrong, what does FM show for the same thing?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we see it ourselves?
+      placeholder: |
+        1. Press Load Save
+        2. Open Squad overview
+        3. ...
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag them in here. Cover anything you'd rather keep private.
