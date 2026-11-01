@@ -220,9 +220,8 @@ struct AnalysisGrid: NSViewRepresentable {
                 for column in wrapping where column < row.cells.count {
                     let lead = column == 0 ? GridStyle.firstColumnInset : 0
                     let box = NSSize(width: widths[column] - GridStyle.cellMargins - lead, height: .greatestFiniteMagnitude)
-                    let text = StarArt.glued(row.cells[column]) as NSString
-                    let height = text.boundingRect(with: box, options: [.usesLineFragmentOrigin, .usesFontLeading],
-                                                   attributes: [.font: row.bold ? Self.bold : Self.plain]).height
+                    let text = StarArt.attributed(row.cells[column], attributes: [.font: row.bold ? Self.bold : Self.plain], color: colors.star)
+                    let height = text.boundingRect(with: box, options: [.usesLineFragmentOrigin, .usesFontLeading]).height
                     tallest = max(tallest, height.rounded(.up) + Self.rowPadding)
                 }
                 return tallest

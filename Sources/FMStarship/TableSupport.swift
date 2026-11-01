@@ -249,18 +249,7 @@ enum GridStyle {
         style.lineBreakMode = label.cell?.lineBreakMode ?? .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [.font: label.font ?? .systemFont(ofSize: 12), .foregroundColor: label.textColor ?? .labelColor,
                                                          .paragraphStyle: style]
-        let shown = NSMutableAttributedString()
-        for run in StarArt.runs(text) {
-            if run.isStars {
-                let attachment = NSTextAttachment()
-                let image = StarArt.image(run.text, color: starColor)
-                attachment.image = image
-                attachment.bounds = NSRect(x: 0, y: -1, width: image.size.width, height: image.size.height)
-                shown.append(NSAttributedString(attachment: attachment))
-            } else {
-                shown.append(NSAttributedString(string: run.text, attributes: attributes))
-            }
-        }
+        let shown = StarArt.attributed(text, attributes: attributes, color: starColor)
         shown.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: shown.length))
         label.attributedStringValue = shown
     }
