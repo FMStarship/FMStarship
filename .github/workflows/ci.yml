@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    # The rules on main require this check by name, so change them together.
+    name: Build and test
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install zstd
+        run: brew install zstd
+
+      - name: Show the tools
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Run the tests
+        run: swift test
+
+      - name: Check the interpreter against the CPU
+        run: tools/run-emutest.sh
+
+      - name: Build the app
+        run: Scripts/build-app.sh
