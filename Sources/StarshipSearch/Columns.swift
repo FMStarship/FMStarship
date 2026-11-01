@@ -480,10 +480,12 @@ public enum Columns {
     /// rows in the default order, runs the checks, then sorts.
     public static func sortsAfterChecks(_ col: Col?) -> Bool { col?.name == "Interest" || col?.name == "Days out" }
 
-    /// The order of a player search: the sorted column, or highest CA first.
-    public static func ordered(players rows: [Player], sortBy col: Col?, descending: Bool) -> [Player] {
+    /// The order of a player search: the sorted column, or highest CA first. An order would give CA away while it's off,
+    /// so then it's highest value first, with "not for sale" last because its value is only a placeholder.
+    public static func ordered(players rows: [Player], sortBy col: Col?, descending: Bool, byAbility: Bool = true) -> [Player] {
         if let col, !sortsAfterChecks(col) { return sortRows(rows, by: col, descending: descending) }
-        return rows.sorted { $0.ca > $1.ca }
+        if byAbility { return rows.sorted { $0.ca > $1.ca } }
+        return rows.sorted { ($0.notForSale ? -1 : $0.value) > ($1.notForSale ? -1 : $1.value) }
     }
 
     /// The order of a staff search: the sorted column, then the stars of `StaffFilter.rankArea`, or as read.
@@ -497,8 +499,13 @@ public enum Columns {
     // MARK: Layout
 
     /// `MainForm.RebuildColumns`.
-    public static func shown(_ cols: [Col], showHidden: Bool) -> [Col] {
-        cols.filter { $0.visible && (showHidden || !$0.hidden) }
+    public static func shown(_ cols: [Col], showHidden: Bool, showAbility: Bool) -> [Col] {
+        cols.filter { $0.visible && allowed($0, showHidden: showHidden, showAbility: showAbility) }
+    }
+
+    /// Whether a column may be shown or exported at all, whoever asks for it.
+    public static func allowed(_ col: Col, showHidden: Bool, showAbility: Bool) -> Bool {
+        (showHidden || !col.hidden) && (showAbility || !col.ability)
     }
 
     /// The "Select default" button and "Reset layout".
@@ -529,17 +536,23 @@ public enum Columns {
             .map(\.element.col)
     }
 
-    /// `CaptureColumns`: `shown` is in display order and carries current widths. Columns not shown keep
-    /// whatever was saved for them.
+    /// `CaptureColumns`: `shown` is in display order and carries current widths. The shown columns take over each
+    /// other's places in the saved layout, so one that's switched off comes back where it was.
     public static func capture(all: [Col], shown: [Col], saved: [ColState]?) -> [ColState] {
-        all.map { col in
+        let placed = all.filter { col in col.visible || (saved?.first { $0.name == col.name }?.order ?? -1) >= 0 }
+        let shownNames = Set(shown.map(\.name))
+        var waiting = shown[...]
+        var layout = restoreLayout(shown: placed, all: all, saved: saved, restoreWidths: false).map { col in
+            shownNames.contains(col.name) ? waiting.popFirst()?.name ?? col.name : col.name
+        }
+        layout += waiting.map(\.name)
+        return all.map { col in
             let previous = saved?.first { $0.name == col.name }
-            let position = shown.firstIndex { $0.name == col.name }
             var state = ColState()
             state.name = col.name
             state.visible = col.visible
-            state.order = position ?? previous?.order ?? -1
-            state.width = position.map { shown[$0].width } ?? previous?.width ?? 0
+            state.order = layout.firstIndex(of: col.name) ?? -1
+            state.width = shown.first { $0.name == col.name }?.width ?? previous?.width ?? 0
             return state
         }
     }

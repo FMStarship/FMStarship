@@ -32,7 +32,7 @@ It reads the live game's memory and runs FM's own role and interest rules, so st
 ## Capabilities and Constraints
 
 - Screens: Players, Staff, My club (health check, set pieces, loan out, development, young talent, training), Squad overview, Staff overview, Squad planner, Recommended signings, Recommended staff, Staff review, Bargains, Open squad, Shortlists, player and staff profiles, Compare.
-- Hidden attributes can be switched off, and then nothing hidden may be shown or used. Ability can be shown as numbers, stars or hidden.
+- Hidden attributes can be switched off, and then nothing hidden may be shown or used. CA and PA are hidden in FM, so they go with them. While Hidden attributes is on, Ability can be shown as numbers, stars or not at all. Off means gone, not dashes: no column, filter, difference, bar or list that only exists because of those numbers. The one exception is CA and PA deciding a rank, a standing or an order ("16th of 16", "Below the league", which recommendation comes first), because those screens have nothing else to go on.
 - Users can choose a colour theme in Settings; themes and light and dark mode must keep working.
 - Some features need the live game; snapshots and exports work without it.
 - Terms: CA, PA, Det, Pro, Amb, role names and position codes are FM's and stay as they are.

@@ -96,7 +96,7 @@ public final class ClubReport {
                 let average = "your best eleven average \(display.ability(level))"
                 if p.ca >= level - 8, p.age <= 31 {
                     add(1, "Contract", "Renew soon", "A key player\(display.labelled("CA", p.ca).map { " (\($0), \(average))" } ?? ""); contract ends \(date)", .bad)
-                } else if young, p.pa >= level - 10 {
+                } else if young, display.showsAbility, p.pa >= level - 10 {
                     add(1, "Contract", "Renew: a prospect",
                         (display.labelled("PA", p.pa).map { "\($0) (\(average)); contract" } ?? "Contract") + " ends \(date) - don't lose him for nothing", .bad)
                 } else if !young, p.ca < level - 15 || p.age >= 32 {
@@ -152,7 +152,7 @@ public final class ClubReport {
         let action = findings.filter { $0.tone == .bad }.count
         let watching = findings.filter { $0.tone == .fair }.count
         let influences = findings.filter { $0.order == 7 }.count
-        let hint = showHidden ? "" : " Turn on \"Show hidden attributes\" for the dressing-room and injury-proneness checks."
+        let hint = showHidden ? "" : " Switch on Hidden attributes (the eye in the toolbar) for the dressing-room and injury-proneness checks."
         table.head = "\(squad.count) players at \(club) checked: \(action) need action now, \(watching) worth watching, \(influences) good influences.\(hint)"
         table.status = "Double-click for the full profile; right-click to compare or add to a shortlist."
         return table
@@ -199,7 +199,7 @@ public final class ClubReport {
             table.rows.append(TableRow(cells: [duty, cell(0), cell(1), cell(2), basis], person: best.first?.0))
         }
         table.head = "The best takers in your first team (fit outfield players), scored out of 20 from the attributes that matter."
-            + (showHidden ? "" : " Turn on \"Show hidden attributes\" to weigh penalties by big-match temperament too.")
+            + (showHidden ? "" : " Switch on Hidden attributes (the eye in the toolbar) to weigh penalties by big-match temperament too.")
         table.status = "Set these in FM under Tactics > Set Pieces."
         return table
     }
@@ -213,11 +213,11 @@ public final class ClubReport {
         ])
         let young = Array(squad.filter {
             $0.loanClub.isEmpty && $0.age >= 16 && $0.age <= 21 && $0.ca < level - 12
-                && ($0.pa >= level - 10 || $0.pa >= $0.ca + 20)
-        }.stableSorted { $0.pa > $1.pa }.prefix(15))
+                && (!display.showsAbility || $0.pa >= level - 10 || $0.pa >= $0.ca + 20)
+        }.stableSorted { display.showsAbility ? $0.pa > $1.pa : $0.age > $1.age }.prefix(15))
         guard !young.isEmpty else {
             table.head = "No youngsters who need a loan: everyone under 22 is either ready or not worth a loan yet."
-            return table
+            return display.fit(table)
         }
 
         // Keeps clubs in the order they are first met, as GroupBy does.
@@ -248,9 +248,9 @@ public final class ClubReport {
                     : suggested.map { club in display.reveal == .hidden ? club.name : "\(club.name) (\(display.ability(Int(club.level.rounded()))))" }.joined(separator: ", "),
             ], person: p))
         }
-        table.head = "Young players who aren't ready for your first team\(display.labelled("CA", level).map { " (best eleven average \($0))" } ?? "") but have a future - a loan gets them minutes. Suggested clubs are a level match: their best eleven\(display.reveal == .hidden ? "" : " (in brackets)") is about his CA, so he'd likely start."
+        table.head = "Young players who aren't ready for your first team\(display.labelled("CA", level).map { " (best eleven average \($0)) but have a future" } ?? "") - a loan gets them minutes. Suggested clubs are a level match: \(display.showsAbility ? "their best eleven (in brackets) is about his CA, so he'd likely start" : "he'd likely start there")."
         table.status = "In FM: offer him for loan (Transfer > Offer to clubs) and pick the offers from clubs like these. Right-click to add to a shortlist."
-        return table
+        return display.fit(table)
     }
 
     // MARK: Development
@@ -274,7 +274,7 @@ public final class ClubReport {
         let snaps = snapshots
         guard !snaps.isEmpty else {
             table.head = "Nothing to compare with yet: FM Starship keeps a snapshot of your squad at every Load Save (one per in-game day). Load your save again after a few in-game weeks to see who's improving."
-            return table
+            return display.fit(table, also: ["Verdict"])
         }
         let snap = snaps[min(max(0, since), snaps.count - 1)]
         let hidden = Set(Names.hidden.compactMap { Names.playerIndex[$0] })
@@ -301,7 +301,8 @@ public final class ClubReport {
                 exact && pa != 0 ? "\(p.pa) (\(NetFormat.signedNoZero(pa)))" : display.ability(p.pa),
                 gains(up: true), gains(up: false), verdict,
             ], person: p, tone: tone, toneColumn: 6)
-            changed.append((ca, row, p.pa))
+            // With CA off, the order comes from the attributes in the row, which anyone can see.
+            changed.append((display.showsAbility ? ca : changes.reduce(0) { $0 + $1.1 }, row, display.showsAbility ? p.pa : 0))
         }
         table.rows = changed.stableSorted { $0.ca != $1.ca ? $0.ca > $1.ca : $0.pa > $1.pa }.map(\.row)
 
@@ -309,9 +310,9 @@ public final class ClubReport {
         let improving = changed.filter { $0.ca > 0 }.count
         let same = changed.filter { $0.ca == 0 }.count
         let declining = changed.filter { $0.ca < 0 }.count
-        table.head = "Your squad now against \(NetFormat.dayMonthYear(snap.gameDate)) (\(daysAgo) days ago in the game): \(improving) improving, \(same) unchanged, \(declining) declining.\(exact ? " CA changes are exact - FM never shows them." : "")"
+        table.head = "Your squad now against \(NetFormat.dayMonthYear(snap.gameDate)) (\(daysAgo) days ago in the game)\(display.showsAbility ? ": \(improving) improving, \(same) unchanged, \(declining) declining." : ", with the most attributes gained first.")\(exact ? " CA changes are exact - FM never shows them." : "")"
         table.status = "\(snaps.count + 1) snapshots so far (one per in-game day you pressed Load Save); pick another date above."
-        return table
+        return display.fit(table, also: ["Verdict"])
     }
 
     // MARK: Training
@@ -360,9 +361,9 @@ public final class ClubReport {
         ])
         let curve = session.development
         let display = session.display
-        guard showHidden else {
-            table.head = "This needs Professionalism and Ambition, which are hidden. Switch on Hidden attributes (the eye in the toolbar) to see who's likely to live up to their PA."
-            return table
+        guard showHidden, display.showsAbility else {
+            table.head = "This needs CA, PA and mentality, which are off. \(display.abilityHint) to see who's likely to live up to their PA."
+            return display.fit(table)
         }
         let young = squad.filter { $0.age >= 0 && $0.age <= 23 }.stableSorted { curve.peak($0) > curve.peak($1) }
         var likely = 0, unlikely = 0

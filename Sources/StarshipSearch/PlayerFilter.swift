@@ -59,6 +59,8 @@ public struct PlayerFilter: SearchFilter, Equatable {
     public var showHidden = true {
         didSet { dropHiddenRules() }
     }
+    /// While off, the CA and PA boxes keep what's typed but don't apply.
+    public var showAbility = true
 
     public var defaults: [String: String] = [:]
 
@@ -94,7 +96,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterField("position", "Position", .choice(\.position, .fixed(["Any"] + Names.positions), editable: false)),
             FilterField("ratingAtLeast", "Rating at least", .text(\.ratingAtLeast)),
         ]),
-        FilterSection("Ability", tab: "General", fields: [
+        FilterSection("Ability", tab: "General", abilityOnly: true, fields: [
             FilterField("ca", "CA", .range(min: \.caMin, max: \.caMax)),
             FilterField("pa", "PA", .range(min: \.paMin, max: \.paMax)),
         ]),
@@ -235,8 +237,8 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterText.pick(league, ""),
             FilterText.pick(region, ""),
             FilterText.range("age", ageMin, ageMax),
-            FilterText.range("CA", caMin, caMax),
-            FilterText.range("PA", paMin, paMax),
+            showAbility ? FilterText.range("CA", caMin, caMax) : nil,
+            showAbility ? FilterText.range("PA", paMin, paMax) : nil,
             FilterText.range("height", heightMin, heightMax, suffix: " cm"),
             hideInjured ? "fit" : nil,
             FilterText.typed(seasonApps, "apps "),
@@ -346,10 +348,10 @@ public struct PlayerCriteria {
         region = RegionTest(filter.region)
         ageMin = Net.int32(filter.ageMin)
         ageMax = Net.int32(filter.ageMax)
-        caMin = Net.int32(filter.caMin)
-        caMax = Net.int32(filter.caMax)
-        paMin = Net.int32(filter.paMin)
-        paMax = Net.int32(filter.paMax)
+        caMin = filter.showAbility ? Net.int32(filter.caMin) : nil
+        caMax = filter.showAbility ? Net.int32(filter.caMax) : nil
+        paMin = filter.showAbility ? Net.int32(filter.paMin) : nil
+        paMax = filter.showAbility ? Net.int32(filter.paMax) : nil
         heightMin = Net.int32(filter.heightMin)
         heightMax = Net.int32(filter.heightMax)
         endsBy = Net.int32(filter.contractEndsBy)

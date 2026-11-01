@@ -102,7 +102,7 @@ public final class SquadOverview: OverviewReport {
             if let player = slot.player {
                 standing = .of(Double(player.ca), against: others)
                 if !others.isEmpty { rank = "\(place(player.ca)) of \(others.count + 1)" }
-                if standing != .strong, curve.isProspect(player), Standing.of(Double(curve.peak(player)), against: others) >= .good {
+                if display.showsAbility, standing != .strong, curve.isProspect(player), Standing.of(Double(curve.peak(player)), against: others) >= .good {
                     standing = .developing
                     growing += 1
                     let soon = min(player.age + 2, DevelopmentCurve.peakAge)
@@ -129,7 +129,7 @@ public final class SquadOverview: OverviewReport {
             }
             if standing < .unknown { weak += 1 }
             // Only a future star is worth planning around: anyone less wouldn't be blocked by a signing.
-            let star = comingThrough.first {
+            let star = !display.showsAbility ? nil : comingThrough.first {
                 Self.fits($0, group) && curve.peak($0) > slot.player?.ca ?? 0 && Standing.of(Double(curve.peak($0)), against: others) == .strong
                     && curve.talent($0)?.verdict != .unlikely
             }
@@ -166,7 +166,7 @@ public final class SquadOverview: OverviewReport {
             headline += " \(units.moneyText(Double(budget.transfer))) to spend, \(units.wageText(budget.wageRoom, suffix: true)) wage room."
         }
         self.headline = headline
-        footnote = "Ranked by ability against the same place at the other \(league.isEmpty ? "league" : league) clubs. Stars are FM's. Cover is your best second eleven. Projections and odds come from how players of the same age, PA and mentality have turned out across this save: PA is a ceiling, not a promise, and it takes minutes to get there. Each pick fits your budget on the wage they earn now."
+        footnote = "Ranked by ability against the same place at the other \(league.isEmpty ? "league" : league) clubs. Stars are FM's. Cover is your best second eleven.\(display.showsAbility ? " Projections and odds come from how players of the same age, PA and mentality have turned out across this save: PA is a ceiling, not a promise, and it takes minutes to get there." : "") Each pick fits your budget on the wage they earn now."
     }
 
     static func surname(_ player: Player) -> String {
@@ -232,7 +232,7 @@ public final class SquadOverview: OverviewReport {
         // A free agent has no wage to read, so what they'd ask for is anyone's guess.
         let wage = player.club.isEmpty ? "Wage to agree" : units.wageText(player.wage, suffix: true)
         let details = [player.club.isEmpty ? "Free agent" : player.club, player.age >= 0 ? "Age \(player.age)" : "",
-                       display.reveal == .hidden ? "" : "CA \(display.ability(player.ca)), PA \(display.ability(player.pa))", price, wage]
+                       display.showsAbility ? "CA \(display.ability(player.ca)), PA \(display.ability(player.pa))" : "", price, wage]
         return .hire(OverviewHire(person: player, name: player.name, score: RoleBook.stars(best.rating.combined), gain: gain,
                                   detail: details.filter { !$0.isEmpty }.joined(separator: " · ")))
     }

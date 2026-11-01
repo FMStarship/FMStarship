@@ -34,6 +34,9 @@ the Windows app. The Mac-only parts are listed further down. If FM Starship is u
 The app opens on your club's dashboard: what needs a decision, who's coming through, and what the health check wants done. Press
 Load Save again whenever you want fresh numbers.
 
+CA, PA and hidden attributes stay off until you press **Hidden attributes** in the toolbar, because FM keeps them from you as well.
+With that on, Ability chooses whether CA and PA show as numbers, as stars or not at all.
+
 If FM is already running when you open FM Starship, the app asks you to save and quit it first. It never closes the
 game for you.
 

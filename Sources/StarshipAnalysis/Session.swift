@@ -35,6 +35,19 @@ public struct DisplayOptions {
         self.units = units
     }
 
+    /// False while CA and PA are off, so a screen can leave out whatever would give them away.
+    public var showsAbility: Bool { reveal != .hidden }
+
+    /// What to press to see something that needs CA and PA.
+    public var abilityHint: String {
+        showHidden ? "Set Ability in the toolbar to Exact or Stars" : "Switch on Hidden attributes (the eye in the toolbar)"
+    }
+
+    /// The table to show: while CA and PA are off, without their columns, those worked out from them, and `others`.
+    public func fit(_ table: AnalysisTable, also others: Set<String> = []) -> AnalysisTable {
+        showsAbility ? table : table.removing(AnalysisTable.abilityColumns.union(others))
+    }
+
     public func ability(_ value: Int) -> String {
         switch reveal {
         case .stars: return NetFormat.fixed(abilityStars(value), min: 1, max: 1) + "★"

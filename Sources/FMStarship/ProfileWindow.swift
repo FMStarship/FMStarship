@@ -184,7 +184,7 @@ private struct ProfileHeader: View {
     private var staff: Staff? { person as? Staff }
 
     private func ability(_ value: Int) -> String {
-        switch model.reveal {
+        switch model.shownReveal {
         case .exact: return "\(value)"
         case .stars: return Columns.abilityStars(value)
         case .hidden: return "-"
@@ -235,8 +235,10 @@ private struct ProfileHeader: View {
                 }
                 Spacer(minLength: 12)
                 HStack(alignment: .top, spacing: 24) {
-                    tile("Current ability", ability(player?.ca ?? staff?.ca ?? 0))
-                    tile("Potential", ability(player?.pa ?? staff?.pa ?? 0), colors.ui.good)
+                    if model.showsAbility {
+                        tile("Current ability", ability(player?.ca ?? staff?.ca ?? 0))
+                        tile("Potential", ability(player?.pa ?? staff?.pa ?? 0), colors.ui.good)
+                    }
                     if let player {
                         if player.notForSale {
                             tile("Value", "Not for sale", colors.ui.muted)
@@ -367,16 +369,14 @@ private struct DevelopmentSection: View {
     private var display: DisplayOptions? { model.session?.display }
 
     var body: some View {
-        if let curve = model.session?.development, player.age >= 0, player.age <= 23, let talent = curve.talent(player) {
+        if let curve = model.session?.development, let display, display.showsAbility, player.age >= 0, player.age <= 23, let talent = curve.talent(player) {
             Panel(title: "Development") {
                 VStack(alignment: .leading, spacing: 4) {
-                    if let display, display.reveal != .hidden {
-                        RangeBar(now: display.shown(player.ca), peak: display.shown(curve.peak(player)), potential: display.shown(player.pa),
-                                 scale: 40...max(display.shown(player.pa), 120))
-                            .padding(.bottom, 4)
-                    }
+                    RangeBar(now: display.shown(player.ca), peak: display.shown(curve.peak(player)), potential: display.shown(player.pa),
+                             scale: 40...max(display.shown(player.pa), 120))
+                        .padding(.bottom, 4)
                     Text(talent.verdict.title).fontWeight(.medium).foregroundStyle(colors.ui.tone(talent.verdict.tone))
-                    Text((display?.labelled("Likely peak", curve.peak(player)).map { "\($0), PA \(display?.ability(player.pa) ?? ""). " } ?? "") + "\(talent.odds) with this mentality get close to their PA.")
+                    Text("Likely peak \(display.ability(curve.peak(player))), PA \(display.ability(player.pa)). \(talent.odds) with this mentality get close to their PA.")
                         .font(.callout)
                     Text(talent.mentality + (talent.injuryProne ? ", Injury Proneness \(talent.injuryProneness)" : ""))
                         .font(.callout)

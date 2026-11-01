@@ -84,7 +84,9 @@ struct BargainsScreen: View {
         .labelsHidden()
         .fixedSize()
         PositionPicker(label: BargainFinder.positionLabel, choices: BargainFinder.positionChoices, selection: $state.options.position)
-        LabeledBox(BargainFinder.minCALabel, text: $state.options.minCA, width: 50) { state.find() }
+        if model.showsAbility {
+            LabeledBox(BargainFinder.minCALabel, text: $state.options.minCA, width: 50) { state.find() }
+        }
         LabeledBox(BargainFinder.maxAgeLabel, text: $state.options.maxAge, width: 50) { state.find() }
         LabeledBox(BargainFinder.maxFeeLabel, text: $state.options.maxFee,
                    prompt: (model.session?.display.units.symbol ?? "") + "M", width: 70) { state.find() }

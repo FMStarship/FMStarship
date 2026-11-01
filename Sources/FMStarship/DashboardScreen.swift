@@ -95,13 +95,13 @@ struct DashboardScreen: View {
 
     private func side(_ dashboard: ClubDashboard) -> some View {
         VStack(spacing: Metric.gap) {
-            talent(dashboard)
+            if dashboard.showsAbility { talent(dashboard) }
             health(dashboard)
         }
     }
 
     private func talent(_ dashboard: ClubDashboard) -> some View {
-        Panel(title: "Young talent", note: dashboard.showsAbility ? "Ability now, then likely peak. The tick is PA." : nil) {
+        Panel(title: "Young talent", note: "Ability now, then likely peak. The tick is PA.") {
             Button("All of them") { model.openTalent() }.buttonStyle(.link).font(.callout)
         } content: {
             VStack(spacing: 0) {
@@ -109,7 +109,7 @@ struct DashboardScreen: View {
                     FootNote(text: "Nobody at the club is 23 or younger.").padding(Metric.inset)
                 }
                 ForEach(dashboard.prospects) { prospect in
-                    ProspectRow(prospect: prospect, scale: dashboard.scale, showsAbility: dashboard.showsAbility)
+                    ProspectRow(prospect: prospect, scale: dashboard.scale)
                 }
             }
         }
@@ -146,20 +146,15 @@ private struct ProspectRow: View {
     @Environment(\.appColors) private var colors
     let prospect: ClubDashboard.Prospect
     let scale: ClosedRange<Int>
-    let showsAbility: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 NameLink(name: prospect.player.name, person: prospect.player)
                 Spacer(minLength: 4)
-                if showsAbility {
-                    Text(prospect.path).foregroundStyle(colors.ui.muted).monospacedDigit().fixedSize()
-                }
+                Text(prospect.path).foregroundStyle(colors.ui.muted).monospacedDigit().fixedSize()
             }
-            if showsAbility {
-                RangeBar(now: prospect.now, peak: prospect.peak, potential: prospect.potential, scale: scale)
-            }
+            RangeBar(now: prospect.now, peak: prospect.peak, potential: prospect.potential, scale: scale)
             Text(detail).font(.callout).foregroundStyle(tone)
         }
         .padding(.horizontal, Metric.inset)

@@ -82,6 +82,8 @@ public struct FilterSection<Filter>: Identifiable {
     public let tab: String
     /// Sections of attributes hidden in the game only show with "show hidden" on.
     public let hiddenOnly: Bool
+    /// Sections on CA and PA only show while those do.
+    public let abilityOnly: Bool
     public let fields: [FilterField<Filter>]
 
     public var id: String { title }
@@ -92,10 +94,11 @@ public struct FilterSection<Filter>: Identifiable {
         return title.components(separatedBy: " (")[0]
     }
 
-    init(_ title: String, tab: String, hiddenOnly: Bool = false, fields: [FilterField<Filter>]) {
+    init(_ title: String, tab: String, hiddenOnly: Bool = false, abilityOnly: Bool = false, fields: [FilterField<Filter>]) {
         self.title = title
         self.tab = tab
         self.hiddenOnly = hiddenOnly
+        self.abilityOnly = abilityOnly
         self.fields = fields
     }
 }
@@ -113,15 +116,18 @@ public protocol SearchFilter {
     var region: String { get set }
     var rules: [AttrRule] { get set }
     var showHidden: Bool { get set }
+    var showAbility: Bool { get }
     var defaults: [String: String] { get set }
 }
 
 extension SearchFilter {
+    public var showAbility: Bool { true }
+
     public static func sections(inTab tab: String) -> [FilterSection<Self>] { sections.filter { $0.tab == tab } }
 
-    /// The sections to draw in a tab, leaving hidden-attribute ones out when `showHidden` is off.
+    /// The sections to draw in a tab, leaving out hidden-attribute ones when `showHidden` is off and ability ones when `showAbility` is.
     public func visibleSections(inTab tab: String) -> [FilterSection<Self>] {
-        Self.sections(inTab: tab).filter { showHidden || !$0.hiddenOnly }
+        Self.sections(inTab: tab).filter { (showHidden || !$0.hiddenOnly) && (showAbility || !$0.abilityOnly) }
     }
 
     /// The items for a rule's attribute picker.
@@ -178,7 +184,7 @@ extension SearchFilter {
     }
 
     /// The "●" on a tab.
-    public func isActive(tab: String) -> Bool { Self.sections(inTab: tab).contains { isActive($0) } }
+    public func isActive(tab: String) -> Bool { visibleSections(inTab: tab).contains { isActive($0) } }
 
     /// "Reset this tab" works section by section.
     public mutating func reset(tab: String) {

@@ -104,17 +104,18 @@ struct MainWindow: View {
             }
             HStack(spacing: 6) {
                 Text("Ability").font(.callout).foregroundStyle(colors.ui.muted)
-                Picker("Ability", selection: $model.reveal) {
+                Picker("Ability", selection: Binding(get: { model.shownReveal }, set: { model.reveal = $0 })) {
                     ForEach([Reveal.exact, .stars, .hidden], id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .disabled(!model.showHidden)
             }
-            .help("How to show CA and PA")
+            .help(model.showHidden ? "How to show CA and PA" : "CA and PA are hidden in FM, so they stay off until you switch on Hidden attributes")
             Toggle(isOn: $model.showHidden) {
                 Label("Hidden attributes", systemImage: model.showHidden ? "eye" : "eye.slash").labelStyle(.titleAndIcon)
             }
-            .help(model.showHidden ? "Hide hidden attributes" : "Show hidden attributes")
+            .help(model.showHidden ? "Hide hidden attributes, CA and PA" : "Show hidden attributes, CA and PA")
             GameButton()
         }
         if model.database != nil, model.screen.isList {

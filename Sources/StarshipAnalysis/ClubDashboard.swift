@@ -10,7 +10,7 @@ public struct ClubDashboard {
         public var id: String { label }
     }
 
-    /// A young player's whole story. The numbers are nil while ability is hidden.
+    /// A young player's whole story.
     public struct Prospect: Identifiable {
         public let player: Player
         public let now: Int
@@ -71,15 +71,16 @@ public struct ClubDashboard {
                 let average = Double(aged.reduce(0) { $0 + $1.age }) / Double(aged.count)
                 facts.append(Fact(label: "Average age", value: NetFormat.fixed(average, min: 1, max: 1)))
             }
-            if display.reveal != .hidden {
+            if display.showsAbility {
                 facts.append(Fact(label: "Best eleven", value: "CA \(display.ability(AnalysisSession.level(of: SquadPlanner.analysedSquad(session))))"))
             }
         }
         self.facts = facts
 
         let curve = session.development
-        showsAbility = display.reveal != .hidden
-        let young = squad.filter { $0.age >= 0 && $0.age <= Self.oldestProspect }.stableSorted { curve.peak($0) > curve.peak($1) }.prefix(Self.prospectsShown)
+        showsAbility = display.showsAbility
+        // Who's listed and in what order comes from PA, so with it off there's no list.
+        let young = !showsAbility ? [] : squad.filter { $0.age >= 0 && $0.age <= Self.oldestProspect }.stableSorted { curve.peak($0) > curve.peak($1) }.prefix(Self.prospectsShown)
         prospects = young.map { player in
             let peak = curve.peak(player)
             let talent = curve.talent(player)

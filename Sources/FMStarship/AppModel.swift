@@ -78,22 +78,18 @@ final class AppModel: ObservableObject {
     @Published var reveal = Reveal(setting: Settings.current.reveal) {
         didSet {
             Settings.current.reveal = reveal.rawValue
-            persist()
-            displayChanged()
+            visibilityChanged()
         }
     }
     @Published var showHidden = Settings.current.showHidden {
         didSet {
             Settings.current.showHidden = showHidden
-            persist()
-            for keyPath in [\AppModel.playerFilter, \.squadPlayerFilter, \.listPlayerFilter] { self[keyPath: keyPath].showHidden = showHidden }
-            for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] { self[keyPath: keyPath].showHidden = showHidden }
-            rebuildShownColumns()
-            captureColumns()
-            displayChanged()
-            search()
+            visibilityChanged()
         }
     }
+    /// CA and PA are hidden in FM too, so the eye comes first and `reveal` only says how they show.
+    var shownReveal: Reveal { showHidden ? reveal : .hidden }
+    var showsAbility: Bool { shownReveal != .hidden }
 
     // Each kind of list keeps its own filters, so opening a squad doesn't disturb a search.
     @Published var playerFilter = PlayerFilter()
@@ -179,8 +175,7 @@ final class AppModel: ObservableObject {
     private var laterChecks = LaterChecks()
 
     init() {
-        for keyPath in [\AppModel.playerFilter, \.squadPlayerFilter, \.listPlayerFilter] { self[keyPath: keyPath].showHidden = showHidden }
-        for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] { self[keyPath: keyPath].showHidden = showHidden }
+        tellFilters()
         colors = AppColors(themeNamed: Settings.current.theme)
         reloadColumns()
         poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -504,7 +499,7 @@ final class AppModel: ObservableObject {
 
     var displayOptions: DisplayOptions {
         let reveal: AbilityReveal
-        switch self.reveal {
+        switch shownReveal {
         case .exact: reveal = .numbers
         case .stars: reveal = .stars
         case .hidden: reveal = .hidden
@@ -518,6 +513,23 @@ final class AppModel: ObservableObject {
         let units = MoneyUnits(symbol: Units.money.symbol, perPound: Units.money.perPound, wagePeriod: wages,
                                feetAndInches: Units.height == .feetInches)
         return DisplayOptions(reveal: reveal, showHidden: showHidden, units: units)
+    }
+
+    private func tellFilters() {
+        for keyPath in [\AppModel.playerFilter, \.squadPlayerFilter, \.listPlayerFilter] {
+            self[keyPath: keyPath].showHidden = showHidden
+            self[keyPath: keyPath].showAbility = showsAbility
+        }
+        for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] { self[keyPath: keyPath].showHidden = showHidden }
+    }
+
+    private func visibilityChanged() {
+        persist()
+        tellFilters()
+        rebuildShownColumns()
+        captureColumns()
+        displayChanged()
+        search()
     }
 
     private func displayChanged() {
@@ -559,9 +571,9 @@ final class AppModel: ObservableObject {
     }
 
     private func rebuildShownColumns() {
-        playerColumns = Columns.restoreLayout(shown: Columns.shown(allPlayerColumns, showHidden: showHidden), all: allPlayerColumns,
+        playerColumns = Columns.restoreLayout(shown: Columns.shown(allPlayerColumns, showHidden: showHidden, showAbility: showsAbility), all: allPlayerColumns,
                                               saved: Settings.current.playerColumns, restoreWidths: true)
-        staffColumns = Columns.restoreLayout(shown: Columns.shown(allStaffColumns, showHidden: showHidden), all: allStaffColumns,
+        staffColumns = Columns.restoreLayout(shown: Columns.shown(allStaffColumns, showHidden: showHidden, showAbility: showsAbility), all: allStaffColumns,
                                              saved: Settings.current.staffColumns, restoreWidths: true)
         columnsVersion += 1
     }
@@ -594,7 +606,7 @@ final class AppModel: ObservableObject {
             all[index].visible = visible.contains(all[index].name)
             if let width = widths[all[index].name] { all[index].width = width }
         }
-        let shown = Columns.shown(all, showHidden: showHidden)
+        let shown = Columns.shown(all, showHidden: showHidden, showAbility: showsAbility)
         let ordered = order.compactMap { name in shown.first { $0.name == name } }
             + shown.filter { !order.contains($0.name) }
         if isStaff {
@@ -681,6 +693,7 @@ final class AppModel: ObservableObject {
         let wanted = filter.interestWanted
         let sortBy = playerColumns.first { $0.name == playerSort.column }
         let descending = playerSort.descending
+        let byAbility = showsAbility
         var interest: InterestStep<Player>?
         if wanted.transfer || wanted.loan {
             interest = InterestStep(
@@ -693,7 +706,7 @@ final class AppModel: ObservableObject {
         return PeopleSearch(people: database.players, match: { filter.criteria().filter($0) },
                             columnFilters: parsedFilters(playerColumns, playerColumnFilters), shortlist: shortlist,
                             interest: interest, sortBy: sortBy, descending: descending,
-                            ordered: { Columns.ordered(players: $0, sortBy: sortBy, descending: descending) })
+                            ordered: { Columns.ordered(players: $0, sortBy: sortBy, descending: descending, byAbility: byAbility) })
     }
 
     private func staffSearch(_ database: Database) -> PeopleSearch<Staff> {
@@ -899,12 +912,13 @@ final class AppModel: ObservableObject {
         if shortlist?.isStaff == true {
             listStaffFilter = StaffFilter()
             listStaffFilter.job = "Any job"
-            listStaffFilter.rank = "(sort by CA)"
+            listStaffFilter.rank = StaffFilter.noRanking
             listStaffFilter.markDefaults()
             listStaffFilter.showHidden = showHidden
         } else {
             listPlayerFilter = PlayerFilter()
             listPlayerFilter.showHidden = showHidden
+            listPlayerFilter.showAbility = showsAbility
         }
         if screen == .shortlists { search() }
     }

@@ -55,7 +55,7 @@ struct ShortlistsScreen: View {
     }
 
     private var placeholder: String {
-        "Open one to see everyone on it with all their hidden numbers. Players you've already signed are hidden here but stay in the file, so the same shortlist keeps working in other saves."
+        "Open one to see everyone on it. Players you've already signed are hidden here but stay in the file, so the same shortlist keeps working in other saves."
     }
 
     @ViewBuilder

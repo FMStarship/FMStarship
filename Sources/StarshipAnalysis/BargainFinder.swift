@@ -132,10 +132,15 @@ public struct BargainFinder {
     public func find(_ options: BargainOptions, isCancelled: () -> Bool = { false },
                      status: (String) -> Void = { _ in }) -> AnalysisTable? {
         let kind = options.kind
+        let showsAbility = session.display.showsAbility
+        guard kind != .wonderkid || showsAbility else {
+            return session.display.fit(AnalysisTable(columns: columns(for: kind),
+                                                     head: "Wonderkids are picked on PA, which is off. \(session.display.abilityHint) to see them."))
+        }
         let club = session.club.name
         let units = session.display.units
         let join = options.onlyJoin && onlyJoinEnabled
-        let minCA = parseInvariantInt(options.minCA)
+        let minCA = showsAbility ? parseInvariantInt(options.minCA) : nil
         let maxAge = parseInvariantInt(options.maxAge)
         let maxFee = units.feeLimit(options.maxFee)
         status(join ? "Finding bargains who'd join you..." : "Finding bargains...")
@@ -219,9 +224,9 @@ public struct BargainFinder {
         case .listed: what = "transfer-listed players"
         }
         table.status = shown.isEmpty
-            ? "Nobody found with these settings - try another position, a lower CA or a higher max fee."
+            ? "Nobody found with these settings - try another position\(showsAbility ? ", a lower CA" : "") or a higher max fee."
             : "\(shown.count) \(what)\(join && interestChecked ? " who'd join \(club)" : ""), best first. Double-click for the full profile."
-        return table
+        return session.display.fit(table)
     }
 
     private func row(_ p: Player, kind: BargainOptions.Kind) -> TableRow {

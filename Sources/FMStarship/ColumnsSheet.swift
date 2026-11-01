@@ -20,7 +20,12 @@ struct ColumnsSheet: View {
         return names.map { ($0, byGroup[$0] ?? []) }
     }
 
-    private func canShow(_ col: Col) -> Bool { model.showHidden || !col.hidden }
+    private func canShow(_ col: Col) -> Bool { Columns.allowed(col, showHidden: model.showHidden, showAbility: model.showsAbility) }
+
+    private var offNote: String? {
+        if !model.showHidden { return "Hidden attributes are switched off, so their columns, CA and PA can't be shown." }
+        return model.showsAbility ? nil : "Ability is switched off, so CA and PA can't be shown."
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,8 +63,8 @@ struct ColumnsSheet: View {
                 .frame(width: 230)
             }
 
-            if !model.showHidden {
-                Text("Hidden attributes are switched off, so their columns can't be shown.")
+            if let offNote {
+                Text(offNote)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)

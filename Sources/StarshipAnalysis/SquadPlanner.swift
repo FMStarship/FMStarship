@@ -347,7 +347,7 @@ public enum SquadPlanner {
                 issues,
             ], person: slot.player, tone: issues.isEmpty ? .good : tone(line), toneColumn: 9, quietColumn: 10))
         }
-        return (table, rows, notes)
+        return (session.display.fit(table), rows, notes)
     }
 
     /// The squad the planner looks at: the first team, without anyone out on loan, then anyone on loan here.
@@ -372,7 +372,7 @@ public enum SquadPlanner {
                 line.issues.isEmpty ? "fine" : line.issues.joined(separator: "; "),
             ], person: starter, tone: tone, toneColumn: 4))
         }
-        return table
+        return session.display.fit(table)
     }
 
     public struct Plan {
@@ -396,7 +396,7 @@ public enum SquadPlanner {
         var table = AnalysisTable(columns: pickColumns)
         guard let budgetInput = parseMoney(budgetText, units: units), let wageInput = parseMoney(wageText, units: units) else {
             table.status = "Type a transfer budget and wage room, e.g. 40M and 75K."
-            return Plan(table: table, picks: [], shortlist: [])
+            return Plan(table: session.display.fit(table), picks: [], shortlist: [])
         }
         let (budget, wages) = poundsFor(budget: budgetInput, wages: wageInput, units: units)
 
@@ -446,6 +446,6 @@ public enum SquadPlanner {
             let wagesAdded = wagesSpent > 0 ? units.wageText(wagesSpent, suffix: true) : "nothing"
             table.status = "\(filled) of \(gaps.count) gaps filled. The plan spends \(moneySpent) of \(units.money(budget)) and \(wagesAdded) of \(units.wageText(wages, suffix: true)) wage room."
         }
-        return Plan(table: table, picks: found, shortlist: mainPicks.map(\.player))
+        return Plan(table: session.display.fit(table), picks: found, shortlist: mainPicks.map(\.player))
     }
 }

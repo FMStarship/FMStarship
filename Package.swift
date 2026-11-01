@@ -22,6 +22,7 @@ let package = Package(
         .executableTarget(name: "FMStarship", dependencies: ["StarshipCore", "StarshipSearch", "StarshipAnalysis", "StarshipFiles"]),
         .executableTarget(name: "fmprobe", dependencies: ["StarshipCore", "StarshipAnalysis", "CA64"]),
         .testTarget(name: "StarshipFilesTests", dependencies: ["StarshipFiles", "StarshipCore"]),
+        .testTarget(name: "StarshipSearchTests", dependencies: ["StarshipSearch", "StarshipCore"]),
         .testTarget(name: "StarshipAnalysisTests", dependencies: ["StarshipAnalysis", "StarshipCore"]),
     ]
 )

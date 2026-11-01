@@ -59,14 +59,15 @@ extension AppModel {
         guard let database else { return }
         let isStaff = listIsStaff
         let shown = isStaff ? staffColumns : playerColumns
-        let all = (isStaff ? allStaffColumns : allPlayerColumns).filter { showHidden || !$0.hidden }
+        let all = (isStaff ? allStaffColumns : allPlayerColumns).filter { Columns.allowed($0, showHidden: showHidden, showAbility: showsAbility) }
+        let reveal = shownReveal
         let rows: [Person] = isStaff ? staff : players
         choose(baseName: Export.defaultFileName(isStaff: isStaff), offerEveryColumn: true) { [weak self] url, everyColumn in
             let columns = everyColumn ? all : shown
             let title = Export.title(rowCount: rows.count, isStaff: isStaff, build: database.build, gameDate: database.gameDate)
             self?.write(rows.count, to: url) {
                 Export.file(ExportFormat(pathExtension: url.pathExtension), columns: columns.map(Self.exportColumn),
-                            rows: rows.map { person in columns.map { Self.exportCell($0, person) } }, title: title)
+                            rows: rows.map { person in columns.map { Self.exportCell($0, person, reveal: reveal) } }, title: title)
             }
         }
     }
@@ -111,8 +112,9 @@ extension AppModel {
         ExportColumn(name: col.name, group: col.group, numeric: col.numeric, hidden: col.hidden, ability: col.ability, shortName: col.shortName)
     }
 
-    nonisolated static func exportCell(_ col: Col, _ person: Person) -> ExportCell {
+    nonisolated static func exportCell(_ col: Col, _ person: Person, reveal: Reveal) -> ExportCell {
         let value = col.get(person)
+        if col.ability, reveal == .stars, case .int(let number) = value { return ExportCell(.string(Columns.abilityStars(number))) }
         let exported: ExportValue
         switch value {
         case .empty: exported = .none

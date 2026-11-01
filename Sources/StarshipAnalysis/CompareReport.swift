@@ -168,8 +168,10 @@ public struct CompareReport {
         if first is Player {
             text("Positions", eachPlayer { .text($0.bestPositions) })
             text("Height", eachPlayer { .text($0.height > 0 ? units.heightText($0.height) : "") })
-            number("Current ability", eachPlayer { abilityValue($0.ca) })
-            number("Potential ability", eachPlayer { abilityValue($0.pa) })
+            if session.display.showsAbility {
+                number("Current ability", eachPlayer { abilityValue($0.ca) })
+                number("Potential ability", eachPlayer { abilityValue($0.pa) })
+            }
             text("Value", eachPlayer {
                 .text($0.club.isEmpty ? "Free" : $0.notForSale ? "Not for sale" : units.money($0.value))
             })
@@ -184,8 +186,10 @@ public struct CompareReport {
             })
         } else {
             text("Job", eachStaff { .text($0.job) })
-            number("Current ability", eachStaff { abilityValue($0.ca) })
-            number("Potential ability", eachStaff { abilityValue($0.pa) })
+            if session.display.showsAbility {
+                number("Current ability", eachStaff { abilityValue($0.ca) })
+                number("Potential ability", eachStaff { abilityValue($0.pa) })
+            }
             text("Interest", eachStaff {
                 let answer = checks.staffText($0)
                 return .text(answer.isEmpty ? "-" : answer)

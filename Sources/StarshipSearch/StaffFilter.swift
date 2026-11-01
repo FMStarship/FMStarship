@@ -8,7 +8,7 @@ public struct StaffFilter: SearchFilter, Equatable {
     ]
     private static let anyJob = "Any job"
     private static let coachingStaff = "Coaching staff"
-    private static let sortByCA = "(sort by CA)"
+    public static let noRanking = "(no ranking)"
 
     // Basics
     public var name = ""
@@ -66,7 +66,7 @@ public struct StaffFilter: SearchFilter, Equatable {
             FilterField("age", "Age", .range(min: \.ageMin, max: \.ageMax)),
         ]),
         FilterSection("Coaching stars", tab: "General", fields: [
-            FilterField("rank", "Rank by", .choice(\.rank, .fixed([sortByCA] + Names.areasLong), editable: false)),
+            FilterField("rank", "Rank by", .choice(\.rank, .fixed([noRanking] + Names.areasLong), editable: false)),
             FilterField("minStars", "At least (stars)",
                         .choice(\.minStars, .fixed(["Any", "3.5", "4", "4.5", "5"]), editable: false)),
         ]),
@@ -86,7 +86,7 @@ public struct StaffFilter: SearchFilter, Equatable {
         ]),
     ]
 
-    /// The coaching area to rank by, or -1 for "(sort by CA)".
+    /// The coaching area to rank by, or -1 for none.
     public var rankArea: Int { Names.areasLong.firstIndex(of: rank) ?? -1 }
 
     /// "Reset all". The interest toggles and each rule's operator stay as they are, and the result becomes
@@ -138,7 +138,7 @@ public struct StaffFilter: SearchFilter, Equatable {
                       wanted.youth ? "youth team" : nil].compactMap { $0 }
 
         var ranked: String?
-        if rank != Self.sortByCA {
+        if rank != Self.noRanking {
             ranked = "ranked by \(rank)" + (minStars == "Any" ? "" : " (\(minStars)★+)")
         }
 

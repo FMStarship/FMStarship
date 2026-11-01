@@ -90,4 +90,25 @@ public struct AnalysisTable {
 
     /// The people listed, in row order: what "Save as FM shortlist" saves.
     public var people: [Person] { rows.compactMap(\.person) }
+
+    /// Columns that are CA or PA, or say what they are by the difference between two of them.
+    static let abilityColumns: Set<String> = ["CA", "PA", "Likely peak", "Room to grow", "vs best", "vs your best"]
+
+    /// A row coloured by a column that goes loses the colour too, since the colour says what the column did.
+    func removing(_ titles: Set<String>) -> AnalysisTable {
+        let kept = columns.indices.filter { !titles.contains(columns[$0].title) }
+        guard kept.count < columns.count else { return self }
+        var table = self
+        table.columns = kept.map { columns[$0] }
+        table.rows = rows.map { old in
+            var row = old
+            row.cells = kept.filter { $0 < old.cells.count }.map { old.cells[$0] }
+            row.sortKeys = kept.filter { $0 < old.sortKeys.count }.map { old.sortKeys[$0] }
+            row.toneColumn = old.toneColumn.flatMap { kept.firstIndex(of: $0) }
+            row.quietColumn = old.quietColumn.flatMap { kept.firstIndex(of: $0) }
+            if old.toneColumn != nil, row.toneColumn == nil { row.tone = nil }
+            return row
+        }
+        return table
+    }
 }

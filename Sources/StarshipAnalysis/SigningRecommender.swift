@@ -106,6 +106,11 @@ public struct SigningRecommender {
     /// Nil when cancelled.
     public func find(_ options: RecommendOptions, isCancelled: () -> Bool = { false },
                      status: (String) -> Void = { _ in }) -> AnalysisTable? {
+        let young = options.mode == .young
+        guard !young || session.display.showsAbility else {
+            return session.display.fit(AnalysisTable(columns: SigningRecommender.youngColumns,
+                                                     head: "Youngsters are picked on PA, which is off. \(session.display.abilityHint) to see them."))
+        }
         status("Finding players who'd join you...")
         let club = session.club.name
         let units = session.display.units
@@ -160,7 +165,6 @@ public struct SigningRecommender {
         }
         if !interestChecked { picks = Array(candidates.prefix(SigningRecommender.wanted)) }
 
-        let young = options.mode == .young
         var table = AnalysisTable(columns: young ? SigningRecommender.youngColumns : SigningRecommender.columns, interestChecked: interestChecked)
         for (index, p) in picks.enumerated() {
             let at = bestPosition(p, options)
@@ -200,7 +204,7 @@ public struct SigningRecommender {
         } else {
             table.status = "Top \(picks.count) for \(club). Whether they would join could not be checked. Double-click a player for the full profile."
         }
-        return table
+        return session.display.fit(table)
     }
 
     private func joinText(_ answer: JoinAnswer?, includeLoans: Bool) -> String {

@@ -119,7 +119,7 @@ public struct BestEleven {
                 !place.isChange ? "Same" : halves == 0 ? "Level" : gain(halves),
             ], person: slot.player, tone: !place.isChange || halves == 0 ? nil : halves > 0 ? .good : .fair, toneColumn: 7, bold: place.isChange))
         }
-        return table
+        return display.fit(table)
     }
 
     private static func notes(_ places: [Place], fit: [Player], book: RoleBook, session: AnalysisSession) -> [String] {

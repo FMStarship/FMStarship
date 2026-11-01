@@ -35,7 +35,7 @@ struct PeopleList: View {
     private func table(rows: [Person], columns: [Col], sort: AppModel.SortState) -> some View {
         PeopleTable(rows: rows, rowsVersion: model.rowsVersion, columns: columns,
                     layoutVersion: model.columnsVersion, cellsVersion: model.cellsVersion,
-                    reveal: model.reveal, colors: colors,
+                    reveal: model.shownReveal, colors: colors,
                     sortColumn: sort.column, sortDescending: sort.descending,
                     onSort: { model.sort(by: $0) },
                     onOpen: { model.openProfile($0) },
@@ -57,7 +57,11 @@ private struct FilterStrip: View {
 
     var body: some View {
         let summary = model.filterSummary
-        let columnFilters = (isStaff ? model.staffColumnFilters : model.playerColumnFilters).sorted { $0.key < $1.key }
+        // Only what's applying: a filter on a column that's gone waits until the column is back.
+        let shown = isStaff ? model.staffColumns : model.playerColumns
+        let columnFilters = (isStaff ? model.staffColumnFilters : model.playerColumnFilters)
+            .filter { filter in shown.contains { $0.name == filter.key } }
+            .sorted { $0.key < $1.key }
         VStack(alignment: .leading, spacing: 8) {
             if let reason = model.interestUnavailable {
                 NotNarrowedBanner(text: "\"Would join\" is ticked, but this list could not be narrowed by the game. \(reason)")
