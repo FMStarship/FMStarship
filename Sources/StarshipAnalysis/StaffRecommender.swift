@@ -226,7 +226,8 @@ public struct StaffRecommender {
             if join && found.interestChecked { who = role.level > 0 ? " who'd join you" : " who'd join your \(levelText(level))" }
             table.status = "The best \(shown.count) for \(team)\(role.name.lowercased())\(who), best first. Double-click for the full profile."
         }
-        return table
+        // Not `fit`: FM stars come from CA, but "vs your best" here is the role score, which CA plays no part in.
+        return session.display.showsAbility ? table : table.removing(["FM stars"])
     }
 
     /// The best people for a job, best first, who pass the options. Nil when cancelled. Only those scoring
