@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1D2331"/><stop offset="1" stop-color="#0F1115"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#3D6CF0" stop-opacity="0.30"/><stop offset="1" stop-color="#3D6CF0" stop-opacity="0"/></radialGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%"><feGaussianBlur stdDeviation="14"/></filter>
+  </defs>
+  <rect x="100" y="112" width="824" height="824" rx="185" fill="#000" opacity="0.32" filter="url(#shadow)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <rect x="103" y="103" width="818" height="818" rx="182" fill="none" stroke="#2B3242" stroke-width="6"/>
+  <circle cx="512" cy="512" r="340" fill="url(#glow)"/><path d="M300 278 Q306.4 311.6 340 318 Q306.4 324.4 300 358 Q293.6 324.4 260 318 Q293.6 311.6 300 278 Z" fill="#8BABFF"/><path d="M724 688 Q728.48 711.52 752 716 Q728.48 720.48 724 744 Q719.52 720.48 696 716 Q719.52 711.52 724 688 Z" fill="#8BABFF"/><path d="M262 504 Q264.56 517.44 278 520 Q264.56 522.56 262 536 Q259.44 522.56 246 520 Q259.44 517.44 262 504 Z" fill="#E8EBF1"/><circle cx="548" cy="238" r="9" fill="#E8EBF1"/><circle cx="770" cy="520" r="9" fill="#E8B830"/>
+  <g transform="translate(512 512) rotate(45) scale(1.0) translate(0 -8)">
+    <g fill="none" stroke="#E8EBF1" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M0 -286 C46 -226 96 -130 96 -34 C96 28 86 78 70 120 L-70 120 C-86 78 -96 28 -96 -34 C-96 -130 -46 -226 0 -286 Z"/>
+      <path d="M95 -14 C130 12 170 60 176 152 C150 130 112 120 78 104"/>
+      <path d="M-95 -14 C-130 12 -170 60 -176 152 C-150 130 -112 120 -78 104"/>
+      <circle cx="0" cy="-62" r="46"/>
+      <path d="M-46 120 L-34 172 L34 172 L46 120"/>
+    </g>
+    <g fill="none" stroke="#E8B830" stroke-width="24" stroke-linecap="round">
+      <path d="M0 222 L0 300"/>
+      <path d="M-52 218 L-52 260"/>
+      <path d="M52 218 L52 260"/>
+    </g>
+  </g>
+</svg>

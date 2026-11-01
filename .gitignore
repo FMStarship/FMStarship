@@ -1,0 +1,13 @@
+# Build output
+.build/
+build/
+.swiftpm/
+*.xcodeproj/
+DerivedData/
+*.profraw
+
+# macOS
+.DS_Store
+
+# Local design notes: holds screenshots of a real save
+.impeccable/

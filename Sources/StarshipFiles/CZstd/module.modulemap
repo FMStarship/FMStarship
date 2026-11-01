@@ -1,0 +1,6 @@
+// No `link` directive on purpose: Package.swift hands the linker libzstd.a directly,
+// so the app never picks up Homebrew's dylib.
+module CZstd [system] {
+    header "/opt/homebrew/include/zstd.h"
+    export *
+}
