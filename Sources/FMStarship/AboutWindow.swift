@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AboutWindow: View {
     private var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "27.0.1"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "27.0.2"
     }
 
     var body: some View {
