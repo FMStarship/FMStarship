@@ -111,8 +111,8 @@ Help > Compatibility shows what is working on the build you have.
 ## After an FM patch
 
 Records are found by class name, so the reader usually keeps working. Its offsets are all in
-`Sources/StarshipCore/Reader/MacLayout.swift`. If they move, Load Save's self-check fails rather than showing wrong
-data.
+`Sources/StarshipCore/Reader/MacLayout.swift`. If they move, Load Save's self-check fails and FM Starship warns that
+the numbers on screen may be wrong.
 
 The rule functions are found by address, which only holds for one build. `RulesEngine` compares a fingerprint of
 `game_plugin` and **refuses to start on any other build**, so those features switch off rather than give wrong

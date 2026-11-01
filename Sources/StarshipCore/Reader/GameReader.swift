@@ -96,6 +96,8 @@ public final class GameReader {
     public static func connect(status: @escaping (String) -> Void) throws -> (database: Database, engine: RulesEngine?) {
         let game = try GameProcess()
         let database = try GameReader(game: game, status: status).readAll()
+        // A read that fails only leaves a hole, so FM closing part way through has to be caught here.
+        guard GameProcess.runningPID() == game.pid else { throw AgentError.connectionLost }
         status("Setting up the game's rules...")
         let engine = RulesEngine(game: game, rtti: Rtti(game))
         for human in database.humanClubs {

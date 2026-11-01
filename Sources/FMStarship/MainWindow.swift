@@ -229,6 +229,12 @@ private struct SidebarFooter: View {
                     .font(.callout)
                     .foregroundStyle(colors.ui.muted)
                     .help(model.sourceDetail)
+                if model.database?.checkProblems != nil {
+                    Text("Self-checks failed: numbers may be wrong")
+                        .font(.callout)
+                        .foregroundStyle(colors.ui.bad)
+                        .help(model.sourceDetail)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
