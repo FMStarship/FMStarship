@@ -21,7 +21,7 @@ Please bring Mac problems here, not to FM Moleman's author, who doesn't make or 
 You need:
 
 - A Mac with Apple Silicon, on macOS 14 or later
-- Xcode
+- A recent Xcode. CI builds with Swift 6.3, so anything older may not compile
 - Homebrew's `zstd`: `brew install zstd`
 - The Steam version of Football Manager 27, but only for work on the reader, the game's rules, or anything you want to see with
   real data
