@@ -205,10 +205,20 @@ public final class RulesEngine: GameRulesEngine {
     /// FM27 inserted eight new stats at 60, so everything from there up moved.
     private static func statID(_ id: Int) -> UInt64 { UInt64(id >= 60 ? id + 8 : id) }
 
+    private struct BadStat: Error, CustomStringConvertible {
+        let id: Int, value: Double
+        var description: String { "stat \(id) came back as \(value)" }
+    }
+
+    /// A stat as a whole number. Nil for an answer that isn't one, which `Int(_:)` would crash on.
+    static func wholeStat(_ value: Double) -> Int? { Int(exactly: value.rounded(.towardZero)) }
+
     private func stat(_ container: UInt64, _ id: Int, scope: Int) throws -> Double {
-        try sandbox.call(statFunction, [container, RulesEngine.statID(id), UInt64(scope), 0], prepare: { cpu in
+        let value: Double = try sandbox.call(statFunction, [container, RulesEngine.statID(id), UInt64(scope), 0], prepare: { cpu in
             a64_set_v_low(cpu, 0, Mac27.statFallback.bitPattern)
         }, result: { Double(bitPattern: a64_get_v_low($0, 0)) })
+        guard RulesEngine.wholeStat(value) != nil else { throw BadStat(id: id, value: value) }
+        return value
     }
 
     public func seasonStats(player: Player, season scope: Int) -> SeasonStats? {
