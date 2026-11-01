@@ -46,6 +46,23 @@ enum StarArt {
         return runs
     }
 
+    /// `text` as a cell draws it. Measure this, not the typed stars, which are narrower than the images.
+    static func attributed(_ text: String, attributes: [NSAttributedString.Key: Any], color: NSColor) -> NSMutableAttributedString {
+        let shown = NSMutableAttributedString()
+        for run in runs(text) {
+            if run.isStars {
+                let attachment = NSTextAttachment()
+                let art = image(run.text, color: color)
+                attachment.image = art
+                attachment.bounds = NSRect(x: 0, y: -1, width: art.size.width, height: art.size.height)
+                shown.append(NSAttributedString(attachment: attachment))
+            } else {
+                shown.append(NSAttributedString(string: run.text, attributes: attributes))
+            }
+        }
+        return shown
+    }
+
     static func image(_ run: String, color: NSColor) -> NSImage {
         let key = Key(run: run, color: color)
         if let known = drawn[key] { return known }
