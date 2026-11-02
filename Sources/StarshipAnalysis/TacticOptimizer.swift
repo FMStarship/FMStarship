@@ -120,7 +120,7 @@ public enum TacticOptimizer {
         // A league's name isn't enough: several countries' divisions can share one.
         let players = session.db.players.filter {
             $0.league == first.league && $0.clubNation == first.clubNation && $0.clubFull != session.club.name
-                && $0.loanClub.isEmpty && ($0.squad == "First team" || $0.squad.isEmpty)
+                && session.canSign($0) && $0.loanClub.isEmpty && ($0.squad == "First team" || $0.squad.isEmpty)
         }
         return Array(Dictionary(grouping: players, by: \.clubFull).values)
     }

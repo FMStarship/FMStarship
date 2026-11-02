@@ -29,6 +29,8 @@ enum Compatibility {
         add("Squads", db.players.contains { !$0.squad.isEmpty }, "Player and staff squads", otherwise: "Not found")
         add("Regions", db.players.contains { !$0.region.isEmpty }, "Continents and the game's regions", otherwise: "Not found")
         add("Human managers", !db.humanClubs.isEmpty, db.humanClubs.map(\.name).joined(separator: ", "), otherwise: "None found")
+        add("Men's and women's football", db.knowsSides, "Your club is only offered players from its own side",
+            otherwise: "Not known here, so suggestions can include both")
         add("Your budgets", !db.budgets.isEmpty, "Transfer budget and wage room", otherwise: "Not found")
 
         let team = session?.club.team ?? 0

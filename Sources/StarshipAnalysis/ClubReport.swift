@@ -223,7 +223,7 @@ public final class ClubReport {
         // Keeps clubs in the order they are first met, as GroupBy does.
         var order: [String] = []
         var byClub: [String: [Player]] = [:]
-        for p in session.db.players where !p.club.isEmpty && p.loanClub.isEmpty && p.ca > 0 {
+        for p in session.db.players where !p.club.isEmpty && p.loanClub.isEmpty && p.ca > 0 && session.canSign(p) {
             if byClub[p.clubFull] == nil { order.append(p.clubFull) }
             byClub[p.clubFull, default: []].append(p)
         }

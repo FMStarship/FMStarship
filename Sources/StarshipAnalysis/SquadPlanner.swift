@@ -199,7 +199,7 @@ public enum SquadPlanner {
 
             let candidates = session.db.players.filter {
                 $0.block != 0 && $0.clubFull != club && $0.loanClubFull != club && !$0.notForSale && $0.ca >= line.wantCA
-                    && (16...30).contains($0.age) && plays($0, line.group) && !taken.contains($0.uid)
+                    && (16...30).contains($0.age) && plays($0, line.group) && !taken.contains($0.uid) && session.canSign($0)
             }.stableSorted { $0.ca != $1.ca ? $0.ca > $1.ca : $0.pa > $1.pa }
 
             var found: [(player: Player, loan: Bool)] = []

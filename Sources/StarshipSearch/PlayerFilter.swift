@@ -8,6 +8,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
     public var nation = "Any"
     public var club = ""
     public var squad = "Any"
+    public var gender = "Any"
     public var league = "Any"
     public var region = "Any"
     public var ageMin = ""
@@ -88,6 +89,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterField("nation", "Nation", .choice(\.nation, .nations, editable: true)),
             FilterField("club", "Club", .text(\.club), placeholder: .text("Any club")),
             FilterField("squad", "Squad", .choice(\.squad, .fixed(["Any"] + Names.squadOrder), editable: false)),
+            FilterField("gender", "Men or women", .choice(\.gender, .fixed(["Any", "Men", "Women"]), editable: false)),
             FilterField("league", "League", .choice(\.league, .leagues, editable: true)),
             FilterField("region", "Region", .choice(\.region, .regions, editable: false)),
             FilterField("age", "Age", .range(min: \.ageMin, max: \.ageMax)),
@@ -183,6 +185,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
         region = "Any"
         position = "Any"
         squad = "Any"
+        gender = "Any"
         trait1 = "Any"
         trait2 = "Any"
         role = "Any"
@@ -234,6 +237,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterText.pick(nation, ""),
             FilterText.typed(self.club, ""),
             squad == "Any" ? nil : squad,
+            FilterText.pick(gender, ""),
             FilterText.pick(league, ""),
             FilterText.pick(region, ""),
             FilterText.range("age", ageMin, ageMax),
@@ -299,6 +303,7 @@ public struct PlayerCriteria {
     private let league: TextTest
     private let media: TextTest
     private let squad: String?
+    private let women: Bool?
     private let region: RegionTest
     private let ageMin: Int?
     private let ageMax: Int?
@@ -345,6 +350,7 @@ public struct PlayerCriteria {
         league = TextTest(filter.league)
         media = TextTest(filter.media)
         squad = filter.squad == "Any" ? nil : filter.squad
+        women = filter.gender == "Any" ? nil : filter.gender == "Women"
         region = RegionTest(filter.region)
         ageMin = Net.int32(filter.ageMin)
         ageMax = Net.int32(filter.ageMax)
@@ -420,6 +426,7 @@ public struct PlayerCriteria {
         if name.isActive, !name.matches(player.searchText) { return false }
         guard nation.matches(player.nation), matchesClub(player), league.matches(player.league) else { return false }
 
+        if let women, player.isWoman != women { return false }
         if let squad {
             let inSquad = squad == "On loan" ? !player.loanClub.isEmpty : player.squad == squad
             if !inSquad { return false }

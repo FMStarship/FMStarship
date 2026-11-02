@@ -54,6 +54,8 @@ public final class RulesEngine: GameRulesEngine {
     public var managers: [Int64: Int64] = [:]
     /// Team to the staff member whose eye the role stars are seen through.
     public var viewers: [Int64: Int64] = [:]
+    /// The human clubs that are women's sides, from `Database.womensTeams`.
+    public var womensTeams: Set<Int64> = []
     private let roleLock = NSLock()
     private var roleMasks: [Int: UInt64] = [:]
     private let failureLock = NSLock()
@@ -92,6 +94,8 @@ public final class RulesEngine: GameRulesEngine {
     }
 
     public func interest(player: Player, team: Int64) -> (transfer: Bool, loan: Bool)? {
+        // FM's rule only weighs up the move, so without this it says a woman would join a men's club.
+        guard player.isWoman == womensTeams.contains(team) else { return (false, false) }
         let club = game.readPointer(team + Int64(MacLayout.Team.club))
         guard let status = try? status(player, team: team), club != 0,
               let transfer = try? score(player, club: club, type: RulesEngine.transfer, status: status) else { return nil }

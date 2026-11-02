@@ -51,6 +51,8 @@ enum MacLayout {
         static let index = 8
         static let uid = 12
         static let flags = 0x18
+        static let sex = 0x19
+        static let woman: UInt8 = 0x10
     }
 
     enum Contract {
@@ -84,6 +86,8 @@ enum MacLayout {
     }
 
     enum Club {
+        /// A byte, 1 for a women's club. FM keeps a club's men and women as two clubs.
+        static let womens = 185
         static let fullName = 192
         static let shortName = 200
         static let nation = 216

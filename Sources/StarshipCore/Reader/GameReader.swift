@@ -39,6 +39,7 @@ public final class GameReader {
     private struct Club {
         var short = "", full = "", league = "", nation = "", nationCode = ""
         var object: Int64 = 0
+        var womens = false
         var region = ""
         var area: Int64 = 0
     }
@@ -100,6 +101,7 @@ public final class GameReader {
         guard GameProcess.runningPID() == game.pid else { throw AgentError.connectionLost }
         status("Setting up the game's rules...")
         let engine = RulesEngine(game: game, rtti: Rtti(game))
+        engine?.womensTeams = database.womensTeams
         for human in database.humanClubs {
             engine?.managers[human.team] = human.manager
             engine?.viewers[human.team] = roleViewer(for: human.name, in: database)?.block
@@ -230,6 +232,7 @@ public final class GameReader {
         database.gameDate = transferManagers.compactMap(readGameDate).max()
         readCurrencies(currencies.sorted(), into: database)
         readHumans(humans.sorted(), managers: managers.sorted(), into: database)
+        separateSides(pending.map(\.person), in: database)
         if let today = database.gameDate { applyInjuries(pending, today: today) }
         readTactics(sessions: tacticSessions.sorted(), arrays: tacticArrays.sorted(), people: pending.map(\.person), into: database)
 
@@ -299,6 +302,7 @@ public final class GameReader {
         person.index = GameReader.u32(b, identity + I.index)
         person.uid = GameReader.u32(b, identity + I.uid)
         person.flags = b[identity + I.flags]
+        person.isWoman = b[identity + I.sex] & I.woman != 0
         person.birthDay = GameReader.u16(b, base + P.birthDay)
         person.birthYear = GameReader.u16(b, base + P.birthYear)
         person.pers = Array(b[(base + P.personality)..<(base + P.personality + 8)])
@@ -385,6 +389,7 @@ public final class GameReader {
             club.nation = nationName(nation)
             club.nationCode = nation == 0 ? "" : game.lengthPrefixedString(game.readPointer(nation + Int64(MacLayout.Nation.code)))
             club.object = object
+            club.womens = game.read(object + Int64(C.womens), count: 1)?.first == 1
             club.region = continentName(nation)
             club.area = nation == 0 ? 0 : game.readPointer(nation + Int64(MacLayout.Nation.area))
             return club
@@ -578,6 +583,45 @@ public final class GameReader {
             let wageRoom = Int(Int32(bitPattern: GameReader.u32(room, 0))) - Int(Int32(bitPattern: GameReader.u32(spent, 0)))
             database.budgets[team] = (budget, max(0, wageRoom))
         }
+    }
+
+    /// FM keeps a club's men and women as two clubs, usually with one name, and everything here tells clubs apart by
+    /// name. So where the two clash, the women's side gets a name of its own, and a club's squad stays its own.
+    private func separateSides(_ people: [Person], in database: Database) {
+        let known = clubs.all
+        guard GameReader.sidesAgree(people, womensClubs: Set(known.filter(\.womens).map(\.object))) else {
+            people.forEach { $0.isWoman = false }
+            return
+        }
+        database.knowsSides = true
+        let mens = known.filter { !$0.womens }
+        let names = Set(mens.map(\.full) + mens.map(\.short)).subtracting([""])
+        let clashing = Set(known.filter { $0.womens && (names.contains($0.full) || names.contains($0.short)) }.map(\.object))
+        for person in people {
+            if clashing.contains(person.clubObject) {
+                person.club += GameReader.womensSuffix
+                person.clubFull += GameReader.womensSuffix
+            }
+            if clashing.contains(person.loanClubObject) {
+                person.loanClub += GameReader.womensSuffix
+                person.loanClubFull += GameReader.womensSuffix
+            }
+        }
+        for index in database.humanClubs.indices {
+            let club = club(database.humanClubs[index].team)
+            guard club.womens else { continue }
+            database.womensTeams.insert(database.humanClubs[index].team)
+            if clashing.contains(club.object) { database.humanClubs[index].name += GameReader.womensSuffix }
+        }
+    }
+
+    private static let womensSuffix = " Women"
+
+    /// Men play for men's clubs and women for women's, so if the people and the clubs disagree, the offsets have moved.
+    /// One odd record shouldn't switch this off, so it takes more than that.
+    static func sidesAgree(_ people: [Person], womensClubs: Set<Int64>) -> Bool {
+        let placed = people.filter { $0 is Player && $0.clubObject != 0 }
+        return placed.filter { $0.isWoman != womensClubs.contains($0.clubObject) }.count * 1000 <= placed.count
     }
 
     /// The eleven each human has picked. The tactics screen's own arrays come first: the others are
