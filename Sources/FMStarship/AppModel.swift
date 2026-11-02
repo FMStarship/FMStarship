@@ -407,6 +407,9 @@ final class AppModel: ObservableObject {
         openShortlist = nil
         selection = []
         search()
+        if let problems = database.checkProblems {
+            alert = "FM Starship's self-checks failed on this save (\(problems)), so the numbers on screen may be wrong. If FM has just been patched, see Help > Compatibility."
+        }
     }
 
     /// The rules read addresses that only mean something in the game they came from. When that game

@@ -205,6 +205,9 @@ public final class Database {
     public var tactics: [Int64: Tactic] = [:]
     public init() {}
 
+    /// What the self-checks found wrong, or nil when there's nothing to say.
+    public var checkProblems: String? { checks.hasPrefix("FAIL: ") ? String(checks.dropFirst(6)) : nil }
+
     /// Caches display text, once, so that parallel searches only read it.
     public func prepare() {
         players.forEach { $0.prepare() }
