@@ -24,7 +24,8 @@ public enum Storage {
     public static let fileExtension = "fmasnap"
 
     private static let magic = Array("FMSTRSNP".utf8)
-    private static let version: UInt32 = 1
+    /// 2 added who is a woman and which human clubs are women's sides. A version 1 file just doesn't know.
+    private static let version: UInt32 = 2
 
     /// `~/Library/Application Support/FMStarship/Snapshots`, created if needed.
     public static func snapshotsFolder() throws -> URL {
@@ -78,11 +79,11 @@ public enum Storage {
         let file = [UInt8](try Data(contentsOf: url))
         guard file.count >= magic.count + 4, file.starts(with: magic) else { throw SnapshotError.notSnapshot }
         let found = file.readLE(UInt32.self, at: magic.count)
-        guard found == version else { throw SnapshotError.wrongVersion(found) }
+        guard found == 1 || found == version else { throw SnapshotError.wrongVersion(found) }
         guard let body = try? Zstd.decompress(Array(file[(magic.count + 4)...])) else { throw SnapshotError.damaged }
 
         let database = try body.withUnsafeBufferPointer { buffer -> Database in
-            var reader = SnapshotReader(buffer)
+            var reader = SnapshotReader(buffer, version: found)
             try reader.readTable()
             return try reader.readDatabase()
         }
@@ -157,6 +158,9 @@ private struct SnapshotWriter {
             int(budget.transfer)
             int(budget.wageRoom)
         }
+        bytes.append(database.knowsSides ? 1 : 0)
+        varint(UInt64(database.womensTeams.count))
+        for team in database.womensTeams.sorted() { int(team) }
 
         varint(UInt64(database.players.count))
         for player in database.players { write(player) }
@@ -205,6 +209,7 @@ private struct SnapshotWriter {
         int(p.releaseClause)
         int(p.releaseForeign)
         int(p.releaseDomestic)
+        bytes.append(p.isWoman ? 1 : 0)
     }
 
     private mutating func write(_ p: Player) {
@@ -278,10 +283,14 @@ private struct SnapshotWriter {
 /// with an error instead of trapping.
 private struct SnapshotReader {
     private let buffer: UnsafeBufferPointer<UInt8>
+    private let version: UInt32
     private var offset = 0
     private var strings: [String] = []
 
-    init(_ buffer: UnsafeBufferPointer<UInt8>) { self.buffer = buffer }
+    init(_ buffer: UnsafeBufferPointer<UInt8>, version: UInt32) {
+        self.buffer = buffer
+        self.version = version
+    }
 
     private mutating func byte() throws -> UInt8 {
         guard offset < buffer.count else { throw SnapshotError.damaged }
@@ -373,6 +382,10 @@ private struct SnapshotReader {
             let team = try int64(), transfer = try int64(), wageRoom = try int()
             database.budgets[team] = (transfer: transfer, wageRoom: wageRoom)
         }
+        if version >= 2 {
+            database.knowsSides = try byte() != 0
+            for _ in 0..<(try count()) { database.womensTeams.insert(try int64()) }
+        }
 
         let players = try count()
         database.players.reserveCapacity(players)
@@ -424,6 +437,7 @@ private struct SnapshotReader {
         p.releaseClause = try int64()
         p.releaseForeign = try int64()
         p.releaseDomestic = try int64()
+        if version >= 2 { p.isWoman = try byte() != 0 }
     }
 
     private mutating func readPlayer() throws -> Player {

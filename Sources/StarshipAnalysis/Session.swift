@@ -96,6 +96,9 @@ public final class AnalysisSession {
     /// `db.GameDate ?? DateTime.Today`.
     public var today: Date { db.gameDate ?? GameDate.calendar.startOfDay(for: Date()) }
 
+    /// Whether the player is on the same side as this club. Men's clubs only sign men, and women's clubs only women.
+    public func canSign(_ player: Player) -> Bool { player.isWoman == db.womensTeams.contains(club.team) }
+
     /// `db.Budgets[Team]`.
     public var budget: (transfer: Int64, wageRoom: Int)? { db.budgets[club.team] }
 

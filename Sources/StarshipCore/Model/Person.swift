@@ -19,6 +19,7 @@ public class Person {
     public var area = ""
     public var areaRecord: Int64 = 0
     public var flags: UInt8 = 0
+    public var isWoman = false
     public var pers = [UInt8](repeating: 0, count: 8)
     public var personality = ""
     public var media = ""
@@ -201,6 +202,10 @@ public final class Database {
     public var currencies: [Currency] = []
     public var humanClubs: [(team: Int64, name: String, manager: Int64)] = []
     public var budgets: [Int64: (transfer: Int64, wageRoom: Int)] = [:]
+    /// The human clubs that are women's sides, by team.
+    public var womensTeams: Set<Int64> = []
+    /// False when the game's answer isn't here, so `Person.isWoman` and `womensTeams` say nothing.
+    public var knowsSides = false
     /// The human managers' tactics by team. Live games only.
     public var tactics: [Int64: Tactic] = [:]
     public init() {}

@@ -119,7 +119,7 @@ public struct SigningRecommender {
         if options.mode == .budget, fee == nil { fee = 1_000_000 }
         let curve = session.development
 
-        var candidates = session.db.players.filter { $0.block != 0 && $0.clubFull != club && $0.loanClubFull != club && !$0.notForSale && $0.ca > 0 }
+        var candidates = session.db.players.filter { $0.block != 0 && $0.clubFull != club && $0.loanClubFull != club && !$0.notForSale && $0.ca > 0 && session.canSign($0) }
         if let fee { candidates = candidates.filter { !(Double($0.value) > fee) } }
         switch options.show {
         case .freeAgentsOnly: candidates = candidates.filter { $0.club.isEmpty }
