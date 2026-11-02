@@ -96,6 +96,29 @@ final class AbilityOffTests: XCTestCase {
         XCTAssertTrue(plan?.table.columns.contains { $0.title == "vs best" } ?? false)
     }
 
+    func testRecommendedStaffOnlyShowFMStarsWhileCAIsOn() throws {
+        let role = try XCTUnwrap(StaffRoles.all.first { $0.name == "Physio" })
+        func table(_ session: AnalysisSession) -> AnalysisTable? {
+            let physio = Staff()
+            physio.uid = 1
+            physio.block = 1
+            physio.club = "Rivals FC"
+            physio.clubFull = "Rivals FC"
+            physio.job = "Physio"
+            physio.ca = 171
+            physio.attr = [UInt8](repeating: 15, count: physio.attr.count)
+            session.db.staff = [physio]
+            return StaffRecommender(session: session).find(StaffSearchOptions(role: role, onlyJoin: false))
+        }
+        for session in bothWaysOff {
+            let found = table(session)
+            XCTAssertFalse(found?.rows.isEmpty ?? true)
+            XCTAssertFalse(found?.columns.contains { $0.title == "FM stars" } ?? true)
+            XCTAssertTrue(found?.columns.contains { $0.title == "vs your best" } ?? false)
+        }
+        XCTAssertTrue(table(session(.stars, showHidden: true))?.columns.contains { $0.title == "FM stars" } ?? false)
+    }
+
     func testNoBargainListGivesAbilityAway() {
         for session in bothWaysOff {
             for kind in BargainOptions.Kind.allCases {
