@@ -44,6 +44,13 @@ With that on, Ability chooses whether CA and PA show as numbers, as stars or not
 If FM is already running when you open FM Starship, the app asks you to save and quit it first. It never closes the
 game for you.
 
+## Updates
+
+FM Starship asks before it starts looking for updates, then checks GitHub about once a day, and you can check yourself with
+FM Starship > Check for Updates. That's the only thing it goes online for, and nothing about your save is sent. It doesn't
+check while Football Manager is running, because installing an update restarts FM Starship. You can turn this off in Settings.
+Updates are signed, so a fake one gets refused. Builds you make yourself don't update.
+
 ## Screenshots
 
 These come from a real save played in Norwegian, so formation names read the way FM shows them in that language.
@@ -194,7 +201,8 @@ Things FM Starship has that FM Moleman doesn't:
 | `Assets` | The app icon and the README's screenshots. `Scripts/make-icon.py` draws the icon, and needs `rsvg-convert` |
 
 Building needs Xcode and Homebrew's `zstd` (`brew install zstd`). It is linked statically, so the finished app has no
-Homebrew dependency. `Scripts/release.sh` makes the signed, notarized disk image; the top of that script says what it needs.
+Homebrew dependency. `Scripts/release.sh` makes the signed, notarized disk image and the update feed; the top of that script
+says what they need.
 
 ## Known limits
 

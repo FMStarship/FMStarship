@@ -19,6 +19,8 @@ in an ARM64 interpreter. It's source available under PolyForm Noncommercial, so 
 
 The build needs Xcode and `brew install zstd`. Tests that need FM skip themselves when it isn't installed.
 
+Updates are the only thing the app goes online for. Keep it that way.
+
 ## Where things are
 
 | Path | What |

@@ -3,14 +3,37 @@ import StarshipSearch
 import SwiftUI
 
 struct SettingsView: View {
+    let updater: Updater
+
     var body: some View {
         TabView {
             UnitsSettings()
                 .tabItem { Label("Units", systemImage: "ruler") }
             ThemeSettings()
                 .tabItem { Label("Theme", systemImage: "paintpalette") }
+            if updater.isAvailable {
+                UpdateSettings(updater: updater)
+                    .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
+            }
         }
         .frame(width: 500)
+    }
+}
+
+private struct UpdateSettings: View {
+    @ObservedObject var updater: Updater
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Check for updates automatically", isOn: $updater.checksAutomatically)
+            } footer: {
+                Text("Once a day, FM Starship asks GitHub whether there's a new version. Nothing about your save is sent, and it doesn't check while Football Manager is running.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 150)
     }
 }
 
