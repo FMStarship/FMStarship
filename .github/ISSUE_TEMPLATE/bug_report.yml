@@ -13,7 +13,7 @@ body:
     attributes:
       label: FM Starship version
       description: Find it in FM Starship > About FM Starship.
-      placeholder: "27.0.2"
+      placeholder: "27.0.3"
     validations:
       required: true
   - type: input
