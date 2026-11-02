@@ -12,11 +12,12 @@ public enum GameLauncher {
     }
 
     public enum LaunchError: Error, CustomStringConvertible {
-        case gameNotFound, agentMissing, alreadyRunning, failed(Int32)
+        case gameNotFound, agentMissing, agentNotCopied(String), alreadyRunning, failed(Int32)
         public var description: String {
             switch self {
             case .gameNotFound: return "Football Manager 27 wasn't found in your Steam library."
             case .agentMissing: return "FM Starship's agent is missing from the app. Reinstall FM Starship."
+            case .agentNotCopied(let reason): return "FM Starship couldn't copy its agent to Application Support: \(reason)"
             case .alreadyRunning: return "Football Manager is already running. Save, quit it, then start it from FM Starship."
             case .failed(let code): return "macOS couldn't start Football Manager (error \(code))."
             }
@@ -57,15 +58,32 @@ public enum GameLauncher {
         return FileManager.default.fileExists(atPath: AgentConnection.socketPath(pid: pid)) ? .ready : .runningWithoutAgent
     }
 
+    /// FM holds on to the agent for as long as it runs, so it loads a copy outside the app, where replacing the app
+    /// can't reach it. Written rather than copied, because a copy would keep the download's quarantine flag.
+    static func placeAgent(_ agent: URL, in folder: URL) throws -> URL {
+        let placed = folder.appendingPathComponent(agent.lastPathComponent)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(contentsOf: agent).write(to: placed, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: placed.path)
+        return placed
+    }
+
     /// Never touches a game that is already running: that would risk an unsaved career.
     public static func launch(agent: URL) throws {
         guard let app = gameApp else { throw LaunchError.gameNotFound }
         guard FileManager.default.fileExists(atPath: agent.path) else { throw LaunchError.agentMissing }
         guard GameProcess.runningPID() == nil else { throw LaunchError.alreadyRunning }
+        let placed: URL
+        do {
+            let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            placed = try placeAgent(agent, in: support.appendingPathComponent("FMStarship", isDirectory: true))
+        } catch {
+            throw LaunchError.agentNotCopied(error.localizedDescription)
+        }
         let open = Process()
         open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         open.arguments = [
-            "--env", "\(GameProcess.agentLibraryEnv)=\(agent.path)",
+            "--env", "\(GameProcess.agentLibraryEnv)=\(placed.path)",
             // With these set, the Steam API does not restart the game through Steam, which would lose the agent.
             "--env", "SteamAppId=\(steamAppID)",
             "--env", "SteamGameId=\(steamAppID)",

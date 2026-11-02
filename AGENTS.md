@@ -40,7 +40,7 @@ The build needs Xcode and `brew install zstd`. Tests that need FM skip themselve
 - **Don't push to `main`.** Work on a branch and open a pull request. Don't look for a way around the branch rules, and don't force-push
   a branch someone else is using.
 - **Don't start, stop or kill Football Manager**, unless your user asks you to. The app itself must never close the game.
-- **Don't run `Scripts/build-app.sh` or `Scripts/release.sh` while FM or FM Starship is running.** They delete the agent FM has loaded.
+- **Don't run `Scripts/build-app.sh` or `Scripts/release.sh` while FM or FM Starship is running.** They delete the running app.
 - **Don't write to `~/Library/Application Support/Sports Interactive/`.** That's the player's real data, so tests use a temporary folder.
 - **Don't add a write operation to the agent**, or anything that patches FM or changes a save. Reading is the promise this app makes.
 - **Don't show or use hidden values while Hidden attributes is off.** CA and PA count as hidden, including in exports, filters,

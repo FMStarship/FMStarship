@@ -37,7 +37,7 @@ open "build/FM Starship.app"
 ```
 
 `swift build` and `swift test` are safe at any time. **Don't run `Scripts/build-app.sh` while FM or FM Starship is running**,
-because it deletes the app and the agent that FM has loaded.
+because it deletes the running app.
 
 ### Working without FM
 
