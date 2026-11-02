@@ -423,6 +423,8 @@ static int load_store_register(a64 *c, uint32_t i) {
 static int load_store_pair(a64 *c, uint32_t i) {
     unsigned opc = BF(i, 31, 30), simd = BIT(i, 26), mode = BF(i, 24, 23), load = BIT(i, 22);
     unsigned rt2 = BF(i, 14, 10), rn = BF(i, 9, 5), rt = i & 31;
+    // No such instruction, but a call that has jumped into data can reach this, and rd can't read 32 bytes.
+    if (opc == 3) return 0;
     int bytes = simd ? 4 << opc : (opc == 2 ? 8 : 4);
     int signed_word = !simd && opc == 1;
     if (signed_word) bytes = 4;
