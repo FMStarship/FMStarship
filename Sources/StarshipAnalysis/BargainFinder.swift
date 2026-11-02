@@ -146,7 +146,7 @@ public struct BargainFinder {
         status(join ? "Finding bargains who'd join you..." : "Finding bargains...")
 
         var found = session.db.players.filter { $0.block != 0 && $0.ca > 0 && $0.clubFull != club && session.canSign($0) }
-        if options.position >= 0 { found = found.filter { $0.pos[options.position] >= 15 } }
+        if options.position >= 0 { found = found.filter { $0.isNatural(at: options.position) } }
         if let minCA { found = found.filter { $0.ca >= minCA } }
         if let maxAge {
             found = found.filter { $0.age >= 0 && $0.age <= maxAge }
