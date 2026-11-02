@@ -73,14 +73,14 @@ public struct SigningRecommender {
     private static let batchSize = 64
 
     private let session: AnalysisSession
-    /// The highest CA at the club at each position, among those who play there.
+    /// The highest CA at the club at each position, among its naturals there, so a signing is measured against like.
     public let bestAt: [Int]
 
     public init(session: AnalysisSession) {
         self.session = session
         let club = session.club.name
         let squad = session.db.players.filter { $0.clubFull == club || $0.loanClubFull == club }
-        bestAt = (0..<15).map { i in squad.filter { $0.pos[i] >= 15 }.map(\.ca).max() ?? 0 }
+        bestAt = (0..<15).map { i in squad.filter { $0.isNatural(at: i) }.map(\.ca).max() ?? 0 }
     }
 
     /// Youngsters are ranked on what they'll likely become, not on a PA most never reach.
@@ -126,7 +126,7 @@ public struct SigningRecommender {
         case .noFreeAgents: candidates = candidates.filter { !$0.club.isEmpty }
         case .all: break
         }
-        if position >= 0 { candidates = candidates.filter { $0.pos[position] >= 15 } }
+        if position >= 0 { candidates = candidates.filter { $0.isNatural(at: position) } }
         if options.upgradesOnly {
             candidates = candidates.filter {
                 let best = bestAt[bestPosition($0, options)]

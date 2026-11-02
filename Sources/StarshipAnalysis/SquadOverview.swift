@@ -205,7 +205,7 @@ public final class SquadOverview: OverviewReport {
         let candidates = session.db.players.filter {
             $0.block != 0 && $0.clubFull != club && $0.loanClubFull != club && !$0.notForSale && $0.ca >= floor && Self.signingAges.contains($0.age)
                 && session.canSign($0)
-                && $0.pos[slot.position] >= 15 && $0.wage <= budget.wageRoom && !excluded.contains($0.uid)
+                && $0.isNatural(at: slot.position) && $0.wage <= budget.wageRoom && !excluded.contains($0.uid)
         }.stableSorted { $0.ca != $1.ca ? $0.ca > $1.ca : $0.pa > $1.pa }
 
         var found: [(player: Player, rating: RoleBook.Rating, loan: Bool)] = []

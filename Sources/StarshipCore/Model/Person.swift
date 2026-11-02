@@ -137,6 +137,9 @@ public final class Player: Person {
         cachedTraits ?? (0..<64).filter { hasTrait($0) && Names.traits[$0] != nil }.map { Names.traits[$0]! }.joined(separator: "; ")
     }
 
+    /// A rating of 18 or more. From 15 to 17 FM calls a player Accomplished: able to play there, but it isn't their position.
+    public func isNatural(at position: Int) -> Bool { pos[position] >= 18 }
+
     public var bestPositions: String {
         if let cachedBestPositions { return cachedBestPositions }
         let best = Int(pos.max() ?? 0)
