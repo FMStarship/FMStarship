@@ -35,4 +35,7 @@ chk("str",t_str("hello world"),c,im,t_str,(uint64_t)"hello world",0);
 chk("heap",t_heap(1000),c,im,t_heap,1000,0);
 double fv[][2]={{2.5,3.25},{1e3,0.125},{-7.75,12.5},{0.001,9999}};
 for(int i=0;i<4;i++){chkf("fp",t_fp(fv[i][0],fv[i][1]),c,t_fp,fv[i][0],fv[i][1],0);chkf("fps",t_fps(fv[i][0],fv[i][1]),c,t_fps,fv[i][0],fv[i][1],1);}
+// An LDP with opc 3 doesn't exist, so it has to stop the call rather than overrun the read.
+static const uint32_t badpair[][2]={{0xED400000,0xD65F03C0},{0xE9400000,0xD65F03C0}};uint64_t pairmem[8]={0};
+for(int i=0;i<2;i++){a64_reset(c);a64_set_x(c,31,A64_STACK_TOP-0x1000);a64_set_x(c,30,A64_RETURN_SENTINEL);a64_set_x(c,0,(uint64_t)pairmem);a64_status s=a64_run(c,(uint64_t)badpair[i],100);if(s!=A64_UNDEFINED){printf("FAIL badpair %d: status %d\n",i,s);fails++;}}
 printf("FAILURES: %d\n",fails);return fails!=0;}
