@@ -75,7 +75,8 @@ hands out its own task port is killed by the kernel. So on Mac:
 
 - **A small agent is loaded into FM at launch** (`agent/agent.c`, about 200 lines), through the
   `allow-dyld-environment-variables` entitlement FM27 ships with. No game file is changed, and the agent only
-  exists for launches made from FM Starship.
+  exists for launches made from FM Starship. FM loads a copy from `~/Library/Application Support/FMStarship`, so
+  replacing the app never touches the agent a running game is using.
 - **The agent only answers read requests**, over a private Unix socket. The protocol has no write operation. It
   hooks nothing and patches nothing. This is a promise made by the code, not one enforced by the kernel.
 - **Stale pointers are safe.** Reads report bad addresses as errors, and the socket cannot raise SIGPIPE in the game.
