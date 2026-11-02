@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "FMStarship",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
+    ],
     targets: [
         .target(name: "CStarshipProtocol"),
         .target(name: "CA64"),
@@ -19,7 +22,11 @@ let package = Package(
             exclude: ["CZstd"],
             linkerSettings: [.unsafeFlags(["/opt/homebrew/lib/libzstd.a"])]
         ),
-        .executableTarget(name: "FMStarship", dependencies: ["StarshipCore", "StarshipSearch", "StarshipAnalysis", "StarshipFiles"]),
+        .executableTarget(
+            name: "FMStarship",
+            dependencies: ["StarshipCore", "StarshipSearch", "StarshipAnalysis", "StarshipFiles", .product(name: "Sparkle", package: "Sparkle")],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+        ),
         .executableTarget(name: "fmprobe", dependencies: ["StarshipCore", "StarshipAnalysis", "CA64"]),
         .testTarget(name: "StarshipFilesTests", dependencies: ["StarshipFiles", "StarshipCore"]),
         .testTarget(name: "StarshipSearchTests", dependencies: ["StarshipSearch", "StarshipCore"]),

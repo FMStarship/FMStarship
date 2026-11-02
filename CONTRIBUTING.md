@@ -94,7 +94,7 @@ The licence isn't an open-source licence, so please call the project source avai
 
 - Match the code around you, including how much it comments. A comment says why, not what.
 - Write text in the app in plain words, and when something is off, say what to do about it.
-- Don't add a dependency without asking first. So far there's only `zstd`.
+- Don't add a dependency without asking first. So far there's `zstd` and [Sparkle](https://sparkle-project.org), which installs updates.
 
 ## Using AI tools
 
@@ -110,7 +110,10 @@ the right to share it.
 
 Close FM and FM Starship first, because this rebuilds the app.
 
-1. Change the version in `Scripts/build-app.sh` in a pull request, and merge it.
-2. Update `main`, then run `Scripts/release.sh`. It needs your Developer ID certificate and a notary login, as the script explains.
-3. Publish `build/FM-Starship-VERSION.dmg` with `gh release create`, targeting `main`, and put its SHA-256 in the notes.
-4. Download it again from the release and check the hash matches.
+1. Change the version and raise the build number in `Scripts/build-app.sh` in a pull request, and merge it. Updates compare the build
+   number, so it must go up every time.
+2. Update `main`, then run `Scripts/release.sh NOTES.md`, with the notes people will see in the update window. It needs your Developer
+   ID certificate, a notary login and the update signing key, as the script explains.
+3. Publish `build/FM-Starship-VERSION.dmg` and `build/appcast.xml` with `gh release create`, targeting `main`, and put the disk image's
+   SHA-256 in the release notes. The app finds updates through the latest release's `appcast.xml`, so don't leave it out.
+4. Download the disk image again from the release and check the hash matches.

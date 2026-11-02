@@ -8,6 +8,7 @@ struct FMStarshipApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     /// Not observed here: scenes would be rebuilt on every change. Views observe it themselves.
     private let model: AppModel
+    private let updater = Updater()
 
     init() {
         // Before the model, which reads its starting state from the settings.
@@ -27,7 +28,7 @@ struct FMStarshipApp: App {
                 .frame(minWidth: 1120, minHeight: 620)
         }
         .defaultSize(width: 1380, height: 860)
-        .commands { AppCommands(model: model, state: model.menuState) }
+        .commands { AppCommands(model: model, state: model.menuState, updater: updater) }
 
         WindowGroup("Profile", id: WindowID.profile, for: PersonRef.self) { $ref in
             ProfileWindow(ref: ref).themed(model)
@@ -54,7 +55,7 @@ struct FMStarshipApp: App {
         .commandsRemoved()
 
         SwiftUI.Settings {
-            SettingsView().themed(model)
+            SettingsView(updater: updater).themed(model)
         }
     }
 }
@@ -82,6 +83,7 @@ private struct Themed: ViewModifier {
 struct AppCommands: Commands {
     let model: AppModel
     @ObservedObject var state: MenuState
+    let updater: Updater
     @Environment(\.openWindow) private var openWindow
 
     private var hasData: Bool { state.values.hasData }
@@ -92,6 +94,7 @@ struct AppCommands: Commands {
 
         CommandGroup(replacing: .appInfo) {
             Button("About FM Starship") { openWindow(id: WindowID.about) }
+            CheckForUpdatesButton(updater: updater)
         }
 
         CommandGroup(replacing: .newItem) {
