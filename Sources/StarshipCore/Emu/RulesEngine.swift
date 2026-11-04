@@ -6,7 +6,7 @@ import Foundation
 public final class RulesEngine: GameRulesEngine {
     /// Only valid for one build of game_plugin: the engine refuses to start on any other.
     private enum Mac27 {
-        static let fingerprint = "715b74960f0a5690"
+        static let fingerprint = "180ec7c132b60f7e"
         static let interestManagerGlobal: Int64 = 0x56d2d08
         static let statusFunction: Int64 = 0xd4f9cc
         static let interestSlot = 30
@@ -15,21 +15,21 @@ public final class RulesEngine: GameRulesEngine {
         static let statsContainerSlot = 65
         static let personStatsSlot = 0x668 / 8
         static let statFallback = 0.0
-        static let roleInPossession: Int64 = 0x14ea604
-        static let roleOutOfPossession: Int64 = 0x14fe42c
-        static let roleBand: Int64 = 0x14eadfc
-        static let roleListInPossession: Int64 = 0x4918c5c
-        static let roleListOutOfPossession: Int64 = 0x491b6ec
-        static let preferredJob: Int64 = 0x4902ed8
+        static let roleInPossession: Int64 = 0x14ea848
+        static let roleOutOfPossession: Int64 = 0x14fe670
+        static let roleBand: Int64 = 0x14eb040
+        static let roleListInPossession: Int64 = 0x4918ef0
+        static let roleListOutOfPossession: Int64 = 0x491b980
+        static let preferredJob: Int64 = 0x490316c
         static let staffNumbersGlobal: Int64 = 0x56d2b80
         static let staffAllowedSlot = 8
         static let staffCurrentSlot = 7
         static let staffModeFlags: Int64 = 0x56d4950
-        static let injuryInfo: Int64 = 0x154c450
-        static let bagSet: Int64 = 0x43f800c
-        static let bagClear: Int64 = 0x43f829c
+        static let injuryInfo: Int64 = 0x154c694
+        static let bagSet: Int64 = 0x43f82a0
+        static let bagClear: Int64 = 0x43f8530
         static let injuryDaysKey: UInt64 = 0x5050_4d69  // "PPMi" in the bag FM fills for its injury text
-        static let shapeName: Int64 = 0x49678ec
+        static let shapeName: Int64 = 0x4967b80
     }
 
     public static let transfer: UInt64 = 4
