@@ -860,6 +860,8 @@ void a64_run_stub(a64 *c, int stub) {
         break;
     }
     case A64_STUB_TLV: c->x[0] = A64_TLS_BASE + rd(c, a + 16, 8); break;
+    // Newer dyld moves the variable's offset into the top half of the descriptor's key.
+    case A64_STUB_TLV_PACKED: c->x[0] = A64_TLS_BASE + rd(c, a + 12, 4); break;
     case A64_STUB_GUARD_ACQUIRE: c->x[0] = rd(c, a, 1) ? 0 : 1; break;
     case A64_STUB_GUARD_RELEASE: wr(c, a, 1, 1); break;
     case A64_STUB_DYNAMIC_CAST: c->x[0] = dynamic_cast_stub(c, a, d); break;
