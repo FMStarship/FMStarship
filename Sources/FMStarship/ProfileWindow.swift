@@ -59,8 +59,8 @@ final class ProfileFacts: ObservableObject {
             daysOut = answers.days
             season = answers.season
             if let interest = answers.interest {
-                transferInterest = interest.transfer ? "Interested" : "Not interested"
-                loanInterest = interest.loan ? "Interested" : player.loanUnavailable ? "Not available" : "Not interested"
+                transferInterest = interest.transferInterest.text
+                loanInterest = player.loanUnavailable ? "Not available" : interest.loanInterest.text
             }
         } else if let staff = person as? Staff {
             let answers = await offMain { () -> (join: String?, job: String) in

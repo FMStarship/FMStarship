@@ -33,11 +33,13 @@ public enum FilterPlaceholder: Equatable {
 public enum FilterNote {
     case playerInterest
     case staffInterest
+    case joinLevels
 
     public var text: String {
         switch self {
         case .playerInterest: return RulesState.shared.interestNote
         case .staffInterest: return RulesState.shared.staffInterestNote
+        case .joinLevels: return "Counts FM's Interested, Persuadable and Doubtful players. The less keen may want more money."
         }
     }
 }

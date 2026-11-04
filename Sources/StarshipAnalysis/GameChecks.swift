@@ -1,14 +1,17 @@
 import Foundation
 import StarshipCore
 
-/// Whether a player would come, as the game itself would answer.
+/// Whether a player would come, as the game itself would answer, and how keen he is.
 public struct JoinAnswer: Equatable {
-    public var transfer: Bool
-    public var loan: Bool
+    public var transferInterest: JoinInterest
+    public var loanInterest: JoinInterest
 
-    public init(transfer: Bool, loan: Bool) {
-        self.transfer = transfer
-        self.loan = loan
+    public var transfer: Bool { transferInterest.wouldJoin }
+    public var loan: Bool { loanInterest.wouldJoin }
+
+    public init(transfer: JoinInterest, loan: JoinInterest) {
+        transferInterest = transfer
+        loanInterest = loan
     }
 }
 

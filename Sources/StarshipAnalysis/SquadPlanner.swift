@@ -210,7 +210,7 @@ public enum SquadPlanner {
                 for (index, player) in batch.enumerated() {
                     if found.count >= wanted { break }
                     // With no answer from the game everyone is treated as a transfer, the dearer case.
-                    let answer = answers == nil ? JoinAnswer(transfer: true, loan: false) : answers?[index]
+                    let answer = answers == nil ? JoinAnswer(transfer: .interested, loan: .notInterested) : answers?[index]
                     guard let answer, answer.transfer || (includeLoans && answer.loan) else { continue }
                     let loan = !answer.transfer
                     let fee = loan || player.club.isEmpty ? 0 : player.value
