@@ -530,16 +530,26 @@ public final class GameReader {
 
     private func teamType(_ team: Int64) -> Int? { teamTypes[team] }
 
+    /// Regions holding a dead copy of the world: most of their contracts name someone else as the owner.
+    static func deadRegions(confirmed: [Int64: Int], stale: [Int64: Int]) -> Set<Int64> {
+        Set(stale.filter { $0.value > confirmed[$0.key] ?? 0 }.keys)
+    }
+
     /// Drops dead copies. Free agents have no contract to ask, so for those keep one record per person,
-    /// from the region that holds the most confirmed records.
+    /// from the region that holds the most confirmed records, and none from a dead region. One found only there
+    /// is someone FM no longer has: its pointers lead into freed memory, where FM's rules can loop for ever.
     private static func liveRecords(_ pending: [Pending]) -> [Pending] {
         let live = pending.filter { !$0.stale }
-        var confirmed: [Int64: Int] = [:]
-        for item in live where item.contract != 0 { confirmed[item.person.block >> 32, default: 0] += 1 }
+        var confirmed: [Int64: Int] = [:], stale: [Int64: Int] = [:]
+        for item in pending where item.contract != 0 {
+            if item.stale { stale[item.person.block >> 32, default: 0] += 1 } else { confirmed[item.person.block >> 32, default: 0] += 1 }
+        }
+        let dead = deadRegions(confirmed: confirmed, stale: stale)
         var best: [UInt32: Pending] = [:]
         var result: [Pending] = []
         for item in live {
             if item.contract != 0 { result.append(item); continue }
+            guard !dead.contains(item.person.block >> 32) else { continue }
             let uid = item.person.uid
             if let other = best[uid] {
                 let mine = confirmed[item.person.block >> 32] ?? 0, theirs = confirmed[other.person.block >> 32] ?? 0
