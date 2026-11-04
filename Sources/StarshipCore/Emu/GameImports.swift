@@ -4,7 +4,7 @@ import MachO
 
 /// Maps game_plugin's imported functions to sandbox stubs, so emulated code calls no real system code.
 enum GameImports {
-    private static let stubs: [String: a64_stub] = [
+    static let stubs: [String: a64_stub] = [
         "_memcpy": A64_STUB_MEMCPY, "_memmove": A64_STUB_MEMCPY, "_memset": A64_STUB_MEMSET, "_bzero": A64_STUB_BZERO,
         "_memcmp": A64_STUB_MEMCMP, "_memchr": A64_STUB_MEMCHR, "_strlen": A64_STUB_STRLEN, "_strcmp": A64_STUB_STRCMP,
         "_strncmp": A64_STUB_STRNCMP, "_malloc": A64_STUB_MALLOC, "_calloc": A64_STUB_CALLOC, "_realloc": A64_STUB_REALLOC,
@@ -13,6 +13,11 @@ enum GameImports {
         "_malloc_size": A64_STUB_MALLOC_SIZE,
         "___cxa_guard_acquire": A64_STUB_GUARD_ACQUIRE, "___cxa_guard_release": A64_STUB_GUARD_RELEASE,
         "___cxa_guard_abort": A64_STUB_RET0,
+        // A thread-local's destructor would run when the thread ends, but each call's thread-local memory is thrown away.
+        "__tlv_atexit": A64_STUB_RET0,
+        // Seeds a thread's random numbers. The rules run here only use them to pick a stand-in manager's ethnicity,
+        // and no answer changed across 16 seeds, so a fixed seed gives FM's answer.
+        "__ZNSt3__113random_deviceclEv": A64_STUB_RET0,
         "_pthread_mutex_lock": A64_STUB_RET0, "_pthread_mutex_unlock": A64_STUB_RET0, "_pthread_mutex_trylock": A64_STUB_RET0,
         "_pthread_rwlock_rdlock": A64_STUB_RET0, "_pthread_rwlock_wrlock": A64_STUB_RET0, "_pthread_rwlock_unlock": A64_STUB_RET0,
         "_pthread_cond_signal": A64_STUB_RET0, "_pthread_cond_broadcast": A64_STUB_RET0,
@@ -69,7 +74,7 @@ enum GameImports {
             }
         }
         var got: (address: Int, size: Int, fileOffset: Int)?
-        var thread: (address: Int, size: Int)?
+        var thread: (address: Int, size: Int, fileOffset: Int)?
         var fixups = 0
         var command = slice + 32
         for _ in 0..<Int(u32(slice + 16)) {
@@ -81,7 +86,7 @@ enum GameImports {
                     let name = file[(file.startIndex + at)..<(file.startIndex + at + 16)]
                     let text = String(decoding: name.prefix { $0 != 0 }, as: UTF8.self)
                     if text == "__got" { got = (Int(u64(at + 32)), Int(u64(at + 40)), Int(u32(at + 48))) }
-                    if text == "__thread_vars" { thread = (Int(u64(at + 32)), Int(u64(at + 40))) }
+                    if text == "__thread_vars" { thread = (Int(u64(at + 32)), Int(u64(at + 40)), Int(u32(at + 48))) }
                 }
             } else if cmd == 0x8000_0034 {  // LC_DYLD_CHAINED_FIXUPS
                 fixups = slice + Int(u32(command + 8))
@@ -116,11 +121,27 @@ enum GameImports {
         }
         if let thread {
             // Every thread-local access goes through the thunk stored at the start of each descriptor.
+            var thunks: Set<Int64> = [], file: [UInt64] = [], live: [(key: UInt64, offset: UInt64)] = []
             for slot in Swift.stride(from: 0, to: thread.size, by: 24) {
-                let thunk = game.readPointer(game.pluginBase + Int64(thread.address + slot))
-                if thunk != 0 { a64_image_add_stub(image, UInt64(thunk), A64_STUB_TLV) }
+                let descriptor = game.pluginBase + Int64(thread.address + slot)
+                let thunk = game.readPointer(descriptor)
+                guard thunk != 0 else { continue }
+                thunks.insert(thunk)
+                file.append(u64(slice + thread.fileOffset + slot + 16))
+                live.append((UInt64(bitPattern: game.readPointer(descriptor + 8)), UInt64(bitPattern: game.readPointer(descriptor + 16))))
+            }
+            if let stub = threadLocalStub(file: file, live: live) {
+                for thunk in thunks { a64_image_add_stub(image, UInt64(thunk), stub) }
             }
         }
         return names
+    }
+
+    /// Where dyld keeps each thread-local's offset: where the linker put it, or packed into the top half of the
+    /// key. Nil if the live descriptors match neither, which leaves thread-locals failing rather than overlapping.
+    static func threadLocalStub(file: [UInt64], live: [(key: UInt64, offset: UInt64)]) -> a64_stub? {
+        if zip(file, live).allSatisfy({ $0 == $1.offset }) { return A64_STUB_TLV }
+        if zip(file, live).allSatisfy({ $0 == $1.key >> 32 }) { return A64_STUB_TLV_PACKED }
+        return nil
     }
 }

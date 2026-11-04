@@ -422,6 +422,17 @@ static int simd_two_misc(a64 *c, uint32_t i) {
         c->v[rd] = out;
         return 1;
     }
+    if (opcode == 0x17 && !u && size == 1) {  // FCVTL, FCVTL2 from single to double
+        for (int l = 0; l < 2; l++) set_lane(&out, l, 8, Db((double)F(lane(&a, l + (q ? 2 : 0), 4))));
+        c->v[rd] = out;
+        return 1;
+    }
+    if (opcode == 0x16 && !u && size == 1) {  // FCVTN, FCVTN2 from double to single
+        out = q ? c->v[rd] : out;
+        for (int l = 0; l < 2; l++) set_lane(&out, l + (q ? 2 : 0), 4, Fb((float)D(lane(&a, l, 8))));
+        c->v[rd] = out;
+        return 1;
+    }
     if (opcode >= 0x18 || opcode == 0x0f || opcode == 0x0d) {
         int dbl = size & 1, bytes = dbl ? 8 : 4;
         if (opcode >= 0x18 || (size >> 1)) {
@@ -773,7 +784,32 @@ int a64_simd(a64 *c, uint32_t i) {
     return 0;
 }
 
+// LD1/ST1 single structure: one lane of one register
+static int load_store_lane(a64 *c, uint32_t i) {
+    unsigned q = BIT(i, 30), post = BIT(i, 23), load = BIT(i, 22), opcode = BF(i, 15, 13), s = BIT(i, 12);
+    unsigned size = BF(i, 11, 10), rn = BF(i, 9, 5), rt = i & 31, rm = BF(i, 20, 16);
+    if (BIT(i, 21) || (opcode & 1) || opcode == 6) return 0;  // two to four registers, or a replicating load
+    int bytes, index;
+    switch (opcode >> 1) {
+    case 0: bytes = 1; index = (int)(q << 3 | s << 2 | size); break;
+    case 1:
+        if (size & 1) return 0;
+        bytes = 2; index = (int)(q << 2 | s << 1 | size >> 1);
+        break;
+    default:
+        if (size == 0) { bytes = 4; index = (int)(q << 1 | s); }
+        else if (size == 1 && !s) { bytes = 8; index = (int)q; }
+        else return 0;
+    }
+    uint64_t address = rn == 31 ? c->x[31] : c->x[rn];
+    if (load) set_lane(&c->v[rt], index, bytes, rd(c, address, bytes));
+    else wr(c, address, lane(&c->v[rt], index, bytes), bytes);
+    if (post) c->x[rn] += rm == 31 ? (uint64_t)bytes : reg(c, rm);
+    return 1;
+}
+
 int a64_simd_loadstore(a64 *c, uint32_t i) {
+    if (BF(i, 29, 24) == 0x0d) return load_store_lane(c, i);
     // LD1/ST1 multiple structures (one to four consecutive registers)
     if (BF(i, 29, 24) != 0x0c) return 0;
     unsigned q = BIT(i, 30), post = BIT(i, 23), load = BIT(i, 22), opcode = BF(i, 15, 12);
