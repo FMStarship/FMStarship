@@ -144,6 +144,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
                         isFilter: false, needsGame: true),
             FilterField("onTransfer", "On a transfer", .toggle(\.onTransfer), needsGame: true),
             FilterField("onLoan", "On loan", .toggle(\.onLoan), needsGame: true),
+            FilterField("joinNote", "", .note(.joinLevels)),
             FilterField("interestNote", "", .note(.playerInterest)),
         ]),
     ]

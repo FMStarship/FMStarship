@@ -34,7 +34,6 @@ public final class RulesEngine: GameRulesEngine {
 
     public static let transfer: UInt64 = 4
     public static let loan: UInt64 = 3
-    public static let interested: Int32 = 10_000
     /// The stats scope that totals a player's season for his club.
     public static let clubTotal = 5
     /// First team, reserves, youth.
@@ -93,15 +92,15 @@ public final class RulesEngine: GameRulesEngine {
         }
     }
 
-    public func interest(player: Player, team: Int64) -> (transfer: Bool, loan: Bool)? {
+    public func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? {
         // FM's rule only weighs up the move, so without this it says a woman would join a men's club.
-        guard player.isWoman == womensTeams.contains(team) else { return (false, false) }
+        guard player.isWoman == womensTeams.contains(team) else { return (.notInterested, .notInterested) }
         let club = game.readPointer(team + Int64(MacLayout.Team.club))
         guard let status = try? status(player, team: team), club != 0,
               let transfer = try? score(player, club: club, type: RulesEngine.transfer, status: status) else { return nil }
-        if player.loanUnavailable { return (transfer >= RulesEngine.interested, false) }
+        if player.loanUnavailable { return (JoinInterest(score: transfer), .notInterested) }
         guard let loan = try? score(player, club: club, type: RulesEngine.loan, status: status) else { return nil }
-        return (transfer >= RulesEngine.interested, loan >= RulesEngine.interested)
+        return (JoinInterest(score: transfer), JoinInterest(score: loan))
     }
 
     /// The filter rule FM itself uses: a rule object plus two context blocks, built in scratch memory.

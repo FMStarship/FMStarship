@@ -120,7 +120,7 @@ public final class RulesState: @unchecked Sendable {
         let key = Key(index: player.index, team: team)
         if let cached = lock.withLock({ interestCache[key] }) { return cached }
 
-        guard let answer = engine.interest(player: player, team: team)
+        guard let levels = engine.interest(player: player, team: team)
                 ?? engine.interest(player: player, team: team) else {
             lock.withLock {
                 failures += 1
@@ -128,6 +128,7 @@ public final class RulesState: @unchecked Sendable {
             }
             return nil
         }
+        let answer: PlayerInterest = (levels.transfer.wouldJoin, levels.loan.wouldJoin)
         lock.withLock { interestCache[key] = answer }
         return answer
     }
