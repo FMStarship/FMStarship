@@ -104,6 +104,29 @@ final class FMTableTests: XCTestCase {
         XCTAssertEqual(extras[1].values[2], "Steady")
     }
 
+    func testAWholeTableKeepsTheEnginesOrderWithFMsColumnsWhereFMHasThem() {
+        // The squad planner's signings: FM's name, age and club, the engine's CA and PA in FM's columns for them.
+        let table = AnalysisTable(columns: ["For", "Name", "Age", "Club", "CA", "PA", "Value", "vs best"].map { TableColumn($0, 5) })
+        let layout = FMTable.layout(of: table, fm: ["Name": "name", "Age": "age", "Club": "club"])
+        XCTAssertEqual(layout.columns, ["fmstarship-for", "name", "age", "club", "hidden-current-ability", "hidden-potential-ability",
+                                        "fmstarship-value", "fmstarship-vs-best"])
+        XCTAssertEqual(layout.extras, ["For", "CA", "PA", "Value", "vs best"])
+        XCTAssertEqual(FMTable.columns(layout.columns, with: FMTable.extras(from: table, titles: layout.extras)), layout.columns)
+    }
+
+    func testTwoOfTheEnginesColumnsForTheSamePlayerAreOneOfFMs() {
+        let table = AnalysisTable(columns: ["Position", "Player", "Best"].map { TableColumn($0, 5) })
+        XCTAssertEqual(FMTable.layout(of: table, fm: ["Player": "name", "Best": "name"]).columns, ["fmstarship-position", "name"])
+    }
+
+    func testANoteColumnIsQuiet() {
+        let columns = ["Name", "Status", "What's missing"].map { TableColumn($0, 5) }
+        let row = TableRow(cells: ["Abel", "Watch", "Abel is injury-prone"], person: person(1), tone: .fair, toneColumn: 1, quietColumn: 2)
+        let extras = FMTable.extras(from: AnalysisTable(columns: columns, rows: [row]), titles: ["Status", "What's missing"])
+        XCTAssertEqual(extras.map(\.quiet), [false, true])
+        XCTAssertEqual(extras[0].tones, [1: .fair])
+    }
+
     func testTheAppsHintsAboutDoubleClickingAreLeftOut() {
         XCTAssertEqual(NativePage.withoutAppHints("Top 10 who would join Molde FK. Double-click a player for the full profile."),
                        "Top 10 who would join Molde FK.")
