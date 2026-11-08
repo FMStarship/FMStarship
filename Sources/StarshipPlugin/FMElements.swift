@@ -1,0 +1,279 @@
+import Foundation
+
+/// Builds FM Starship's screens out of FM's own UI Toolkit elements and style classes, so they look like FM's.
+@MainActor
+struct FMElements {
+    typealias Pointer = IL2CPP.Pointer
+    static let toolkit = "UnityEngine.UIElements"
+    let il2cpp: IL2CPP
+
+    init?(_ il2cpp: IL2CPP?) {
+        guard let il2cpp else { return nil }
+        self.il2cpp = il2cpp
+    }
+
+    private func toolkitClass(_ name: String) throws -> Pointer {
+        guard let klass = il2cpp.findClass(Self.toolkit, name) else { throw IL2CPP.Failure("No \(name) in FM") }
+        return klass
+    }
+
+    // MARK: Making elements
+
+    /// A plain element with FM's classes.
+    func box(_ classes: [String] = [], name: String? = nil) throws -> Pointer {
+        let element = try il2cpp.new(try toolkitClass("VisualElement"))
+        try configure(element, classes: classes, name: name)
+        return element
+    }
+
+    /// FM's own text element, with FM's text classes such as "body-md", which carry its fonts.
+    func text(_ value: String, _ classes: [String], name: String? = nil) throws -> Pointer {
+        var element: Pointer?
+        if !Self.siTextFailed, let siText = il2cpp.findClass("SI.Bindable", "SIText") {
+            do {
+                let made = try il2cpp.new(siText)
+                try setText(made, value)
+                element = made
+            } catch {
+                // It may want FM's bindings behind it. UI Toolkit's own Label takes the same classes.
+                Self.siTextFailed = true
+                PluginLog.write("SIText didn't take text, using Label: \(error)")
+            }
+        }
+        if element == nil {
+            let label = try il2cpp.new(try toolkitClass("Label"))
+            try setText(label, value)
+            element = label
+        }
+        guard let element else { throw IL2CPP.Failure("No text element") }
+        try configure(element, classes: ["sitext"] + classes, name: name)
+        return element
+    }
+
+    private static var siTextFailed = false
+
+    /// UI Toolkit's scroll view, which scrolls with the wheel and trackpad like FM's own lists.
+    func scrollView(_ classes: [String] = [], name: String? = nil) throws -> Pointer {
+        let element = try il2cpp.new(try toolkitClass("ScrollView"))
+        try configure(element, classes: classes, name: name)
+        return element
+    }
+
+    func setText(_ element: Pointer, _ value: String) throws {
+        try il2cpp.call(element, "set_text", [il2cpp.managedString(value)])
+    }
+
+    private func configure(_ element: Pointer, classes: [String], name: String?) throws {
+        if let name { try il2cpp.call(element, "set_name", [il2cpp.managedString(name)]) }
+        for name in classes { try addClass(element, name) }
+    }
+
+    // MARK: The tree
+
+    func addClass(_ element: Pointer, _ name: String) throws {
+        try il2cpp.call(element, "AddToClassList", [il2cpp.managedString(name)])
+    }
+
+    func removeClass(_ element: Pointer, _ name: String) throws {
+        try il2cpp.call(element, "RemoveFromClassList", [il2cpp.managedString(name)])
+    }
+
+    func hasClass(_ element: Pointer, _ name: String) -> Bool {
+        il2cpp.unbox(try? il2cpp.call(element, "ClassListContains", [il2cpp.managedString(name)]), as: Bool.self) ?? false
+    }
+
+    func name(of element: Pointer) -> String { il2cpp.text(try? il2cpp.call(element, "get_name")) ?? "" }
+
+    func classes(of element: Pointer) -> [String] { il2cpp.strings(inList: try? il2cpp.call(element, "GetClasses")) }
+
+    func parent(of element: Pointer) -> Pointer? { try? il2cpp.call(element, "get_parent") }
+
+    func children(of element: Pointer) -> [Pointer] {
+        let count = il2cpp.unbox(try? il2cpp.call(element, "get_childCount"), as: Int32.self) ?? 0
+        return (0..<count).compactMap { index in
+            var position = index
+            return try? withUnsafeMutablePointer(to: &position) { try il2cpp.call(element, "ElementAt", [Pointer($0)]) }
+        }
+    }
+
+    func add(_ child: Pointer, to parent: Pointer) throws { try il2cpp.call(parent, "Add", [child]) }
+
+    func insert(_ child: Pointer, into parent: Pointer, at index: Int) throws {
+        var position = Int32(index)
+        try withUnsafeMutablePointer(to: &position) { try il2cpp.call(parent, "Insert", [Pointer($0), child]) }
+    }
+
+    func remove(_ element: Pointer) throws { try il2cpp.call(element, "RemoveFromHierarchy") }
+
+    /// The first element below `root` with this name.
+    func query(_ root: Pointer, _ name: String) -> Pointer? {
+        let q = il2cpp.method(il2cpp.findClass(Self.toolkit, "UQueryExtensions"), "Q", parameters: 3,
+                              parameterTypes: ["UnityEngine.UIElements.VisualElement", "System.String", "System.String"])
+        return try? il2cpp.call(q, nil, [root, il2cpp.managedString(name), nil])
+    }
+
+    /// The first element below `root` with this style class.
+    func query(_ root: Pointer, styleClass: String) -> Pointer? {
+        let q = il2cpp.method(il2cpp.findClass(Self.toolkit, "UQueryExtensions"), "Q", parameters: 3,
+                              parameterTypes: ["UnityEngine.UIElements.VisualElement", "System.String", "System.String"])
+        return try? il2cpp.call(q, nil, [root, nil, il2cpp.managedString(styleClass)])
+    }
+
+    /// The root of FM's main document, where its navigation bar and screens are.
+    func mainRoot() throws -> Pointer? {
+        for document in try findObjects(try toolkitClass("UIDocument")) where il2cpp.text(try il2cpp.call(document, "get_name")) == "MainUIDocument" {
+            return try il2cpp.call(document, "get_rootVisualElement")
+        }
+        return nil
+    }
+
+    func findObjects(_ klass: Pointer) throws -> [Pointer] {
+        let find = il2cpp.method(il2cpp.findClass("UnityEngine", "Object"), "FindObjectsByType", parameters: 2, firstParameter: "System.Type")
+        var sortMode: Int32 = 0
+        let array = try withUnsafeMutablePointer(to: &sortMode) { try il2cpp.call(find, nil, [il2cpp.systemType(klass), Pointer($0)]) }
+        return il2cpp.elements(array).compactMap { $0 }
+    }
+
+    // MARK: Styles
+
+    /// Inline styles, through IStyle.
+    func style(_ element: Pointer, _ body: (StyleSetter) throws -> Void) throws {
+        guard let style = try il2cpp.call(element, "get_style") else { throw IL2CPP.Failure("No style") }
+        try body(StyleSetter(style: style, il2cpp: il2cpp, styleClass: il2cpp.findClass(Self.toolkit, "IStyle")))
+    }
+
+    /// An enum property's inline value, such as display, as the value and its keyword, so it can be put back later.
+    func inlineEnum(_ element: Pointer, _ property: String) throws -> (Int32, Int32) {
+        guard let style = try il2cpp.call(element, "get_style"),
+              let getter = il2cpp.method(il2cpp.findClass(Self.toolkit, "IStyle"), "get_\(property)", parameters: 0),
+              il2cpp.valueSize(il2cpp.returnType(getter)) == 8,
+              let value = il2cpp.unbox(try il2cpp.call(getter, style), as: (Int32, Int32).self) else {
+            throw IL2CPP.Failure("Couldn't read the inline \(property)")
+        }
+        return value
+    }
+
+    /// A colour as FM resolved it, after its style sheets: red, green, blue, alpha.
+    func resolvedColor(_ element: Pointer, _ property: String) -> (Float, Float, Float, Float)? {
+        guard let resolved = try? il2cpp.call(element, "get_resolvedStyle"),
+              let getter = il2cpp.method(il2cpp.findClass(Self.toolkit, "IResolvedStyle"), "get_\(property)", parameters: 0) else { return nil }
+        return il2cpp.unbox(try? il2cpp.call(getter, resolved), as: (Float, Float, Float, Float).self)
+    }
+
+    func resolvedNumber(_ element: Pointer, _ property: String) -> Float? {
+        guard let resolved = try? il2cpp.call(element, "get_resolvedStyle"),
+              let getter = il2cpp.method(il2cpp.findClass(Self.toolkit, "IResolvedStyle"), "get_\(property)", parameters: 0) else { return nil }
+        return il2cpp.unbox(try? il2cpp.call(getter, resolved), as: Float.self)
+    }
+
+    /// A layout value in whole points, for the logs. FM's layout is NaN until FM has worked it out, which Int can't
+    /// hold: converting it stops the process, and FM with it.
+    nonisolated static func whole(_ value: Float) -> String { value.isFinite ? String(Int(value)) : "?" }
+
+    /// Whether a point on FM's panel, in the panel's own units from its top left, is inside the element.
+    func contains(_ element: Pointer, x: Float, y: Float) -> Bool {
+        guard let rect = il2cpp.unbox(try? il2cpp.call(element, "get_worldBound"), as: (Float, Float, Float, Float).self) else { return false }
+        return x >= rect.0 && x < rect.0 + rect.2 && y >= rect.1 && y < rect.1 + rect.3
+    }
+
+    /// Where the element sits in its parent, and its size.
+    func layout(_ element: Pointer) -> (x: Float, y: Float, width: Float, height: Float)? {
+        guard let rect = il2cpp.unbox(try? il2cpp.call(element, "get_layout"), as: (Float, Float, Float, Float).self) else { return nil }
+        return (rect.0, rect.1, rect.2, rect.3)
+    }
+
+    // MARK: Clicks
+
+    /// Calls `action` when the element is clicked, through UI Toolkit's own Clickable, as FM's buttons are.
+    func onClick(_ element: Pointer, _ action: @escaping @MainActor () -> Void) throws {
+        guard let actionClass = il2cpp.findClass("System", "Action") else { throw IL2CPP.Failure("No System.Action") }
+        let handler = try il2cpp.delegate(actionClass, target: element, callback: elementClicked)
+        let clickable = try il2cpp.new(try toolkitClass("Clickable"), [handler], firstParameter: "System.Action")
+        let addManipulator = il2cpp.method(il2cpp.findClass(Self.toolkit, "VisualElementExtensions"), "AddManipulator", parameters: 2)
+        try il2cpp.call(addManipulator, nil, [element, clickable])
+        ClickActions.actions[element] = action
+    }
+
+    /// Calls `action` when one of FM's buttons is clicked, in place of what the button did.
+    func onButtonClick(_ button: Pointer, _ action: @escaping @MainActor () -> Void) throws {
+        guard let actionClass = il2cpp.findClass("System", "Action") else { throw IL2CPP.Failure("No System.Action") }
+        let handler = try il2cpp.delegate(actionClass, target: button, callback: elementClicked)
+        let clickable = try il2cpp.new(try toolkitClass("Clickable"), [handler], firstParameter: "System.Action")
+        try il2cpp.call(button, "set_clickable", [clickable])
+        ClickActions.actions[button] = action
+    }
+}
+
+/// What each clickable element of ours does. FM calls one function for all of them, with the element as its target.
+@MainActor
+enum ClickActions {
+    static var actions: [IL2CPP.Pointer: () -> Void] = [:]
+}
+
+private let elementClicked: @convention(c) (UnsafeMutableRawPointer?, UnsafeRawPointer?) -> Void = { target, _ in
+    guard let target else { return }
+    MainActor.assumeIsolated {
+        guard let action = ClickActions.actions[target] else { return }
+        IL2CPP.shared?.withoutCollection { action() }
+    }
+}
+
+/// Sets one inline style property at a time. Each value is the struct UI Toolkit expects, built by hand, so its size
+/// is checked against FM's first.
+@MainActor
+struct StyleSetter {
+    let style: IL2CPP.Pointer
+    let il2cpp: IL2CPP
+    let styleClass: IL2CPP.Pointer?
+
+    /// StyleLength: Length (value, unit 0 = pixels), then the keyword (0 = none).
+    func length(_ property: String, _ pixels: Float) throws {
+        var value: (Float, Int32, Int32) = (pixels, 0, 0)
+        try set(property, &value, size: 12)
+    }
+
+    /// StyleLength in percent (unit 1).
+    func percent(_ property: String, _ percent: Float) throws {
+        var value: (Float, Int32, Int32) = (percent, 1, 0)
+        try set(property, &value, size: 12)
+    }
+
+    /// StyleEnum<T>: the value, then the keyword.
+    func keyword(_ property: String, _ enumValue: Int32) throws {
+        var value: (Int32, Int32) = (enumValue, 0)
+        try set(property, &value, size: 8)
+    }
+
+    /// Takes our inline value for an enum property away again (keyword 1 = null), back to FM's own style sheets.
+    func clearKeyword(_ property: String) throws {
+        var value: (Int32, Int32) = (0, 1)
+        try set(property, &value, size: 8)
+    }
+
+    /// Puts back an enum property's inline value and keyword, as read by `FMElements.inlineEnum`.
+    func setEnum(_ property: String, _ saved: (Int32, Int32)) throws {
+        var value = saved
+        try set(property, &value, size: 8)
+    }
+
+    /// StyleFloat: the value, then the keyword.
+    func number(_ property: String, _ number: Float) throws {
+        var value: (Float, Int32) = (number, 0)
+        try set(property, &value, size: 8)
+    }
+
+    /// StyleColor: Color, then the keyword.
+    func color(_ property: String, _ color: (Float, Float, Float, Float)) throws {
+        var value: (Float, Float, Float, Float, Int32) = (color.0, color.1, color.2, color.3, 0)
+        try set(property, &value, size: 20)
+    }
+
+    private func set<T>(_ property: String, _ value: inout T, size: Int) throws {
+        guard let setter = il2cpp.method(styleClass, "set_\(property)", parameters: 1) else {
+            throw IL2CPP.Failure("IStyle.\(property) not found")
+        }
+        let actual = il2cpp.valueSize(il2cpp.methodParameter(setter, 0))
+        guard actual == size else { throw IL2CPP.Failure("IStyle.\(property) takes \(actual) bytes, not \(size)") }
+        try withUnsafeMutablePointer(to: &value) { try il2cpp.call(setter, style, [IL2CPP.Pointer($0)]) }
+    }
+}

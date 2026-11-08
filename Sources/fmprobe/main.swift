@@ -129,6 +129,14 @@ case "people":
         print(hex(obj), "\(firstName) \(second) [\(common)]", "idx?", u[0], u[1], u[2], u[3], "tail", String(format: "%08x %08x", u[4], u[5]))
     }
 
+case "index":
+    // Who has these database indices, the number FM's own interface refers to people by.
+    let db = try GameReader(game: game) { _ in }.readAll()
+    let wanted = Set(args.dropFirst(2).compactMap { UInt32($0) })
+    for person in (db.players as [Person]) + db.staff where wanted.contains(person.index) {
+        print(person.index, person.uid, person.fullName, person.club)
+    }
+
 case "read":
     let started = Date()
     let db = try GameReader(game: game) { print("  ", $0) }.readAll()

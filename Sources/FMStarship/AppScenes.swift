@@ -3,24 +3,19 @@ import StarshipFiles
 import StarshipSearch
 import SwiftUI
 
-@main
-struct FMStarshipApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+/// The app's windows. The app itself adds only its entry point and the updater, so that the plugin can show the same
+/// screens inside Football Manager.
+package struct StarshipScenes<Updates: UpdateChecking>: Scene {
     /// Not observed here: scenes would be rebuilt on every change. Views observe it themselves.
     private let model: AppModel
-    private let updater = Updater()
+    private let updater: Updates
 
-    init() {
-        // Before the model, which reads its starting state from the settings.
-        StarshipSearch.Settings.load()
-        Units.apply()
-        // A reopened profile window would have no save loaded to show.
-        UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
-        model = AppModel()
-        AppDelegate.model = model
+    package init(model: AppModel, updater: Updates) {
+        self.model = model
+        self.updater = updater
     }
 
-    var body: some Scene {
+    package var body: some Scene {
         Window("FM Starship", id: WindowID.main) {
             MainWindow()
                 .themed(model)
@@ -60,7 +55,7 @@ struct FMStarshipApp: App {
     }
 }
 
-private extension View {
+extension View {
     func themed(_ model: AppModel) -> some View {
         modifier(Themed(model: model))
     }
@@ -80,10 +75,10 @@ private struct Themed: ViewModifier {
     }
 }
 
-struct AppCommands: Commands {
+struct AppCommands<Updates: UpdateChecking>: Commands {
     let model: AppModel
     @ObservedObject var state: MenuState
-    let updater: Updater
+    let updater: Updates
     @Environment(\.openWindow) private var openWindow
 
     private var hasData: Bool { state.values.hasData }
@@ -152,18 +147,32 @@ struct AppCommands: Commands {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    @MainActor static weak var model: AppModel?
+/// Left out of builds with no feed, which have nothing to check.
+struct CheckForUpdatesButton<Updates: UpdateChecking>: View {
+    @ObservedObject var updater: Updates
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    var body: some View {
+        if updater.isAvailable {
+            Button("Check for Updates...") { updater.check() }
+                .disabled(!updater.canCheck)
+        }
+    }
+}
+
+package final class AppDelegate: NSObject, NSApplicationDelegate {
+    @MainActor package static weak var model: AppModel?
+
+    override package init() { super.init() }
+
+    package func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    package func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     /// A file double-clicked in Finder or dropped on the Dock icon.
-    @MainActor func application(_ application: NSApplication, open urls: [URL]) {
+    @MainActor package func application(_ application: NSApplication, open urls: [URL]) {
         guard let model = Self.model, let url = urls.first else { return }
         switch url.pathExtension.lowercased() {
         case Storage.fileExtension: model.openSnapshot(at: url)
