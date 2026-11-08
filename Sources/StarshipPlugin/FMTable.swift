@@ -150,9 +150,15 @@ struct FMTable {
     static var columnOverride: [String]?
 
     /// The table's columns, from FM's factory by ID, and its rows, one per person, in this order.
-    func fill(_ table: Pointer, people: [Person], columns: [String], own: [String: Float] = [:]) throws {
-        let chosen = Self.knownColumns.isEmpty ? columns : columns.filter(Self.knownColumns.contains)
-        try il2cpp.call(table, "UpdateStreamedTableView", [try view(chosen, own: own)])
+    /// Columns wait for FM's factory, which the table loads once it's in FM's tree; until then only the rows go in.
+    func fill(_ table: Pointer, people: [Person], columns: [String], own: [String: Float] = [:], extras: [Extra] = []) throws {
+        if let factory = il2cpp.fieldObject(table, "m_loadedFactoryAsset") {
+            // FM's own column IDs first, so the choice of columns below knows them.
+            if Self.defaultWidths.isEmpty { Self.writeColumns(factory, il2cpp) }
+            addOwnColumns(extras, to: factory)
+            let chosen = Self.knownColumns.isEmpty ? columns : columns.filter(Self.knownColumns.contains)
+            try il2cpp.call(table, "UpdateStreamedTableView", [try view(chosen, own: own)])
+        }
         try il2cpp.call(table, "SetList", [try rows(people)])
     }
 
@@ -223,21 +229,22 @@ struct FMTable {
 
     // MARK: FM Starship's own columns
 
-    /// One of the engine's columns in FM's table: its values by person, in a column of FM's that shows nothing for
-    /// them, under the engine's heading unless FM's own heading says the same.
+    /// One of the engine's columns in FM's table: its values by person, and the tone each is shown in, if any. CA and
+    /// PA go in FM's own columns for them, which only FM's editor fills, under FM's headings; the rest in columns of
+    /// our own, under the engine's.
     struct Extra {
         let host: String
         let title: String?
         let values: [Int32: String]
-        /// Wide enough for the heading and the longest value, for the columns under the engine's headings.
+        var tones: [Int32: Tone] = [:]
+        /// Wide enough for the heading and the longest value. FM fits a table to the screen in proportion to its
+        /// columns' own widths, so this is the column's share as much as its width.
         var width: Float {
             let longest = max(title?.count ?? 0, values.values.map(\.count).max() ?? 0)
-            return min(220, max(70, Float(longest) * 8 + 24))
+            return min(360, max(70, Float(longest) * 7 + 24))
         }
     }
 
-    /// FM's columns that only FM's editor fills, so they're empty in a game: CA and PA keep FM's own headings for
-    /// them, and the rest take the engine's headings, without FM's sorting, which would sort by something else.
     private static let abilityHosts = ["CA": "hidden-current-ability", "PA": "hidden-potential-ability"]
     /// Headings in FM's words where FM has its own for what the engine shows: FM calls whether a player would join
     /// his interest.
@@ -245,33 +252,53 @@ struct FMTable {
     /// Whether FM's own CA and PA columns sort when their header is clicked, by FM's figures for them. FM has none
     /// for the players in our lists, so it doesn't sort; ours does instead. `table casort on` tries FM's again.
     static var abilitySortable = false
-    static let spareHosts = ["hidden-wp-points", "hidden-is-newgen", "hidden-versatility", "hidden-adaptability"]
-
-    /// FM's hidden columns we can hold our own in, widest first. FM fits a table to the screen by scaling every
-    /// column's own width, so a column of ours is as wide as the one of FM's it's in.
-    private static var sparesByWidth: [String] {
-        let hidden = defaultWidths.keys.filter { $0.hasPrefix("hidden-") && !abilityHosts.values.contains($0) }
-        guard !hidden.isEmpty else { return spareHosts }
-        return hidden.sorted { (defaultWidths[$0] ?? 0, $1) > (defaultWidths[$1] ?? 0, $0) }
+    /// The ID of our own column for one of the engine's, from its title.
+    static func ownID(_ title: String) -> String {
+        "fmstarship-" + title.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
     }
 
-    /// The engine's columns with these titles, as it shows them: while CA and PA are off it has none of them.
+    /// The engine's columns with these titles, as it shows them: while CA and PA are off it has none of them. A row's
+    /// tone colours its value in the column the tone is for, or in every column when the tone is for the whole row.
     static func extras(from table: AnalysisTable, titles: [String]) -> [Extra] {
-        let found = titles.compactMap { title -> (title: String, values: [Int32: String])? in
+        titles.compactMap { title in
             guard let column = table.columns.firstIndex(where: { $0.title == title }) else { return nil }
             var values: [Int32: String] = [:]
+            var tones: [Int32: Tone] = [:]
             for row in table.rows where column < row.cells.count {
-                if let person = row.person { values[Int32(bitPattern: person.index)] = row.cells[column] }
+                guard let person = row.person else { continue }
+                let index = Int32(bitPattern: person.index)
+                values[index] = row.cells[column]
+                if let tone = row.tone, row.toneColumn == nil || row.toneColumn == column { tones[index] = tone }
             }
-            return (headings[title] ?? title, values)
+            let heading = headings[title] ?? title
+            if let host = abilityHosts[title] { return Extra(host: host, title: nil, values: values, tones: tones) }
+            return Extra(host: ownID(heading), title: heading, values: values, tones: tones)
         }
-        // The widest of FM's spare columns go to the columns with the longest headings or values.
-        let needs = found.filter { abilityHosts[$0.title] == nil }
-            .sorted { Extra(host: "", title: $0.title, values: $0.values).width > Extra(host: "", title: $1.title, values: $1.values).width }
-        let hosts = Dictionary(uniqueKeysWithValues: zip(needs.map(\.title), sparesByWidth))
-        return found.compactMap { item in
-            guard let host = abilityHosts[item.title] ?? hosts[item.title] else { return nil }
-            return Extra(host: host, title: abilityHosts[item.title] == nil ? item.title : nil, values: item.values)
+    }
+
+    /// Our own columns in FM's player table: copies of FM's column for a hidden asking price, which only FM's editor
+    /// fills, under IDs of ours and as wide as our values need. They go in the factory's lookup for as long as FM
+    /// keeps the factory loaded; FM's own tables never ask for them.
+    func addOwnColumns(_ extras: [Extra], to factory: Pointer) {
+        guard let lookup = il2cpp.fieldObject(factory, "m_rowDataLookup") else { return }
+        let wanted = extras.filter { extra in
+            extra.title != nil && il2cpp.unbox(try? il2cpp.call(lookup, "ContainsKey", [il2cpp.managedString(extra.host)]), as: Bool.self) == false
+        }
+        guard !wanted.isEmpty, let rows = il2cpp.fieldObject(factory, "m_rowData"),
+              let source = il2cpp.items(of: rows).first(where: { il2cpp.fieldObject($0, "m_id").flatMap(il2cpp.text) == "hidden-asking-price" }),
+              let rowClass = il2cpp.classOf(source) else { return }
+        for extra in wanted {
+            do {
+                let column = try il2cpp.new(rowClass)
+                il2cpp.copyFields(from: source, to: column)
+                il2cpp.setField(column, "m_id", il2cpp.managedString(extra.host))
+                il2cpp.setField(column, "m_defaultWidth", extra.width)
+                il2cpp.setField(column, "m_minimumWidth", Float(48))
+                try il2cpp.call(lookup, "set_Item", [il2cpp.managedString(extra.host), column])
+                Self.knownColumns.insert(extra.host)
+            } catch {
+                PluginLog.write("Our column \(extra.host) couldn't go in FM's table: \(error)")
+            }
         }
     }
 
@@ -331,7 +358,7 @@ struct FMTable {
             let cells = shown.cells[root] ?? self.cells(in: root)
             shown.cells[root] = cells
             for (extra, column) in placed where column < cells.count {
-                setValue(extra.values[index] ?? "", in: cells[column])
+                setValue(extra.values[index] ?? "", tone: extra.tones[index], in: cells[column])
             }
             shown.person[root] = index
         }
@@ -456,8 +483,9 @@ struct FMTable {
         return found
     }
 
-    /// Our value in one of FM's cells, in FM's text style, in the middle of the cell.
-    private func setValue(_ value: String, in cell: Pointer) {
+    /// Our value in one of FM's cells, in FM's text style, in the middle of the cell, in its tone's colour if it has
+    /// one.
+    private func setValue(_ value: String, tone: Tone? = nil, in cell: Pointer) {
         let label: Pointer
         if let existing = ui.query(cell, "FMStarshipValueText") {
             label = existing
@@ -481,6 +509,9 @@ struct FMTable {
             label = made
         }
         if il2cpp.text(try? il2cpp.call(label, "get_text")) != value { try? ui.setText(label, value) }
+        try? ui.style(label) { style in
+            if let colour = tone.flatMap(NativePage.colour(of:)) { try style.color("color", colour) } else { try style.clearColor("color") }
+        }
     }
 
     /// The database index of the person in a row FM has drawn: the reference FM put in the row's key as "binding".

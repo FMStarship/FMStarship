@@ -268,6 +268,12 @@ struct StyleSetter {
         try set(property, &value, size: 20)
     }
 
+    /// Takes our inline colour away again (keyword 1 = null), back to FM's style sheets.
+    func clearColor(_ property: String) throws {
+        var value: (Float, Float, Float, Float, Int32) = (0, 0, 0, 0, 1)
+        try set(property, &value, size: 20)
+    }
+
     private func set<T>(_ property: String, _ value: inout T, size: Int) throws {
         guard let setter = il2cpp.method(styleClass, "set_\(property)", parameters: 1) else {
             throw IL2CPP.Failure("IStyle.\(property) not found")

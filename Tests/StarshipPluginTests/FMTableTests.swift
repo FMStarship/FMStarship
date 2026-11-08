@@ -86,10 +86,39 @@ final class FMTableTests: XCTestCase {
         XCTAssertLessThanOrEqual(extra("Interest").width, 220)
     }
 
+    func testOurColumnsHaveIDsOfTheirOwnThatFMsDontUse() {
+        XCTAssertEqual(extra("Interest").host, "fmstarship-interest")
+        XCTAssertEqual(extra("vs your best").host, "fmstarship-vs-your-best")
+        XCTAssertFalse(FMTable.ownID("Now → peak").contains(" "))
+    }
+
+    func testARowsToneColoursOnlyTheColumnItsFor() {
+        // As the Dashboard's young talent: the outlook is coloured, the rest of the row isn't.
+        let people = (1...2).map { person(UInt32($0)) }
+        let columns = ["Name", "Now → peak", "Outlook"].map { TableColumn($0, 5) }
+        let rows = [TableRow(cells: ["Abel", "120 → 150", "Likely star"], person: people[0], tone: .star, toneColumn: 2),
+                    TableRow(cells: ["Berg", "110 → 118", "Steady"], person: people[1])]
+        let extras = FMTable.extras(from: AnalysisTable(columns: columns, rows: rows), titles: ["Now → peak", "Outlook"])
+        XCTAssertEqual(extras[0].tones, [:])
+        XCTAssertEqual(extras[1].tones, [1: .star])
+        XCTAssertEqual(extras[1].values[2], "Steady")
+    }
+
     func testTheAppsHintsAboutDoubleClickingAreLeftOut() {
         XCTAssertEqual(NativePage.withoutAppHints("Top 10 who would join Molde FK. Double-click a player for the full profile."),
                        "Top 10 who would join Molde FK.")
         XCTAssertEqual(NativePage.withoutAppHints("Double-click for the full profile; right-click to compare or add to a shortlist."), "")
         XCTAssertEqual(NativePage.withoutAppHints("Nothing found"), "Nothing found")
+    }
+}
+
+/// Whether FM has moved on from the screen under ours goes by the screens it shows, not by the ones it has hidden.
+final class FollowFMTests: XCTestCase {
+    func testOnlyTheScreensFMShowsCount() {
+        // Back from a player's profile: the profile is hidden at once, and put away a moment later.
+        let shown = ["0x1 true", "0x2 false"]
+        let tidied = ["0x1 true"]
+        XCTAssertEqual(FMInterface.visible(shown), FMInterface.visible(tidied))
+        XCTAssertNotEqual(FMInterface.visible(shown), FMInterface.visible(["0x1 false", "0x3 true"]))
     }
 }

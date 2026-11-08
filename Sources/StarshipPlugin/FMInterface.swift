@@ -366,7 +366,7 @@ final class FMInterface {
         release(&menuBody)
         release(&screenHost)
         release(&reportBody)
-        stopExtras()
+        stopTables()
         forgetSubtabClicks()
         setTabActive(false, ui)
         relightFMTab(ui)
@@ -376,6 +376,11 @@ final class FMInterface {
     /// FM opening another screen changes what its screen area holds, or which of it is visible, and so does FM
     /// opening a report card over its screens.
     private func followFM(_ ui: FMElements) {
+        // FM putting away a screen it has already hidden, such as the profile Back has just left, isn't FM moving on.
+        if let body = menuBody.flatMap(ui.il2cpp.target) {
+            let now = state(of: body, ui)
+            if now != fmState, Self.visible(now) == Self.visible(fmState) { fmState = now }
+        }
         guard let body = menuBody.flatMap(ui.il2cpp.target), let host = screenHost.flatMap(ui.il2cpp.target),
               let element = screen.flatMap(ui.il2cpp.target), ui.parent(of: element) == host, state(of: body, ui) == fmState else {
             // A click in ours, such as on a player's name, took FM to a screen of its own: Back can bring ours back.
@@ -391,6 +396,9 @@ final class FMInterface {
         return (ui.children(of: body) + reports).filter { $0 != ours }.map { "\($0) \(ui.hasClass($0, "panel--visible"))" }
     }
 
+    /// Of a state, the screens FM shows.
+    nonisolated static func visible(_ state: [String]) -> [String] { state.filter { $0.hasSuffix(" true") } }
+
     /// The subtabs and the chosen screen's content: what it found, or what's happening until then.
     private func fill(_ ui: FMElements) throws {
         guard let element = screen.flatMap(ui.il2cpp.target) else { return }
@@ -398,12 +406,21 @@ final class FMInterface {
         let status = statusLine
         let key = "\(current) \(content?.revision ?? -1) \(status)"
         guard key != shown else { return }
+        // The tables of what was showing go with it.
+        stopTables()
         try fillSubtabs(ui)
         for child in ui.children(of: element) { try ui.remove(child) }
         let page = NativePage(ui: ui, look: look ?? .fallback)
         switch content?.content {
         case .dashboard(let dashboard):
-            try NativeDashboard(page: page).build(into: try page.body(in: element), dashboard: dashboard)
+            let tables = FMTable.ready
+            try NativeDashboard(page: page).build(into: try page.body(in: element), dashboard: dashboard) { section, columns, tile, rows in
+                if tables {
+                    try self.addFMTable(section, columns: columns, in: tile, rows: min(rows, NativePage.rowLimit), ui)
+                } else {
+                    try page.rows(of: section, in: tile)
+                }
+            }
         case .tables(let sections):
             if sections.count == 1, let section = sections.first, let columns = section.fmColumns, FMTable.ready {
                 try fmTableScreen(section, columns: columns, in: element, page: page, ui)
@@ -423,78 +440,101 @@ final class FMInterface {
         let tile = try page.tile()
         try ui.style(tile) { try $0.number("flexGrow", 1) }
         try page.heading(section.title, note: section.table.head, in: tile)
-        let fmTable = FMTable(ui: ui)
-        let table = try fmTable.make(name: "FMStarship-\(current)")
-        try ui.style(table) { try $0.number("flexGrow", 1) }
-        try ui.add(FMTable.wrapInRoot ? try fmTable.wrap(table) : table, to: tile)
-        if let old = lastTable { ui.il2cpp.unpin(old) }
-        lastTable = ui.il2cpp.pin(table)
+        try ui.add(tile, to: body)
+        try addFMTable(section, columns: columns, in: tile, rows: nil, ui)
         let status = NativePage.withoutAppHints(section.table.status)
         for line in [status] + section.notes where !line.isEmpty {
             try ui.add(try page.spaced(try ui.text(line, ["body-sm", "global-text-secondary"]), top: 8), to: tile)
         }
-        try ui.add(tile, to: body)
-        // Bound before its rows go in, so each row gets its key under the table's, as in FM's own tables.
-        if FMTable.bindIfIdle, !fmTable.isBound(table) {
-            PluginLog.write("FM's table binds: \(fmTable.call(table, "BindToData")), bound: \(fmTable.isBound(table))")
+    }
+
+    /// One of FM's player tables with the section's people, in `container`, which must be in FM's tree: tall enough
+    /// for `rows` rows, or filling the container. FM's columns, then the engine's own, as `section.fmExtras` names them.
+    @discardableResult
+    func addFMTable(_ section: TableSection, columns: [String], in container: IL2CPP.Pointer, rows: Int?, _ ui: FMElements) throws -> IL2CPP.Pointer {
+        let fmTable = FMTable(ui: ui)
+        let table = try fmTable.make(name: "FMStarship-\(current)-\(liveTables.count)")
+        try ui.style(table) { style in
+            if let rows {
+                try style.length("height", 26 + Float(rows) * FMTable.rowHeight)
+                try style.number("flexShrink", 0)
+            } else {
+                try style.number("flexGrow", 1)
+            }
         }
+        try ui.add(FMTable.wrapInRoot ? try fmTable.wrap(table) : table, to: container)
+        if let old = lastTable { ui.il2cpp.unpin(old) }
+        lastTable = ui.il2cpp.pin(table)
+        // Bound before its rows go in, so each row gets its key under the table's, as in FM's own tables.
+        if FMTable.bindIfIdle, !fmTable.isBound(table) { _ = fmTable.call(table, "BindToData") }
         let people = section.table.rows.compactMap(\.person)
-        // The engine's CA and PA, as the Ability setting shows them, and its own columns, in FM's empty columns.
+        // The engine's CA and PA, as the Ability setting shows them, in FM's columns for them, and its own columns.
         let extras = FMTable.extras(from: section.table, titles: section.fmExtras)
         let chosen = FMTable.columnOverride ?? FMTable.columns(columns, with: extras)
         // FM can't sort by our values, so its sorting is off for our columns; clicking their headings sorts here.
         let own = Dictionary(extras.filter { $0.title != nil || !FMTable.abilitySortable }.map { ($0.host, $0.width) },
                              uniquingKeysWith: { first, _ in first })
-        try fmTable.fill(table, people: people, columns: chosen, own: own)
+        try fmTable.fill(table, people: people, columns: chosen, own: own, extras: extras)
         PluginLog.write("FM's table for \(current.title): \(fmTable.report(table))")
         keepRows(table, extras, people: people)
-        checkLater(table, people: people, columns: chosen, own: own, attempt: 1)
+        checkLater(table, people: people, columns: chosen, own: own, extras: extras, attempt: 1)
+        return table
     }
 
-    /// FM's table's rows, kept fitted to their height and holding the engine's values as FM draws them.
-    private var extrasTable: IL2CPP.Handle?
-    private var extras: [FMTable.Extra] = []
-    private var extrasShown = FMTable.Shown()
-    private var extrasTimer: Timer?
-    /// The list's people in the engine's order, and how it's sorted by one of our columns, if it is.
-    private var tablePeople: [Person] = []
-    private var tableSort: FMTable.Sort?
+    /// One of FM's tables on our screen: kept fitted to its height, holding the engine's values as FM draws its rows,
+    /// and sorted by our columns when their headings are clicked.
+    private final class LiveTable {
+        let handle: IL2CPP.Handle
+        let extras: [FMTable.Extra]
+        let people: [Person]
+        let shown = FMTable.Shown()
+        var sort: FMTable.Sort?
+
+        init(handle: IL2CPP.Handle, extras: [FMTable.Extra], people: [Person]) {
+            self.handle = handle
+            self.extras = extras
+            self.people = people
+        }
+    }
+
+    private var liveTables: [LiveTable] = []
+    private var rowsTimer: Timer?
 
     private func keepRows(_ table: Pointer, _ extras: [FMTable.Extra], people: [Person]) {
-        stopExtras()
         guard let handle = IL2CPP.shared?.pin(table) else { return }
-        extrasTable = handle
-        self.extras = extras
-        extrasShown = FMTable.Shown()
-        tablePeople = people
-        tableSort = nil
+        liveTables.append(LiveTable(handle: handle, extras: extras, people: people))
+        guard rowsTimer == nil else { return }
         // Often enough that a row FM reuses while scrolling or sorting shows its new person's values at once.
         let timer = Timer(timeInterval: 0.1, repeats: true) { _ in MainActor.assumeIsolated { FMInterface.shared.refreshRows() } }
         RunLoop.main.add(timer, forMode: .common)
-        extrasTimer = timer
+        rowsTimer = timer
     }
 
     private func refreshRows() {
-        guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp), let handle = extrasTable else { return }
+        guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
-            guard screen != nil, let table = il2cpp.target(of: handle), ui.parent(of: table) != nil else { return stopExtras() }
+            guard screen != nil else { return stopTables() }
             let fmTable = FMTable(ui: ui)
-            // Sorting by one of FM's own columns takes over from ours.
-            if tableSort != nil, fmTable.sortedByFM(table, besides: extras) { tableSort = nil }
-            fmTable.refreshRows(table, extras, shown: extrasShown, sort: tableSort) { FMInterface.shared.sort(by: $0) }
+            for live in liveTables {
+                guard let table = il2cpp.target(of: live.handle), ui.parent(of: table) != nil else { continue }
+                // Sorting by one of FM's own columns takes over from ours.
+                if live.sort != nil, fmTable.sortedByFM(table, besides: live.extras) { live.sort = nil }
+                fmTable.refreshRows(table, live.extras, shown: live.shown, sort: live.sort) { [weak live] host in
+                    if let live { FMInterface.shared.sort(live, by: host) }
+                }
+            }
         }
     }
 
     /// A click on one of our columns' headings: highest first, then the other way on the next click, as FM's do.
-    private func sort(by host: String) {
-        guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp), let handle = extrasTable,
-              let extra = extras.first(where: { $0.host == host }) else { return }
-        let descending = tableSort?.host == host ? !(tableSort?.descending ?? true) : true
+    private func sort(_ live: LiveTable, by host: String) {
+        guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp), let extra = live.extras.first(where: { $0.host == host }) else { return }
+        let descending = live.sort?.host == host ? !(live.sort?.descending ?? true) : true
         il2cpp.withoutCollection {
-            guard let table = il2cpp.target(of: handle) else { return }
+            guard let table = il2cpp.target(of: live.handle) else { return }
             do {
-                try FMTable(ui: ui).setRows(table, FMTable.sorted(tablePeople, by: extra, descending: descending))
-                tableSort = FMTable.Sort(host: host, descending: descending)
+                try FMTable(ui: ui).setRows(table, FMTable.sorted(live.people, by: extra, descending: descending))
+                live.sort = FMTable.Sort(host: host, descending: descending)
                 PluginLog.write("FM's table sorted by \(extra.title ?? host), \(descending ? "highest" : "lowest") first")
             } catch {
                 report(error)
@@ -502,16 +542,17 @@ final class FMInterface {
         }
     }
 
-    private func stopExtras() {
-        extrasTimer?.invalidate()
-        extrasTimer = nil
-        release(&extrasTable)
-        extras = []
+    /// Lets go of the tables of a screen that's gone.
+    private func stopTables() {
+        rowsTimer?.invalidate()
+        rowsTimer = nil
+        for live in liveTables { IL2CPP.shared?.unpin(live.handle) }
+        liveTables = []
     }
 
     /// The table loads FM's column factory once it's in the tree. A moment later, this says what it made of it, and
     /// puts the columns and rows in again if it has none yet.
-    private func checkLater(_ table: Pointer, people: [Person], columns: [String], own: [String: Float], attempt: Int) {
+    private func checkLater(_ table: Pointer, people: [Person], columns: [String], own: [String: Float], extras: [FMTable.Extra], attempt: Int) {
         guard let handle = IL2CPP.shared?.pin(table) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             MainActor.assumeIsolated {
@@ -521,18 +562,16 @@ final class FMInterface {
                     guard let table = il2cpp.target(of: handle), ui.parent(of: table) != nil else { return }
                     let fmTable = FMTable(ui: ui)
                     PluginLog.write("FM's table, check \(attempt): \(fmTable.report(table))")
-                    if FMTable.noteFactory(of: table, il2cpp) {
-                        // Now the factory's widths are known, our columns go in those of FM's that fit them.
-                        FMInterface.shared.shown = ""
-                        DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.refresh() } }
-                        return
-                    }
                     guard fmTable.columnCount(table) == 0, attempt < 3 else { return }
                     if FMTable.bindIfIdle, !fmTable.isBound(table) {
                         PluginLog.write("FM's table still isn't bound, so it's asked again: \(fmTable.call(table, "BindToData"))")
                     }
-                    do { try fmTable.fill(table, people: people, columns: columns, own: own) } catch { FMInterface.shared.report(error) }
-                    FMInterface.shared.checkLater(table, people: people, columns: columns, own: own, attempt: attempt + 1)
+                    do {
+                        try fmTable.fill(table, people: people, columns: columns, own: own, extras: extras)
+                    } catch {
+                        FMInterface.shared.report(error)
+                    }
+                    FMInterface.shared.checkLater(table, people: people, columns: columns, own: own, extras: extras, attempt: attempt + 1)
                 }
             }
         }
