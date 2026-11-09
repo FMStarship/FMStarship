@@ -140,6 +140,10 @@ public final class GameReader {
         let loanContractVt = vt("LOAN_CONTRACT"), bTeamContractVt = vt("B_CLUB_CONTRACT")
         guard playerVt != 0, staffVt != 0 else { throw ReadError.classesNotFound("players or staff") }
         clock.lap("classes")
+        // All of these lie in game_plugin, so one unsigned comparison against their range rules out nearly every word.
+        let found = [playerVt, staffVt, humanVt, currencyVt, teamVt, transferManagerVt, humanManagerVt, tacticSessionVt,
+                     tacticArrayVt, loanContractVt, bTeamContractVt].filter { $0 != 0 }
+        let lowestVt = found.min() ?? 0, vtSpan = UInt64(bitPattern: (found.max() ?? 0) &- lowestVt)
 
         let pieces = game.pieces(size: 1 << 23, overlap: 0x400, writableOnly: true)
         var parts = [ScanPart?](repeating: nil, count: pieces.count)
@@ -158,6 +162,7 @@ public final class GameReader {
                     var o = Int((8 - address % 8) % 8)
                     while o + 8 <= count {
                         let word = raw.loadUnaligned(fromByteOffset: o, as: Int64.self)
+                        if UInt64(bitPattern: word &- lowestVt) > vtSpan { o += 8; continue }
                         let at = address + Int64(o)
                         if word == playerVt, people {
                             if let record = record(raw, o, count, at, MacLayout.Player.size) {
