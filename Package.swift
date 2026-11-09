@@ -43,7 +43,7 @@ let package = Package(
         .executableTarget(name: "fmprobe", dependencies: ["StarshipCore", "StarshipAnalysis", "CA64"]),
         .target(name: "StarshipPluginStart"),
         .target(name: "StarshipAgent", dependencies: ["CStarshipProtocol"], path: "agent", publicHeadersPath: "."),
-        .target(name: "StarshipPlugin", dependencies: ["FMStarshipUI", "StarshipCore", "StarshipAnalysis"]),
+        .target(name: "StarshipPlugin", dependencies: ["FMStarshipUI", "StarshipCore", "StarshipAnalysis", "StarshipFiles"]),
         .testTarget(name: "StarshipCoreTests", dependencies: ["StarshipCore"]),
         .testTarget(name: "StarshipFilesTests", dependencies: ["StarshipFiles", "StarshipCore"]),
         .testTarget(name: "StarshipSearchTests", dependencies: ["StarshipSearch", "StarshipCore"]),
