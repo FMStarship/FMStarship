@@ -2,8 +2,8 @@ import StarshipFiles
 import StarshipSearch
 import SwiftUI
 
-struct SettingsView: View {
-    let updater: Updater
+struct SettingsView<Updates: UpdateChecking>: View {
+    let updater: Updates
 
     var body: some View {
         TabView {
@@ -20,8 +20,8 @@ struct SettingsView: View {
     }
 }
 
-private struct UpdateSettings: View {
-    @ObservedObject var updater: Updater
+private struct UpdateSettings<Updates: UpdateChecking>: View {
+    @ObservedObject var updater: Updates
 
     var body: some View {
         Form {

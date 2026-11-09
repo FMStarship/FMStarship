@@ -1,10 +1,11 @@
+import FMStarshipUI
 import Sparkle
 import StarshipCore
 import SwiftUI
 
 /// Finds and installs new versions through Sparkle. Only releases have a feed, so a build of your own never checks.
 @MainActor
-final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
+final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate, UpdateChecking {
     private var controller: SPUStandardUpdaterController?
     @Published private(set) var canCheck = false
 
@@ -34,17 +35,5 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
         throw NSError(domain: "FMStarship.Updater", code: 1, userInfo: [
             NSLocalizedDescriptionKey: "Close Football Manager first, then check for updates.",
         ])
-    }
-}
-
-/// Left out of builds with no feed, which have nothing to check.
-struct CheckForUpdatesButton: View {
-    @ObservedObject var updater: Updater
-
-    var body: some View {
-        if updater.isAvailable {
-            Button("Check for Updates...") { updater.check() }
-                .disabled(!updater.canCheck)
-        }
     }
 }

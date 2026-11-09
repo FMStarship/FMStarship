@@ -94,8 +94,12 @@ public final class GameReader {
     }
 
     /// Reads the game and sets up its rules. A nil engine leaves those features switched off.
+    /// Inside FM, as the plugin, straight from memory; from the app, through the agent.
     public static func connect(status: @escaping (String) -> Void) throws -> (database: Database, engine: RulesEngine?) {
-        let game = try GameProcess()
+        try connect(to: GameProcess.runsInsideGame ? GameProcess.insideGame() : GameProcess(), status: status)
+    }
+
+    public static func connect(to game: GameProcess, status: @escaping (String) -> Void) throws -> (database: Database, engine: RulesEngine?) {
         let database = try GameReader(game: game, status: status).readAll()
         // A read that fails only leaves a hole, so FM closing part way through has to be caught here.
         guard GameProcess.runningPID() == game.pid else { throw AgentError.connectionLost }
@@ -139,18 +143,19 @@ public final class GameReader {
             let slots = UncheckedSendablePointer(output)
             DispatchQueue.concurrentPerform(iterations: pieces.count) { i in
                 let (address, count) = pieces[i]
-                guard let bytes = game.read(address, count: count) else { return }
-                var part = ScanPart()
-                bytes.withUnsafeBytes { raw in
+                // A piece lies in one region, so this holds for all of it.
+                let people = !game.inSmallHeap(address)
+                let swept: ScanPart? = game.withBytes(address, count: count) { raw in
+                    var part = ScanPart()
                     var o = Int((8 - address % 8) % 8)
                     while o + 8 <= count {
                         let word = raw.loadUnaligned(fromByteOffset: o, as: Int64.self)
                         let at = address + Int64(o)
-                        if word == playerVt {
+                        if word == playerVt, people {
                             if let record = record(raw, o, count, at, MacLayout.Player.size) {
                                 part.people.append((at, parsePlayer(record, at)))
                             }
-                        } else if word == staffVt {
+                        } else if word == staffVt, people {
                             if let record = record(raw, o, count, at, MacLayout.Staff.size),
                                let staff = parseStaff(record, at) {
                                 part.people.append((at, staff))
@@ -175,7 +180,9 @@ public final class GameReader {
                         }
                         o += 8
                     }
+                    return part
                 }
+                guard let part = swept else { return }
                 slots.value[i] = part
                 lock.lock()
                 let before = scanned

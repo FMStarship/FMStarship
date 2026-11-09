@@ -2,7 +2,9 @@ import SwiftUI
 
 struct AboutWindow: View {
     private var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "27.0.5"
+        // Inside FM, the main bundle is the game's.
+        AppModel.editionInsideGame
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "27.0.5"
     }
 
     var body: some View {

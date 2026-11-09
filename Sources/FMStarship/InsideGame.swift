@@ -1,0 +1,118 @@
+import AppKit
+@preconcurrency import StarshipAnalysis
+import StarshipSearch
+import SwiftUI
+
+/// What the settings and the menus need from the updater, which belongs to the app: Sparkle can't load inside FM.
+@MainActor
+package protocol UpdateChecking: ObservableObject {
+    var isAvailable: Bool { get }
+    var canCheck: Bool { get }
+    var checksAutomatically: Bool { get set }
+    func check()
+}
+
+/// Inside FM there's nothing to update this way.
+package final class NoUpdates: UpdateChecking {
+    package init() {}
+    package var isAvailable: Bool { false }
+    package var canCheck: Bool { false }
+    package var checksAutomatically = false
+    package func check() {}
+}
+
+/// FM Starship's windows, for the plugin, which shows them inside Football Manager without SwiftUI's scenes.
+package enum StarshipWindow: Hashable {
+    case main, profile(PersonRef?), compare([PersonRef]), compatibility, about, settings
+}
+
+/// What a key press in one of FM Starship's windows inside FM comes to.
+package enum Shortcut {
+    case handled, open(StarshipWindow), notOurs
+}
+
+extension AppModel {
+    /// Shown in About inside FM, where the main bundle is the game's.
+    package static var editionInsideGame: String?
+
+    /// The model, with the settings it starts from. The same for the app and the plugin.
+    package static func startUp() -> AppModel {
+        // Before the model, which reads its starting state from the settings.
+        StarshipSearch.Settings.load()
+        Units.apply()
+        return AppModel()
+    }
+
+    /// Inside FM there's no button to press first: the game is right there.
+    package func loadSaveIfEmpty() {
+        if database == nil, !loading { loadSave() }
+    }
+
+    /// The loaded save's analysis, for FM Starship's screens inside FM's own interface.
+    package var analysis: AnalysisSession? { session }
+
+    /// Goes up each time the analysis changes, so a screen knows when to redraw.
+    package var analysisRevision: Int { analysisVersion }
+
+    /// What the model is doing or what went wrong, while there's no analysis to show.
+    package var statusLine: String { status }
+    package func title(of window: StarshipWindow) -> String {
+        switch window {
+        case .main: return "FM Starship"
+        case .profile: return "Profile"
+        case .compare: return "Compare"
+        case .compatibility: return "Compatibility"
+        case .about: return "About FM Starship"
+        case .settings: return "Settings"
+        }
+    }
+
+    /// The app's default sizes.
+    package func size(of window: StarshipWindow) -> CGSize {
+        switch window {
+        case .main: return CGSize(width: 1380, height: 860)
+        case .profile: return CGSize(width: 1120, height: 860)
+        case .compare: return CGSize(width: 820, height: 760)
+        case .compatibility: return CGSize(width: 520, height: 620)
+        case .about, .settings: return CGSize(width: 500, height: 420)
+        }
+    }
+
+    package func view(of window: StarshipWindow) -> AnyView {
+        switch window {
+        case .main:
+            // Narrower than this and the toolbar starts hiding things.
+            return AnyView(MainWindow().themed(self).frame(minWidth: 1120, minHeight: 620))
+        case .profile(let ref): return AnyView(ProfileWindow(ref: ref).themed(self))
+        case .compare(let refs): return AnyView(CompareWindow(refs: refs).themed(self))
+        case .compatibility: return AnyView(CompatibilityWindow().themed(self))
+        case .about: return AnyView(AboutWindow().themed(self))
+        case .settings: return AnyView(SettingsView(updater: NoUpdates()).themed(self))
+        }
+    }
+
+    /// The app's menu shortcuts, for a window of ours inside FM. FM's menu bar carries none of them, and one there
+    /// would also take the key from the game, where ⌘S saves the career.
+    package func shortcut(_ event: NSEvent) -> Shortcut {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard modifiers.contains(.command), let key = event.charactersIgnoringModifiers?.lowercased() else { return .notOurs }
+        let state = menuState.values
+        switch (key, modifiers) {
+        case (",", [.command]): return .open(.settings)
+        case ("r", [.command]) where !state.loading: loadSave()
+        case ("o", [.command]): openSnapshot()
+        case ("o", [.command, .shift]) where state.hasData: chooseShortlistFile()
+        case ("s", [.command]) where state.hasData: saveSnapshot()
+        case ("s", [.command, .shift]) where state.hasData && state.isList: saveListAsShortlist()
+        case ("e", [.command]) where state.hasData && state.isList: exportList()
+        case ("f", [.command]) where state.hasData && state.isList: focusSearch += 1
+        case ("1", [.command]): go(to: .players)
+        case ("2", [.command]): go(to: .staff)
+        case ("f", [.command, .option]) where state.hasData && state.isList: editingFilter = true
+        case ("c", [.command, .option]) where state.isList: editingColumns = true
+        case ("k", [.command, .shift]) where state.canCompare: compare(selection)
+        default: return .notOurs
+        }
+        return .handled
+    }
+}

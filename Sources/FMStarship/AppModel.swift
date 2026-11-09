@@ -40,7 +40,7 @@ enum Screen: Hashable {
 }
 
 /// Names someone across windows. Window values must be codable, and a `Person` isn't.
-struct PersonRef: Hashable, Codable {
+package struct PersonRef: Hashable, Codable {
     let uid: UInt32
     let isStaff: Bool
 
@@ -67,7 +67,7 @@ struct OpenShortlist: Equatable {
 }
 
 @MainActor
-final class AppModel: ObservableObject {
+package final class AppModel: ObservableObject {
     @Published var database: Database? { didSet { updateMenuState() } }
     @Published var status = "Start Football Manager from here, load your save, then press Load Save."
     @Published var loading = false { didSet { updateMenuState() } }
@@ -164,6 +164,10 @@ final class AppModel: ObservableObject {
 
     /// Filled in by the main window, the only way to open windows from outside a view.
     var openWindow: OpenWindowAction?
+    /// Inside FM there are no SwiftUI scenes to open, so the plugin opens its own windows, and sets their appearance
+    /// rather than the whole game's.
+    package var openInsideGame: ((StarshipWindow) -> Void)?
+    package var applyAppearanceInsideGame: ((NSAppearance?) -> Void)?
 
     private(set) var allPlayerColumns: [Col] = []
     private(set) var allStaffColumns: [Col] = []
@@ -560,7 +564,11 @@ final class AppModel: ObservableObject {
 
     /// A palette is light or dark whatever macOS is set to.
     func applyAppearance() {
-        NSApp.appearance = colors.appearance
+        if let applyAppearanceInsideGame {
+            applyAppearanceInsideGame(colors.appearance)
+        } else {
+            NSApp.appearance = colors.appearance
+        }
     }
 
     // MARK: Columns
@@ -849,7 +857,11 @@ final class AppModel: ObservableObject {
     }
 
     func openProfile(_ person: Person) {
-        openWindow?(id: WindowID.profile, value: PersonRef(person))
+        if let openInsideGame {
+            openInsideGame(.profile(PersonRef(person)))
+        } else {
+            openWindow?(id: WindowID.profile, value: PersonRef(person))
+        }
     }
 
     var canCompare: Bool { Self.canCompare(selection) }
@@ -860,7 +872,11 @@ final class AppModel: ObservableObject {
 
     func compare(_ people: [Person]) {
         guard Self.canCompare(people) else { return }
-        openWindow?(id: WindowID.compare, value: people.map(PersonRef.init))
+        if let openInsideGame {
+            openInsideGame(.compare(people.map(PersonRef.init)))
+        } else {
+            openWindow?(id: WindowID.compare, value: people.map(PersonRef.init))
+        }
     }
 
     /// `PersonMenu.Build`.
