@@ -4,11 +4,12 @@ import StarshipCore
 /// .NET's number and date formats, so that what is shown matches the original to the digit.
 enum NetFormat {
     /// A custom format such as "0.0", "0.#" or "0.##". .NET cuts a double to 15 significant digits
-    /// and then rounds those half up, which is not what printf does (2.675 gives "2.68").
-    static func fixed(_ value: Double, min: Int, max: Int) -> String {
+    /// and then rounds those half up, which is not what printf does (2.675 gives "2.68"). `truncating` cuts the
+    /// digits off instead, the way FM shows money.
+    static func fixed(_ value: Double, min: Int, max: Int, truncating: Bool = false) -> String {
         guard value.isFinite else { return value.isNaN ? "NaN" : value < 0 ? "-∞" : "∞" }
         var (digits, scale) = significantDigits(Swift.abs(value))
-        round(&digits, &scale, at: scale + max)
+        round(&digits, &scale, at: scale + max, up: !truncating)
         if digits.isEmpty { return min > 0 ? "0." + String(repeating: "0", count: min) : "0" }
 
         var whole = ""
@@ -48,10 +49,10 @@ enum NetFormat {
         grouped(String(Swift.abs(value)), negative: value < 0)
     }
 
-    /// "N0" on a double, where .NET gives the exact value rounded to even, as printf does.
-    static func grouped(_ value: Double) -> String {
+    /// A whole amount of money with thousands separators, cut off like FM's.
+    static func groupedMoney(_ value: Double) -> String {
         guard value.isFinite else { return "\(value)" }
-        return grouped(String(format: "%.0f", Swift.abs(value)), negative: value < 0)
+        return grouped(fixed(Swift.abs(value), min: 0, max: 0, truncating: true), negative: value < 0)
     }
 
     private static func grouped(_ digits: String, negative: Bool) -> String {
@@ -93,10 +94,10 @@ enum NetFormat {
         return (digits, exponent + 1)
     }
 
-    /// `Number.RoundNumber`.
-    private static func round(_ digits: inout [UInt8], _ scale: inout Int, at position: Int) {
+    /// `Number.RoundNumber`, or with `up` false, the digits cut off there.
+    private static func round(_ digits: inout [UInt8], _ scale: inout Int, at position: Int, up: Bool = true) {
         var i = Swift.min(Swift.max(position, 0), digits.count)
-        if position >= 0, i == position, i < digits.count, digits[i] >= 5 {
+        if up, position >= 0, i == position, i < digits.count, digits[i] >= 5 {
             while i > 0, digits[i - 1] == 9 { i -= 1 }
             if i > 0 {
                 digits[i - 1] += 1
@@ -181,11 +182,11 @@ public struct MoneyUnits {
     public func moneyText(_ amount: Double) -> String {
         guard amount > 0 else { return "" }
         let v = amount * perPound
-        if v >= 1_000_000_000 { return symbol + NetFormat.fixed(v / 1_000_000_000, min: 0, max: 2) + "B" }
-        if v >= 100_000_000 { return symbol + NetFormat.fixed(v / 1_000_000, min: 0, max: 1) + "M" }
-        if v >= 1_000_000 { return symbol + NetFormat.fixed(v / 1_000_000, min: 0, max: 2) + "M" }
-        if v >= 1000 { return symbol + NetFormat.fixed(v / 1000, min: 0, max: 1) + "K" }
-        return symbol + NetFormat.fixed(v, min: 0, max: 0)
+        if v >= 1_000_000_000 { return symbol + NetFormat.fixed(v / 1_000_000_000, min: 0, max: 2, truncating: true) + "B" }
+        if v >= 100_000_000 { return symbol + NetFormat.fixed(v / 1_000_000, min: 0, max: 1, truncating: true) + "M" }
+        if v >= 1_000_000 { return symbol + NetFormat.fixed(v / 1_000_000, min: 0, max: 2, truncating: true) + "M" }
+        if v >= 1000 { return symbol + NetFormat.fixed(v / 1000, min: 0, max: 1, truncating: true) + "K" }
+        return symbol + NetFormat.fixed(v, min: 0, max: 0, truncating: true)
     }
 
     /// `Columns.Money` given a long.
@@ -194,7 +195,7 @@ public struct MoneyUnits {
     public func wageText(_ pounds: Int, suffix: Bool = false) -> String {
         guard pounds > 0 else { return "" }
         let v = wageValue(pounds) * perPound
-        let number = v >= 1_000_000 ? NetFormat.fixed(v / 1_000_000, min: 0, max: 2) + "M" : NetFormat.grouped(v)
+        let number = v >= 1_000_000 ? NetFormat.fixed(v / 1_000_000, min: 0, max: 2, truncating: true) + "M" : NetFormat.groupedMoney(v)
         return symbol + number + (suffix ? " " + wageSuffix : "")
     }
 

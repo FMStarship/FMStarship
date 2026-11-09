@@ -50,17 +50,17 @@ public enum Units {
         guard pounds > 0 else { return "" }
         let value = pounds * money.perPound
         let symbol = money.symbol
-        if value >= 1_000_000_000 { return "\(symbol)\(Net.fixed(value / 1_000_000_000, max: 2))B" }
-        if value >= 100_000_000 { return "\(symbol)\(Net.fixed(value / 1_000_000, max: 1))M" }
-        if value >= 1_000_000 { return "\(symbol)\(Net.fixed(value / 1_000_000, max: 2))M" }
-        if value >= 1_000 { return "\(symbol)\(Net.fixed(value / 1_000, max: 1))K" }
-        return "\(symbol)\(Net.fixed(value, max: 0))"
+        if value >= 1_000_000_000 { return "\(symbol)\(Net.fixed(value / 1_000_000_000, max: 2, truncating: true))B" }
+        if value >= 100_000_000 { return "\(symbol)\(Net.fixed(value / 1_000_000, max: 1, truncating: true))M" }
+        if value >= 1_000_000 { return "\(symbol)\(Net.fixed(value / 1_000_000, max: 2, truncating: true))M" }
+        if value >= 1_000 { return "\(symbol)\(Net.fixed(value / 1_000, max: 1, truncating: true))K" }
+        return "\(symbol)\(Net.fixed(value, max: 0, truncating: true))"
     }
 
     public static func wageText(_ weeklyPounds: Int, withSuffix: Bool) -> String {
         guard weeklyPounds > 0 else { return "" }
         let value = wageValue(weeklyPounds) * money.perPound
-        let amount = value >= 1_000_000 ? "\(Net.fixed(value / 1_000_000, max: 2))M" : Net.groupedWhole(value)
+        let amount = value >= 1_000_000 ? "\(Net.fixed(value / 1_000_000, max: 2, truncating: true))M" : Net.groupedMoney(value)
         return money.symbol + amount + (withSuffix ? " \(wageSuffix)" : "")
     }
 

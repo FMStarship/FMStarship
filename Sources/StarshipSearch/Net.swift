@@ -57,8 +57,9 @@ enum Net {
 
     /// Custom numeric formats "0", "0.#", "0.##", "0.0", "0.00": `max` decimals of which `min` always show.
     /// .NET takes 15 significant digits and then rounds half up, so 1.005 gives "1.01" where printf gives
-    /// "1.00". The separator is always ".", where the original used the Windows culture.
-    static func fixed(_ value: Double, min minDecimals: Int = 0, max maxDecimals: Int) -> String {
+    /// "1.00". The separator is always ".", where the original used the Windows culture. `truncating` cuts the
+    /// digits off instead, the way FM shows money.
+    static func fixed(_ value: Double, min minDecimals: Int = 0, max maxDecimals: Int, truncating: Bool = false) -> String {
         guard value.isFinite else { return value.isNaN ? "NaN" : value < 0 ? "-Infinity" : "Infinity" }
 
         let scientific = String(format: "%.14e", abs(value))
@@ -70,7 +71,7 @@ enum Net {
         if keep < 0 {
             digits = []
         } else if keep < digits.count {
-            let roundUp = digits[keep] >= 5
+            let roundUp = !truncating && digits[keep] >= 5
             digits.removeSubrange(keep...)
             if roundUp {
                 var index = keep - 1
@@ -106,15 +107,15 @@ enum Net {
         return fraction.isEmpty ? sign + whole : "\(sign)\(whole).\(fraction)"
     }
 
-    /// `ToString("N0", InvariantCulture)`: rounds ties to even, which is what `%.0f` does too.
-    static func groupedWhole(_ value: Double) -> String {
-        let plain = String(format: "%.0f", abs(value))
+    /// A whole amount of money with thousands separators, cut off like FM's.
+    static func groupedMoney(_ value: Double) -> String {
+        let plain = fixed(abs(value), max: 0, truncating: true)
         var grouped = ""
         for (offset, digit) in plain.enumerated() {
             if offset > 0, (plain.count - offset) % 3 == 0 { grouped.append(",") }
             grouped.append(digit)
         }
-        return value < 0 ? "-" + grouped : grouped
+        return value < 0 && plain != "0" ? "-" + grouped : grouped
     }
 
     /// `OrderBy(s => s)`: the default string comparer follows the user's culture.
