@@ -205,7 +205,7 @@ struct FMTable {
         }
         // Each row's height, as FM's own player tables set it, so the cells sit in the middle of their rows.
         var height = Self.rowHeight
-        try withUnsafeMutablePointer(to: &height) { try il2cpp.call(table, "set_FixedElementSize", [Pointer($0)]) }
+        _ = try withUnsafeMutablePointer(to: &height) { try il2cpp.call(table, "set_FixedElementSize", [Pointer($0)]) }
         return table
     }
 
@@ -262,7 +262,7 @@ struct FMTable {
             try il2cpp.call(add, list, [config])
         }
         var custom = false
-        try withUnsafeMutablePointer(to: &custom) { try il2cpp.call(create, view, [list, Pointer($0)]) }
+        _ = try withUnsafeMutablePointer(to: &custom) { try il2cpp.call(create, view, [list, Pointer($0)]) }
         return view
     }
 
@@ -563,7 +563,7 @@ struct FMTable {
         }
         for slot in [Int32(0), 1] {
             var index = slot, ascending = true
-            try withUnsafeMutablePointer(to: &index) { index in
+            _ = try withUnsafeMutablePointer(to: &index) { index in
                 try withUnsafeMutablePointer(to: &ascending) {
                     try il2cpp.call(update, table, [Pointer(index), il2cpp.managedString(""), Pointer($0)])
                 }
@@ -699,7 +699,7 @@ struct FMTable {
                 // FM's own references carry the person's unique ID beside the index. Made again from all its IDs, the
                 // reference works out its hash from them, as FM's do.
                 var uid = Int32(bitPattern: person.uid)
-                try withUnsafeMutablePointer(to: &property) { property in
+                _ = try withUnsafeMutablePointer(to: &property) { property in
                     try withUnsafeMutablePointer(to: &uid) { try il2cpp.call(reference, "SetValue", [Pointer(property), Pointer($0)]) }
                 }
                 if let ids = il2cpp.fieldObject(reference, "m_id") {

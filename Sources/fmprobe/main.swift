@@ -119,8 +119,7 @@ case "people":
         if found.count >= want * 40 { break outer }
     }
     for obj in stride(from: 0, to: found.count, by: max(1, found.count / want)).map({ found[$0] }).prefix(want) {
-        let person = args[2] == "ACTUAL_PLAYER" ? obj + 0x278 : obj + 0x278
-        let full = game.lengthPrefixedString(game.readPointer(person + 0x10))
+        let person = obj + 0x278
         let firstName = game.nameEntry(game.readPointer(person + 0x20))
         let second = game.nameEntry(game.readPointer(person + 0x28))
         let common = game.nameEntry(game.readPointer(person + 0x30))

@@ -136,7 +136,7 @@ struct FMElements {
 
     func insert(_ child: Pointer, into parent: Pointer, at index: Int) throws {
         var position = Int32(index)
-        try withUnsafeMutablePointer(to: &position) { try il2cpp.call(parent, "Insert", [Pointer($0), child]) }
+        _ = try withUnsafeMutablePointer(to: &position) { try il2cpp.call(parent, "Insert", [Pointer($0), child]) }
     }
 
     func remove(_ element: Pointer) throws { try il2cpp.call(element, "RemoveFromHierarchy") }
@@ -323,6 +323,6 @@ struct StyleSetter {
         }
         let actual = il2cpp.valueSize(il2cpp.methodParameter(setter, 0))
         guard actual == size else { throw IL2CPP.Failure("IStyle.\(property) takes \(actual) bytes, not \(size)") }
-        try withUnsafeMutablePointer(to: &value) { try il2cpp.call(setter, style, [IL2CPP.Pointer($0)]) }
+        _ = try withUnsafeMutablePointer(to: &value) { try il2cpp.call(setter, style, [IL2CPP.Pointer($0)]) }
     }
 }
