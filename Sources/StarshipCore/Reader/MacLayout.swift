@@ -109,7 +109,9 @@ enum MacLayout {
 
     enum Finance {
         static let clubOffset = 0x150
-        static let transferBudget = 0x7c8
+        /// FM's `transfer_budget`: what's left to spend, which FM shows as Available. The next word is the budget as
+        /// the board last set it, before the signings and sales since.
+        static let transferBudget = 0x7c4
         static let wageRoom = 0x808
         static let wageSpent = 0x814
     }
