@@ -237,6 +237,8 @@ struct FMTable {
         let title: String?
         let values: [Int32: String]
         var tones: [Int32: Tone] = [:]
+        /// A note beside the main values, in FM's small print, as the engine shows it.
+        var quiet = false
         /// Wide enough for the heading and the longest value. FM fits a table to the screen in proportion to its
         /// columns' own widths, so this is the column's share as much as its width.
         var width: Float {
@@ -245,15 +247,15 @@ struct FMTable {
         }
     }
 
-    private static let abilityHosts = ["CA": "hidden-current-ability", "PA": "hidden-potential-ability"]
+    nonisolated private static let abilityHosts = ["CA": "hidden-current-ability", "PA": "hidden-potential-ability"]
     /// Headings in FM's words where FM has its own for what the engine shows: FM calls whether a player would join
     /// his interest.
-    private static let headings = ["Would join on": "Interest"]
+    nonisolated private static let headings = ["Would join on": "Interest"]
     /// Whether FM's own CA and PA columns sort when their header is clicked, by FM's figures for them. FM has none
     /// for the players in our lists, so it doesn't sort; ours does instead. `table casort on` tries FM's again.
     static var abilitySortable = false
     /// The ID of our own column for one of the engine's, from its title.
-    static func ownID(_ title: String) -> String {
+    nonisolated static func ownID(_ title: String) -> String {
         "fmstarship-" + title.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
     }
 
@@ -271,9 +273,27 @@ struct FMTable {
                 if let tone = row.tone, row.toneColumn == nil || row.toneColumn == column { tones[index] = tone }
             }
             let heading = headings[title] ?? title
-            if let host = abilityHosts[title] { return Extra(host: host, title: nil, values: values, tones: tones) }
-            return Extra(host: ownID(heading), title: heading, values: values, tones: tones)
+            let quiet = table.rows.contains { $0.quietColumn == column }
+            if let host = abilityHosts[title] { return Extra(host: host, title: nil, values: values, tones: tones, quiet: quiet) }
+            return Extra(host: ownID(heading), title: heading, values: values, tones: tones, quiet: quiet)
         }
+    }
+
+    /// FM's columns for a whole engine table, in the engine's order: FM's own where `fm` names one for the engine's
+    /// column, such as FM's name column for the engine's player, and the engine's own for the rest, which are the
+    /// extras to show.
+    nonisolated static func layout(of table: AnalysisTable, fm: [String: String]) -> (columns: [String], extras: [String]) {
+        var columns: [String] = []
+        var extras: [String] = []
+        for title in table.columns.map(\.title) {
+            if let id = fm[title] {
+                if !columns.contains(id) { columns.append(id) }
+            } else {
+                columns.append(abilityHosts[title] ?? ownID(headings[title] ?? title))
+                extras.append(title)
+            }
+        }
+        return (columns, extras)
     }
 
     /// Our own columns in FM's player table: copies of FM's column for a hidden asking price, which only FM's editor
@@ -358,7 +378,7 @@ struct FMTable {
             let cells = shown.cells[root] ?? self.cells(in: root)
             shown.cells[root] = cells
             for (extra, column) in placed where column < cells.count {
-                setValue(extra.values[index] ?? "", tone: extra.tones[index], in: cells[column])
+                setValue(extra.values[index] ?? "", tone: extra.tones[index], quiet: extra.quiet, in: cells[column])
             }
             shown.person[root] = index
         }
@@ -484,14 +504,15 @@ struct FMTable {
     }
 
     /// Our value in one of FM's cells, in FM's text style, in the middle of the cell, in its tone's colour if it has
-    /// one.
-    private func setValue(_ value: String, tone: Tone? = nil, in cell: Pointer) {
+    /// one. A note is in small print, and wraps onto a second line where it needs one.
+    private func setValue(_ value: String, tone: Tone? = nil, quiet: Bool = false, in cell: Pointer) {
         let label: Pointer
         if let existing = ui.query(cell, "FMStarshipValueText") {
             label = existing
         } else {
             guard let box = try? ui.box(name: "FMStarshipValue"),
-                  let made = try? ui.text(value, ["body-md", "global-text-primary", "content-no-wrap", "content-ellipsis"],
+                  let made = try? ui.text(value, quiet ? ["body-sm", "global-text-secondary", "content-ellipsis"]
+                                                       : ["body-md", "global-text-primary", "content-no-wrap", "content-ellipsis"],
                                           name: "FMStarshipValueText") else { return }
             // What FM itself shows in the column, where it shows anything, makes way for ours.
             for child in ui.children(of: cell) { try? ui.style(child) { try $0.keyword("display", 1) } }
@@ -503,6 +524,14 @@ struct FMTable {
                 try style.keyword("flexDirection", 2)
                 try style.keyword("alignItems", 2)
                 try style.keyword("justifyContent", 0)
+            }
+            // A note wraps onto a second line in the row's height, and ends in an ellipsis if there's more.
+            if quiet {
+                try? ui.style(made) { style in
+                    try style.keyword("whiteSpace", 0)
+                    try style.keyword("overflow", 1)
+                    try style.length("maxHeight", 32)
+                }
             }
             try? ui.add(made, to: box)
             try? ui.add(box, to: cell)

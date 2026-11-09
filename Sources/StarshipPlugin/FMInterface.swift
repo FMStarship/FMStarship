@@ -113,6 +113,8 @@ final class FMInterface {
     /// as Back from a player's profile returns to FM's own list. Until when Back's return is waited for.
     private var comeBack: [String]?
     private var comeBackUntil: Date?
+    /// When ours last came back with FM's Back.
+    private var cameBack: Date?
     /// FM's screens showing, in its screen area and its report cards, as which elements they are.
     private var underState: [String] = []
 
@@ -132,6 +134,7 @@ final class FMInterface {
             comeBack = nil
             comeBackUntil = nil
             PluginLog.write("FM went back to the screen under ours, so ours comes back")
+            cameBack = Date()
             do { try show(ui) } catch { report(error) }
         }
     }
@@ -239,8 +242,14 @@ final class FMInterface {
     }
 
     /// FM lights its tab again when it's clicked, even with its screen already under ours: that's the way back to it.
+    /// Just after ours came back with FM's Back, FM lights it again as it finishes going back, which isn't a click, so
+    /// it goes dark again. A click on it then is still seen by `mouseDown`.
     private func watchFMTab(_ ui: FMElements) {
         guard let button = fmTab.flatMap(ui.il2cpp.target), ui.hasClass(button, Self.litClasses[0]) else { return }
+        if let back = cameBack, Date().timeIntervalSince(back) < 3 {
+            for name in Self.litClasses { try? ui.removeClass(button, name) }
+            return
+        }
         PluginLog.write("FM lit its tab again, so its screen comes back")
         leave(ui)
     }
@@ -426,7 +435,13 @@ final class FMInterface {
                 try fmTableScreen(section, columns: columns, in: element, page: page, ui)
             } else {
                 let body = try page.body(in: element)
-                for section in sections { try page.table(section, in: body) }
+                for section in sections {
+                    if let columns = section.fmColumns, FMTable.ready {
+                        try fmTableTile(section, columns: columns, in: body, page: page, ui)
+                    } else {
+                        try page.table(section, in: body)
+                    }
+                }
             }
         case nil:
             try page.message(status, title: current.title, in: try page.body(in: element))
@@ -442,6 +457,28 @@ final class FMInterface {
         try page.heading(section.title, note: section.table.head, in: tile)
         try ui.add(tile, to: body)
         try addFMTable(section, columns: columns, in: tile, rows: nil, ui)
+        try linesBelow(section, in: tile, page: page, ui)
+    }
+
+    /// One list in FM's own player table, in a tile of its own on a page with others, as tall as its rows.
+    private func fmTableTile(_ section: TableSection, columns: [String], in body: Pointer, page: NativePage, _ ui: FMElements) throws {
+        let tile = try page.tile()
+        try page.heading(section.title, note: section.table.head, in: tile)
+        try ui.add(tile, to: body)
+        let people = section.table.rows.filter { $0.person != nil }.count
+        if people > 0 { try addFMTable(section, columns: columns, in: tile, rows: min(people, NativePage.rowLimit), ui) }
+        try linesBelow(section, in: tile, page: page, ui)
+    }
+
+    /// What goes under one of FM's tables: the engine's rows that are about nobody, such as a gap no player fills,
+    /// as lines of text, then its status line and notes.
+    private func linesBelow(_ section: TableSection, in tile: Pointer, page: NativePage, _ ui: FMElements) throws {
+        for row in section.table.rows where row.person == nil {
+            let text = row.cells.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " · ")
+            let line = try ui.text(text, ["body-sm", "global-text-secondary"])
+            if let tone = row.tone { try page.colour(line, tone) }
+            try ui.add(try page.spaced(line, top: 6), to: tile)
+        }
         let status = NativePage.withoutAppHints(section.table.status)
         for line in [status] + section.notes where !line.isEmpty {
             try ui.add(try page.spaced(try ui.text(line, ["body-sm", "global-text-secondary"]), top: 8), to: tile)
@@ -691,9 +728,9 @@ final class FMInterface {
             let lines = SquadPlanner.analyse(session)
             let squad = SquadPlanner.squadView(lines, session: session)
             let start = SquadPlanner.startingBudget(session)
-            var sections = [TableSection(title: "Your first team", table: squad.table)]
+            var sections = [Self.fmSection("Your first team", squad.table, fm: ["Player": "name", "Best": "name"])]
             if let plan = SquadPlanner.plan(session, lines: lines, budget: start.budget, wageRoom: start.wageRoom, includeLoans: false) {
-                sections.append(TableSection(title: "Signings for the plan", table: plan.table))
+                sections.append(Self.fmSection("Signings for the plan", plan.table, fm: ["Name": "name", "Age": "age", "Club": "club"]))
             }
             return .tables(sections)
         case .bargains:
@@ -704,6 +741,13 @@ final class FMInterface {
             guard let table = finder.find(options) else { return nil }
             return .tables([TableSection(title: "Bargains", table: table, fmColumns: bargainColumns, fmExtras: ["CA", "PA", "Would join on"])])
         }
+    }
+
+    /// A whole engine table in FM's own player table: FM's columns where `fm` names them for the engine's, and the
+    /// engine's own for the rest, in the engine's order.
+    nonisolated private static func fmSection(_ title: String, _ table: AnalysisTable, fm: [String: String]) -> TableSection {
+        let layout = FMTable.layout(of: table, fm: fm)
+        return TableSection(title: title, table: table, fmColumns: layout.columns, fmExtras: layout.extras)
     }
 
     /// FM's own columns for a list of players to sign, by their IDs in FM's PlayerTableFactory, as FM's recruitment
