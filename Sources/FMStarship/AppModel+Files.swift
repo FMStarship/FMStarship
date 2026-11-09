@@ -39,16 +39,16 @@ extension AppModel {
     func openSnapshot(at url: URL) {
         snapshotJob.run("Opening snapshot...", work: { [weak self] _, _ in
             do {
-                return try Storage.loadSnapshot(from: url)
+                return NewData(try Storage.loadSnapshot(from: url))
             } catch {
                 let message = error.localizedDescription
                 Task { @MainActor in self?.alert = "Could not open the snapshot: \(message)" }
                 return nil
             }
-        }, done: { [weak self] database in
+        }, done: { [weak self] data in
             // A snapshot has no game behind it, so everything that needs the game stays honestly off.
             GameRules.engine = nil
-            self?.install(database)
+            self?.install(data)
         })
     }
 

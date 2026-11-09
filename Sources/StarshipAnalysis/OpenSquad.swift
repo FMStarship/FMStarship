@@ -13,30 +13,46 @@ public struct OpenSquad {
     private var squadsOf: [String: [String]] = [:]
     public let clubs: [String]
 
-    public init(session: AnalysisSession) {
+    /// The clubs and squads in a save. They take a while to find in a big one, and need only the database, so they
+    /// can be found off the main thread before the session exists.
+    public struct Choices {
+        fileprivate let db: Database
+        fileprivate let clubs: [String]
+        fileprivate let squadsOf: [String: [String]]
+
+        public init(db: Database) {
+            self.db = db
+            var names: [String] = []
+            var seen = Set<String>()
+            var hasLoans = Set<String>()
+            var squads: [String: [String]] = [:]
+
+            func add(_ name: String) {
+                if seen.insert(name.lowercased()).inserted { names.append(name) }
+            }
+
+            for p in db.players where !p.clubFull.isEmpty {
+                add(p.clubFull)
+                let key = p.clubFull.lowercased()
+                if !p.squad.isEmpty, squads[key]?.contains(p.squad) != true { squads[key, default: []].append(p.squad) }
+                if !p.loanClub.isEmpty { hasLoans.insert(key) }
+            }
+            for key in hasLoans where squads[key]?.contains("On loan") != true { squads[key, default: []].append("On loan") }
+            for s in db.staff where !s.clubFull.isEmpty { add(s.clubFull) }
+
+            squadsOf = squads
+            clubs = names.stableSorted {
+                $0.compare($1, options: [.caseInsensitive], locale: Locale(identifier: "en_GB")) == .orderedAscending
+            }
+        }
+    }
+
+    /// `choices` are used only when they were found in the session's own database.
+    public init(session: AnalysisSession, choices: Choices? = nil) {
         self.session = session
-        var names: [String] = []
-        var seen = Set<String>()
-        var hasLoans = Set<String>()
-        var squads: [String: [String]] = [:]
-
-        func add(_ name: String) {
-            if seen.insert(name.lowercased()).inserted { names.append(name) }
-        }
-
-        for p in session.db.players where !p.clubFull.isEmpty {
-            add(p.clubFull)
-            let key = p.clubFull.lowercased()
-            if !p.squad.isEmpty, squads[key]?.contains(p.squad) != true { squads[key, default: []].append(p.squad) }
-            if !p.loanClub.isEmpty { hasLoans.insert(key) }
-        }
-        for key in hasLoans where squads[key]?.contains("On loan") != true { squads[key, default: []].append("On loan") }
-        for s in session.db.staff where !s.clubFull.isEmpty { add(s.clubFull) }
-
-        squadsOf = squads
-        clubs = names.stableSorted {
-            $0.compare($1, options: [.caseInsensitive], locale: Locale(identifier: "en_GB")) == .orderedAscending
-        }
+        let choices = choices.flatMap { $0.db === session.db ? $0 : nil } ?? Choices(db: session.db)
+        squadsOf = choices.squadsOf
+        clubs = choices.clubs
     }
 
     /// The club box starts at the last one opened, else your club.
