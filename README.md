@@ -81,7 +81,8 @@ Steam then starts the launcher in FM's place, and the launcher starts FM with th
 Manager button doesn't load the plugin. The app can still read a game started from Steam this way, without a restart.
 
 To update the plugin, get the new source and run the script again. That's safe while FM is running, and the next start of FM gets
-the new copy. To remove it, clear the launch option and delete that folder.
+the new copy. To remove it, clear the launch option first, then run `Scripts/install-plugin.sh --uninstall`, which deletes that
+folder. The other way round, Steam can't start FM until the launch option is cleared.
 
 ### What to know
 
