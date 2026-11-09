@@ -12,7 +12,7 @@ interface elements and player tables.
 
 ![The club dashboard](Assets/Screenshots/01-dashboard.jpg)
 
-## An unofficial Mac port
+## Origins and credit
 
 FM Starship is an unofficial Mac port of [FM Moleman](https://sortitoutsi.net/content/78068/fm-moleman-27), the free Windows tool.
 FM Moleman's author doesn't make or support this version, so please [report Mac problems here](https://github.com/FMStarship/FMStarship/issues),
@@ -21,6 +21,11 @@ not to them.
 Credit: **[MCM Gaming (FM Moleman)](https://ko-fi.com/mcmgaming)**. Much of FM Starship still comes from FM Moleman: the features,
 the way the reader finds things in FM's memory, and the search, recommendation and file code, which were translated to Swift from
 the Windows app. The Mac-only parts are listed further down. If FM Starship is useful to you, you can support MCM Gaming on Ko-fi.
+
+FM Starship's own work is the in-game plugin (whose lists use the same search and recommendation code), the agent loaded into FM,
+the ARM64 interpreter and its sandbox, tactic reading, the best eleven and optimized tactic, development curves and odds, the club
+dashboard, the squad and staff overviews, and the app's design. The idea of running FM's own rules in an emulator, and which rules
+to run, come from FM Moleman, whose emulator runs x86-64.
 
 ## What you need
 
@@ -133,8 +138,8 @@ These come from a real save played in Norwegian, so formation names read the way
 
 ## How it works
 
-On Windows, FM Moleman reads the game's memory from outside. macOS refuses that for hardened apps, and a process that
-hands out its own task port is killed by the kernel. So on Mac:
+An app can't read FM's memory from outside on a Mac: macOS refuses that for hardened apps, and a process that hands out
+its own task port is killed by the kernel. So:
 
 - **A small agent is loaded into FM at launch** (`agent/agent.c`, about 200 lines), through the
   `allow-dyld-environment-variables` entitlement FM27 ships with. No game file is changed, and the agent only
@@ -144,10 +149,9 @@ hands out its own task port is killed by the kernel. So on Mac:
   hooks nothing and patches nothing. This is a promise made by the code, not one enforced by the kernel.
 - **Stale pointers are safe.** Reads report bad addresses as errors, and the socket cannot raise SIGPIPE in the game.
 
-**The game's rules** ("would he join you", staff interest, season stats) are not reimplemented. As on Windows, FM's
-own compiled code is run on a copy of its memory, inside an interpreter (`Sources/CA64`). FM Moleman's emulator runs
-x86-64; this one runs ARM64, because that is what FM runs on a Mac. All writes go to a private overlay that is
-thrown away after each call, so this code can never change your game or save.
+**The game's rules** ("would he join you", staff interest, season stats) are not reimplemented. FM's own compiled code
+is run on a copy of its memory, inside an ARM64 interpreter (`Sources/CA64`), because ARM64 is what FM runs on a Mac.
+All writes go to a private overlay that is thrown away after each call, so this code can never change your game or save.
 
 **The plugin** (`Sources/StarshipPlugin`) is a library that FM's Steam launch option loads into the game:
 
@@ -166,24 +170,37 @@ thrown away after each call, so this code can never change your game or save.
 
 ## What works
 
-Everything FM Moleman does on Windows, on FM27 27.0.0 for Mac:
+What FM Starship does on FM27 27.0.1 for Mac, and where each answer comes from. [Origins and credit](#origins-and-credit) says
+more about where it began.
+
+- **Began in FM Moleman:** reading players, staff and contracts; the rules for would join, roles, season stats, staff limits,
+  preferred job and injury days; the Squad planner, though its tactic slots are FM Starship's; Recommended signings, Bargains,
+  Recommended staff, Staff review, Compare and Open squad; My club; the filters, columns and search; and shortlists, snapshots,
+  export and themes.
+- **Began in FM Starship:** formation names, reading your tactic, the club dashboard, the Squad and Staff overviews, Best eleven,
+  Optimized tactic, development curves and talent odds, and the in-game plugin.
 
 | Feature | How it's done |
 | --- | --- |
 | Players, staff, attributes, hidden attributes, CA/PA, personality, traits | Read from memory |
 | Contracts, clauses, loans, squads, injuries, values, currencies, budgets | Read from memory |
+| Form, job preferences | Read from memory |
 | Would join you (transfer and loan), staff interest | FM's own functions |
 | Role stars, in and out of possession, at every position | FM's own functions |
 | Season stats, board staff limits, preferred job | FM's own functions |
-| Formation names, in the game's language | FM's own function |
 | Exact injury return days | FM's own function |
-| Form, job preferences | Read from memory |
+| Formation names, in the game's language | FM's own function |
 | Your tactic: formation, roles with and without the ball, your XI | Read from memory |
-| Squad planner: one row per slot in your tactic, cover, best position and role | FM's own role ratings |
+| Club dashboard: what needs a decision, who's coming through, what the health check wants done | Built on the answers above |
+| Squad and Staff overviews: each place, how it stands against the league, and the best person who'd join | Built on the answers above |
 | Best eleven: your tactic's places and roles with the best the club has in each, against your own picks | FM's own role ratings |
 | Optimized tactic and roles: FM's 90 preset tactics fitted to your squad | FM's own files and role ratings |
-| Filters, columns, search, shortlists, snapshots, export, themes | Ported |
-| Recommendations, planner, bargains, staff tools, club reports | Ported |
+| Development curves and talent odds: each young player's likely peak, and the odds of getting close to PA | Measured from every player in your save |
+| Squad planner: one row per slot in your tactic, cover, best position and role | FM's own role ratings |
+| Recommended signings, Bargains, Recommended staff, Staff review, Compare, Open squad | Built on the answers above |
+| My club: health check, set pieces, loan out, development, training | Built on the answers above |
+| Filters, columns, search, units | In the app |
+| FM shortlists both ways, snapshots, export, themes | FM's own shortlist files. Snapshots use FM Starship's own format |
 | The FM STARSHIP tab inside FM, with FM's own player and staff tables (preview) | FM's IL2CPP API |
 
 Help > Compatibility shows what is working on the build you have.
@@ -233,10 +250,10 @@ couldn't find. Built with `Scripts/install-plugin.sh --developer`, the plugin wr
 Control-Option-D, which is how those names were found. [CONTRIBUTING.md](CONTRIBUTING.md#working-on-the-plugin) covers the other
 developer tools.
 
-Things FM Starship has that FM Moleman doesn't:
+FM Starship's own parts, and how to check them after a patch:
 
 - **Your tactic** is read from `TACTIC_EDIT_SESSION` objects, with offsets in `MacLayout.Tactic`. If they move, the planner
-  falls back to FM Moleman's ten position groups, and Help > Compatibility says so. To find them again, search memory for your
+  falls back to its ten position groups, and Help > Compatibility says so. To find them again, search memory for your
   XI's player indexes in order (`fmprobe cluster`), then see which class holds them (`fmprobe census`, `fmprobe fields`).
   `fmprobe tactic` prints what the app read. Stars are the check: FM's tactics screen shows the two phases' average, rounded up.
 - **Squad overview and Staff overview** are `OverviewReport`s: each place, how it stands against the league, and the best

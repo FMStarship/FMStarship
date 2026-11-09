@@ -4,11 +4,11 @@ This file is for AI agents working in this repo. [CONTRIBUTING.md](CONTRIBUTING.
 
 ## What this is
 
-FM Starship is a native macOS app in Swift, SwiftUI and AppKit: a scouting and club companion for Football Manager 27. It's an
-unofficial Mac port of FM Moleman. It reads the running game through a small agent loaded into FM, and it runs FM's own rule functions
-in an ARM64 interpreter. A preview plugin also runs it inside FM: FM's Steam launch option loads it, and it adds an FM STARSHIP tab
-made of FM's own interface elements and tables, through the IL2CPP API that FM's game code exports. It's source available under
-PolyForm Noncommercial, so never call it open source.
+FM Starship is a native macOS app in Swift, SwiftUI and AppKit: a scouting and club companion for Football Manager 27. About a third of
+its code comes from FM Moleman, used with its author's permission; see Origins and credit in the README. It reads the running game
+through a small agent loaded into FM, and it runs FM's own rule functions in an ARM64 interpreter. A preview plugin also runs it
+inside FM: FM's Steam launch option loads it, and it adds an FM STARSHIP tab made of FM's own interface elements and tables, through
+the IL2CPP API that FM's game code exports. It's source available under PolyForm Noncommercial, so never call it open source.
 
 ## Commands
 
