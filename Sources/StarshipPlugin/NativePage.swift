@@ -3,7 +3,7 @@ import Foundation
 
 /// FM Starship's screens inside FM, under its own subtabs.
 enum StarshipScreen: CaseIterable {
-    case dashboard, signings, planner, bargains, shortlists
+    case dashboard, signings, planner, bargains, shortlists, players, staff
 
     var title: String {
         switch self {
@@ -12,6 +12,8 @@ enum StarshipScreen: CaseIterable {
         case .planner: return "Squad planner"
         case .bargains: return "Bargains"
         case .shortlists: return "Shortlists"
+        case .players: return "Players"
+        case .staff: return "Staff"
         }
     }
 
@@ -23,6 +25,16 @@ enum StarshipScreen: CaseIterable {
         case .planner: return "Going through your first team..."
         case .bargains: return "Finding bargains..."
         case .shortlists: return "Reading your shortlists..."
+        case .players, .staff: return "Searching..."
+        }
+    }
+
+    /// For the app's Players and Staff searches: whether the list is staff. Nil for the other screens.
+    var listsStaff: Bool? {
+        switch self {
+        case .players: return false
+        case .staff: return true
+        default: return nil
         }
     }
 }
@@ -43,6 +55,8 @@ struct TableSection {
     var fmColumns: [String]?
     /// The engine's columns to keep beside FM's, by title, where the engine has them.
     var fmExtras: [String] = []
+    /// Which of FM's tables the list goes in: its players', or its other people's, such as staff.
+    var kind = FMTable.Kind.players
 }
 
 /// The pieces FM Starship's screens are made of, from FM's elements and style classes.

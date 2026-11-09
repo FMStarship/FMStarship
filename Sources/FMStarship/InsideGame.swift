@@ -1,5 +1,6 @@
 import AppKit
 @preconcurrency import StarshipAnalysis
+@preconcurrency import StarshipCore
 import StarshipSearch
 import SwiftUI
 
@@ -56,6 +57,26 @@ extension AppModel {
 
     /// What the model is doing or what went wrong, while there's no analysis to show.
     package var statusLine: String { status }
+
+    /// Goes to the Players or Staff screen, which runs its search with that screen's filters, for FM Starship's
+    /// screen inside FM to show what it finds.
+    package func showListInsideGame(staff: Bool) {
+        go(to: staff ? .staff : .players)
+    }
+
+    /// What the Players or Staff screen's search found, and what it's filtered by, while the app is on that screen.
+    /// `version` goes up each time the rows change.
+    package func listInsideGame(staff: Bool) -> (people: [Person], searching: Bool, filter: String, version: Int)? {
+        guard screen == (staff ? .staff : .players) else { return nil }
+        return (staff ? self.staff : players, searching, filterSummary, rowsVersion)
+    }
+
+    /// The app's window on the Players or Staff screen, with its filters open, over FM.
+    package func editFiltersInsideGame(staff: Bool) {
+        go(to: staff ? .staff : .players)
+        openInsideGame?(.main)
+        editingFilter = true
+    }
     package func title(of window: StarshipWindow) -> String {
         switch window {
         case .main: return "FM Starship"
