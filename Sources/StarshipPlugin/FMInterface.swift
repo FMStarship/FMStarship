@@ -157,10 +157,8 @@ final class FMInterface {
 
     /// Twice a second: keep our tab in FM's bar, which FM builds again now and then, and notice FM moving on.
     private func tick() {
-        guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else {
-            timer?.invalidate()
-            return
-        }
+        // Until FM's IL2CPP is up, or if this build lacks something it needs: the next tick tries again.
+        guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
             do {
                 try keepTab(ui)
@@ -294,7 +292,17 @@ final class FMInterface {
 
     // MARK: The screen
 
+    /// Puts our screen up. If any of that fails, whatever was done is undone first, so FM's own screen isn't left hidden.
     private func show(_ ui: FMElements) throws {
+        do {
+            try putUp(ui)
+        } catch {
+            leave(ui)
+            throw error
+        }
+    }
+
+    private func putUp(_ ui: FMElements) throws {
         guard let root = try ui.mainRoot(), let body = ui.query(root, "MenuBody") else { throw IL2CPP.Failure("No screen area in FM") }
         let fmScreens = ui.children(of: body)
         if look == nil { look = TileLook.copied(from: fmScreens, ui) }
@@ -350,7 +358,7 @@ final class FMInterface {
         model?.loadSaveIfEmpty()
         startWork()
         if let staff = current.listsStaff { model?.showListInsideGame(staff: staff) }
-        try fill(ui)
+        try fillOrSay(ui)
         PluginLog.write("FM Starship screen shown")
     }
 
@@ -426,6 +434,30 @@ final class FMInterface {
 
     /// Of a state, the screens FM shows.
     nonisolated static func visible(_ state: [String]) -> [String] { state.filter { $0.hasSuffix(" true") } }
+
+    /// The chosen screen, or, where it can't be built on this FM build, a note saying so in its place. Throws only if
+    /// even that can't be shown.
+    private func fillOrSay(_ ui: FMElements) throws {
+        do {
+            try fill(ui)
+        } catch {
+            report(error)
+            guard let element = screen.flatMap(ui.il2cpp.target) else { throw error }
+            // What was built of it goes, with any of FM's tables in it.
+            stopTables()
+            for child in ui.children(of: element) { try ui.remove(child) }
+            let page = NativePage(ui: ui, look: look ?? .fallback)
+            try page.message(Self.cantBuild("\(error)"), title: current.title, in: try page.body(in: element))
+        }
+    }
+
+    /// What a screen that can't be built says, with the first line of what went wrong. FM's exceptions bring their
+    /// stack with them, which is for the log.
+    nonisolated static func cantBuild(_ problem: String) -> String {
+        let first = problem.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? problem
+        return "FM Starship couldn't build this screen on this build of FM, so it's off until FM Starship is updated for it. "
+            + "FM's own screens work as usual. What went wrong: \(first.trimmingCharacters(in: .whitespaces))"
+    }
 
     /// The subtabs and the chosen screen's content: what it found, or what's happening until then.
     private func fill(_ ui: FMElements) throws {
@@ -1085,7 +1117,13 @@ final class FMInterface {
     private func refresh() {
         guard screen != nil, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
-            do { try fill(ui) } catch { report(error) }
+            do {
+                try fillOrSay(ui)
+            } catch {
+                // Not even the note could go up, so FM's own screen comes back.
+                report(error)
+                leave(ui)
+            }
         }
     }
 

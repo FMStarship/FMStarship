@@ -14,18 +14,31 @@ final class IL2CPP {
         init(_ description: String) { self.description = description }
     }
 
-    /// Nil outside FM, or if this build of IL2CPP is missing a function we use.
-    static let shared: IL2CPP? = {
-        do { return try IL2CPP() } catch {
-            PluginLog.write("IL2CPP: \(error)")
-            return nil
+    /// Nil outside FM, until FM has started IL2CPP's runtime, or if this build of IL2CPP is missing a function we use.
+    /// Only success is kept: until then each use tries again, so a look before FM is ready doesn't leave FM Starship
+    /// off until FM starts again.
+    static var shared: IL2CPP? {
+        if let attached { return attached }
+        do {
+            attached = try IL2CPP()
+            if !lastFailure.isEmpty { PluginLog.write("IL2CPP: ready now") }
+            lastFailure = ""
+        } catch {
+            if "\(error)" != lastFailure { PluginLog.write("IL2CPP: \(error)") }
+            lastFailure = "\(error)"
         }
-    }()
+        return attached
+    }
+
+    private static var attached: IL2CPP?
+    /// Why it last couldn't attach, logged once rather than on every try.
+    private static var lastFailure = ""
 
     private typealias P = UnsafeMutableRawPointer?
     private typealias Text = UnsafePointer<CChar>?
 
     private struct API {
+        let corlib: @convention(c) () -> P
         let domainGet: @convention(c) () -> P
         let domainAssemblies: @convention(c) (P, UnsafeMutablePointer<Int>) -> UnsafeMutablePointer<P>?
         let threadAttach: @convention(c) (P) -> P
@@ -107,6 +120,7 @@ final class IL2CPP {
             return unsafeBitCast(address, to: T.self)
         }
         api = API(
+            corlib: try load("il2cpp_get_corlib"),
             domainGet: try load("il2cpp_domain_get"),
             domainAssemblies: try load("il2cpp_domain_get_assemblies"),
             threadAttach: try load("il2cpp_thread_attach"),
@@ -165,8 +179,40 @@ final class IL2CPP {
             gchandleTarget: try load("il2cpp_gchandle_get_target"),
             gcDisable: try load("il2cpp_gc_disable"),
             gcEnable: try load("il2cpp_gc_enable"))
+        // FM loads GameAssembly before it starts IL2CPP's runtime, and nothing may be asked of the runtime before then.
+        // corlib is set once it has started, and reading it does nothing else. Then the domain has to be there, with
+        // FM's interface classes loaded, before this thread is attached.
+        guard api.corlib() != nil else { throw Failure("IL2CPP hasn't started yet") }
+        guard let domain = api.domainGet() else { throw Failure("IL2CPP has no domain yet") }
+        guard findClass("UnityEngine.UIElements", "VisualElement") != nil else { throw Failure("UI Toolkit isn't loaded yet") }
         // Unity's main thread is attached already, so this only hands back its thread.
-        _ = api.threadAttach(api.domainGet())
+        _ = api.threadAttach(domain)
+    }
+
+    /// GameAssembly's Mach-O UUID, which is new each time FM's game code is built. Nil while it isn't loaded.
+    nonisolated static func gameAssemblyUUID() -> String? {
+        guard let index = (0..<_dyld_image_count()).first(where: {
+            _dyld_get_image_name($0).map { String(cString: $0).hasSuffix("GameAssembly.dylib") } ?? false
+        }), let header = _dyld_get_image_header(index) else { return nil }
+        return uuid(ofMachO: UnsafeRawPointer(header))
+    }
+
+    /// The UUID in a 64-bit Mach-O header's load commands. Nil if it has none, or isn't one.
+    nonisolated static func uuid(ofMachO header: UnsafeRawPointer) -> String? {
+        let mach = header.loadUnaligned(as: mach_header_64.self)
+        guard mach.magic == MH_MAGIC_64 else { return nil }
+        let end = MemoryLayout<mach_header_64>.size + Int(mach.sizeofcmds)
+        var offset = MemoryLayout<mach_header_64>.size
+        for _ in 0..<mach.ncmds {
+            guard offset + MemoryLayout<load_command>.size <= end else { return nil }
+            let command = header.loadUnaligned(fromByteOffset: offset, as: load_command.self)
+            guard command.cmdsize >= UInt32(MemoryLayout<load_command>.size), offset + Int(command.cmdsize) <= end else { return nil }
+            if command.cmd == UInt32(LC_UUID), Int(command.cmdsize) >= MemoryLayout<uuid_command>.size {
+                return UUID(uuid: header.loadUnaligned(fromByteOffset: offset, as: uuid_command.self).uuid).uuidString
+            }
+            offset += Int(command.cmdsize)
+        }
+        return nil
     }
 
     // MARK: Classes
@@ -332,43 +378,65 @@ final class IL2CPP {
 
     func managedString(_ text: String) -> Pointer? { text.withCString { api.stringNew($0) } }
 
+    /// A string's text. Nil for any object that isn't a System.String, whose memory isn't a string's.
     func text(_ string: Pointer?) -> String? {
-        guard let string, let chars = api.stringChars(string) else { return nil }
+        guard let string, let stringClass, api.objectClass(string) == stringClass, let chars = api.stringChars(string) else { return nil }
         return String(utf16CodeUnits: chars, count: Int(api.stringLength(string)))
     }
 
+    private lazy var stringClass: Pointer? = findClass("System", "String")
+
+    /// The references in an array of them. Empty for an array of structs or numbers, whose items aren't objects.
     func elements(_ array: Pointer?) -> [Pointer?] {
-        guard let array else { return [] }
+        guard let array, !holdsValues(array) else { return [] }
         let start = Int(api.arrayLengthOffset()) + 8
         return (0..<Int(api.arrayLength(array))).map { array.load(fromByteOffset: start + $0 * 8, as: Pointer?.self) }
     }
 
     /// The objects in an array of references or a List<T> of them. Empty for anything else, and for structs.
     func items(of collection: Pointer) -> [Pointer] {
-        let klass = classOf(collection)
-        let className = name(of: klass)
-        if className.hasSuffix("[]") { return holdsValues(collection) ? [] : elements(collection).compactMap { $0 } }
-        guard className.hasPrefix("System.Collections.Generic.List`1"), let items = field(klass, "_items"), let size = field(klass, "_size"),
-              let array = collection.load(fromByteOffset: api.fieldOffset(items), as: P.self), !holdsValues(array) else { return [] }
-        let count = Int(collection.load(fromByteOffset: api.fieldOffset(size), as: Int32.self))
-        return elements(array).prefix(count).compactMap { $0 }
+        let className = name(of: classOf(collection))
+        if className.hasSuffix("[]") { return elements(collection).compactMap { $0 } }
+        guard className.hasPrefix("System.Collections.Generic.List`1"), let contents = listContents(collection) else { return [] }
+        return elements(contents.array).prefix(contents.count).compactMap { $0 }
     }
 
-    /// Where each item of a List<T> of structs sits in the list's array, `size` bytes apart, to read in place.
+    /// A List<T>'s array and how many of its items are in use. Nil for anything not laid out like one.
+    private func listContents(_ list: Pointer) -> (array: Pointer, count: Int)? {
+        // The array is a T[], and the count an Int32.
+        guard let items = referenceField(classOf(list), "_items"), api.typeKind(api.fieldType(items)) == 0x1d,
+              let array = (list + api.fieldOffset(items)).load(as: P.self), let size = value(list, "_size", as: Int32.self) else { return nil }
+        return (array, max(0, min(Int(size), Int(api.arrayLength(array)))))
+    }
+
+    /// Where each item of a List<T> of structs sits in the list's array, `size` bytes apart, to read in place. Empty
+    /// unless the array holds structs of exactly that size.
     func structItems(of list: Pointer, size: Int) -> [UnsafeRawPointer] {
-        let klass = classOf(list)
-        guard let items = field(klass, "_items"), let sizeField = field(klass, "_size"),
-              let array = list.load(fromByteOffset: api.fieldOffset(items), as: P.self) else { return [] }
-        let count = min(Int(list.load(fromByteOffset: api.fieldOffset(sizeField), as: Int32.self)), Int(api.arrayLength(array)))
+        guard let contents = listContents(list), let element = api.classElement(classOf(contents.array)), api.classIsValueType(element),
+              Int(api.classValueSize(element, nil)) == size else { return [] }
         let start = Int(api.arrayLengthOffset()) + 8
-        return (0..<max(0, count)).map { UnsafeRawPointer(array + start + $0 * size) }
+        return (0..<contents.count).map { UnsafeRawPointer(contents.array + start + $0 * size) }
     }
 
-    /// The strings in a List<string>.
+    /// Where, in each struct a List<T> holds, the first field holding an object of `klass` or a subclass sits: found by
+    /// the field's type, not taken on trust.
+    func offset(of klass: Pointer, inStructsOf list: Pointer) -> Int? {
+        guard let contents = listContents(list), let element = api.classElement(classOf(contents.array)),
+              api.classIsValueType(element) else { return nil }
+        var iterator: P = nil
+        while let f = api.classFields(element, &iterator) {
+            guard holdsReference(f), isSubclass(api.classFromType(api.fieldType(f)), of: klass) else { continue }
+            // A struct's field offsets count the object header it has when boxed.
+            return api.fieldOffset(f) - 16
+        }
+        return nil
+    }
+
+    /// The strings in a List<string>. Empty if it holds anything else.
     func strings(inList list: Pointer?) -> [String] {
-        guard let list, let items = field(classOf(list), "_items"), let size = field(classOf(list), "_size") else { return [] }
-        let count = Int(list.load(fromByteOffset: api.fieldOffset(size), as: Int32.self))
-        return elements(list.load(fromByteOffset: api.fieldOffset(items), as: Pointer?.self)).prefix(count).compactMap { text($0) }
+        guard let list, let contents = listContents(list), let stringClass,
+              api.classElement(classOf(contents.array)) == stringClass else { return [] }
+        return elements(contents.array).prefix(contents.count).compactMap { text($0) }
     }
 
     /// Where a field is in an object of the class, or in the struct itself for a value type.
@@ -377,9 +445,11 @@ final class IL2CPP {
         return api.fieldOffset(found) - (inStruct ? 16 : 0)
     }
 
-    /// A constant's value, such as FM's property IDs, which IL2CPP keeps in its metadata.
+    /// A constant's value, such as FM's property IDs, which IL2CPP keeps in its metadata. Nil unless it's a number or
+    /// struct of exactly T's size, since IL2CPP copies the whole of it.
     func constant<T>(_ klass: Pointer?, _ name: String, as: T.Type) -> T? {
-        guard let found = field(klass, name) else { return nil }
+        guard let found = field(klass, name), api.fieldFlags(found) & 0x10 != 0, let fieldClass = api.classFromType(api.fieldType(found)),
+              api.classIsValueType(fieldClass), Int(api.classValueSize(fieldClass, nil)) == MemoryLayout<T>.size else { return nil }
         let size = max(8, MemoryLayout<T>.size)
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 8)
         defer { buffer.deallocate() }
@@ -389,9 +459,14 @@ final class IL2CPP {
     }
 
     /// Sets a field through IL2CPP, which tells FM's garbage collector about a reference written into an object.
-    /// `value` is the field's value itself: a pointer for a reference, the struct or number otherwise.
-    func setField<T>(_ object: Pointer, _ name: String, _ value: T) {
-        guard let found = field(classOf(object), name) else { return }
+    /// `value` is the field's value itself: a pointer for a reference, the struct or number otherwise, of the field's
+    /// own size. Anything else is refused, since a store of the wrong kind or size would corrupt the object.
+    func setField<T>(_ object: Pointer, _ name: String, _ value: T) throws {
+        let klass = classOf(object)
+        let isPointer = T.self == P.self || T.self == Pointer.self
+        guard let found = isPointer ? referenceField(klass, name) : valueField(klass, name, size: MemoryLayout<T>.size) else {
+            throw Failure("\(self.name(of: klass)).\(name) can't take a \(T.self)")
+        }
         var copy = value
         withUnsafeMutablePointer(to: &copy) { store(object, found, from: Pointer($0)) }
     }
@@ -421,10 +496,36 @@ final class IL2CPP {
         }
     }
 
-    /// What a reference field of the object holds, by the field's name in its class or a parent.
+    /// What a reference field of the object holds, by the field's name in its class or a parent. Nil if the field holds
+    /// a struct or a number, which isn't an object to hand to FM's runtime.
     func fieldObject(_ object: Pointer, _ name: String) -> Pointer? {
-        guard let found = field(classOf(object), name) else { return nil }
+        guard let found = referenceField(classOf(object), name) else { return nil }
         return (object + api.fieldOffset(found)).load(as: P.self)
+    }
+
+    /// A number or struct in one of the object's fields, read in place. Nil unless the field holds one of exactly T's size.
+    func value<T>(_ object: Pointer, _ name: String, as: T.Type) -> T? {
+        guard let found = valueField(classOf(object), name, size: MemoryLayout<T>.size) else { return nil }
+        return (object + api.fieldOffset(found)).load(as: T.self)
+    }
+
+    /// An instance field that holds a reference to an object, by its name in the class or a parent.
+    func referenceField(_ klass: Pointer?, _ name: String) -> Pointer? {
+        field(klass, name).flatMap { holdsReference($0) ? $0 : nil }
+    }
+
+    /// An instance field that holds a number or struct of `size` bytes, by its name in the class or a parent.
+    func valueField(_ klass: Pointer?, _ name: String, size: Int) -> Pointer? {
+        guard let found = field(klass, name), api.fieldFlags(found) & 0x10 == 0, let fieldClass = api.classFromType(api.fieldType(found)),
+              api.classIsValueType(fieldClass), Int(api.classValueSize(fieldClass, nil)) == size else { return nil }
+        return found
+    }
+
+    /// Whether an instance field holds a reference: a string, an object, an array or a generic class, not a struct.
+    private func holdsReference(_ field: Pointer) -> Bool {
+        guard api.fieldFlags(field) & 0x10 == 0, let type = api.fieldType(field), [0x0e, 0x12, 0x14, 0x15, 0x1c, 0x1d].contains(api.typeKind(type)),
+              let fieldClass = api.classFromType(type) else { return false }
+        return !api.classIsValueType(fieldClass)
     }
 
     func field(_ klass: Pointer?, _ name: String) -> Pointer? {
