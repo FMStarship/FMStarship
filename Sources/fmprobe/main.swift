@@ -1291,6 +1291,34 @@ case "currencies":
         print(i, int(8), int(12), int(16), game.lengthPrefixedString(word(24)), "|", game.lengthPrefixedString(word(32)), "|", game.lengthPrefixedString(word(48)), "|", rate)
     }
 
+case "finance":
+    // Each human club's CLUB_FINANCE record as 32-bit words, to find a figure FM shows. Molde's Available Kr 9.01M was
+    // transfer_budget at 0x7c4.
+    let rtti = Rtti(game)
+    let size = args.count > 2 ? Int(args[2])! : 4096
+    let vt = game.pluginBase + Int64(rtti.vtables("CLUB_HUMAN_MANAGER_DETAILS")[0].addressPoint)
+    var clubs = Set<Int64>()
+    for piece in game.pieces(size: 1 << 23, overlap: 0, writableOnly: true) {
+        guard let bytes = game.read(piece.address, count: piece.count) else { continue }
+        let details = bytes.withUnsafeBytes { raw -> [Int64] in
+            let words = raw.bindMemory(to: Int64.self)
+            return (0..<words.count).compactMap { words[$0] == vt ? piece.address + Int64($0 * 8) : nil }
+        }
+        for detail in details {
+            let team = game.readPointer(detail + 64), club = team == 0 ? 0 : game.readPointer(team + 48)
+            if club != 0 { clubs.insert(club) }
+        }
+    }
+    for club in clubs.sorted() {
+        let finance = game.readPointer(club + 0x150)
+        print(game.lengthPrefixedString(game.readPointer(club + 192)), "finance", hex(finance), rtti.className(vtable: game.readPointer(finance)) ?? "?")
+        guard finance != 0, let b = game.read(finance, count: size) else { continue }
+        for o in stride(from: 0, to: size, by: 4) {
+            let v = b.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: o, as: Int32.self) }
+            if v != 0 { print(String(format: "  %04x %11d", o, v)) }
+        }
+    }
+
 case "dump":
     let address = Int64(args[2].replacingOccurrences(of: "0x", with: ""), radix: 16)!
     let count = args.count > 3 ? Int(args[3])! : 256

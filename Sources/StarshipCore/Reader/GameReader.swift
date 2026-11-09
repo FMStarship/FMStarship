@@ -593,13 +593,17 @@ public final class GameReader {
             } ?? (managers.count == 1 ? managers[0] : 0)
             database.humanClubs.append((team, name, manager))
             let finance = game.readPointer(club + Int64(F.clubOffset))
-            guard finance != 0, let transfer = game.read(finance + Int64(F.transferBudget), count: 4),
-                  let room = game.read(finance + Int64(F.wageRoom), count: 4),
-                  let spent = game.read(finance + Int64(F.wageSpent), count: 4) else { continue }
-            let budget = Int64(Int32(bitPattern: GameReader.u32(transfer, 0)))
-            let wageRoom = Int(Int32(bitPattern: GameReader.u32(room, 0))) - Int(Int32(bitPattern: GameReader.u32(spent, 0)))
-            database.budgets[team] = (budget, max(0, wageRoom))
+            guard finance != 0, let record = game.read(finance, count: F.wageSpent + 4) else { continue }
+            database.budgets[team] = GameReader.budget(record)
         }
+    }
+
+    /// What a club has left to spend, from the start of its CLUB_FINANCE record.
+    static func budget(_ finance: [UInt8]) -> (transfer: Int64, wageRoom: Int) {
+        typealias F = MacLayout.Finance
+        let transfer = Int64(Int32(bitPattern: GameReader.u32(finance, F.transferBudget)))
+        let wageRoom = Int(Int32(bitPattern: GameReader.u32(finance, F.wageRoom))) - Int(Int32(bitPattern: GameReader.u32(finance, F.wageSpent)))
+        return (transfer, max(0, wageRoom))
     }
 
     /// FM keeps a club's men and women as two clubs, usually with one name, and everything here tells clubs apart by
