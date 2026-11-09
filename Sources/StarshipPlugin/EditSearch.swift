@@ -199,6 +199,12 @@ struct FeeChoices {
 
     init(units: MoneyUnits, budget: String = "", current: String = "") {
         let low = 0.1 * units.perPound, high = 200 * units.perPound
+        // With no rate to go by, there are no sums to offer, and the steps below would never reach the top.
+        guard low > 0, high.isFinite else {
+            values = [""]
+            labels = ["Any"]
+            return
+        }
         var sums: [(millions: Double, budget: Bool)] = []
         var step = pow(10, (log10(low)).rounded(.down))
         while step <= high * 1.001 {

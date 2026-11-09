@@ -73,6 +73,18 @@ final class Plugin: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Whether a window is one of FM Starship's own over FM, or a sheet or popover of one.
+    func owns(_ window: NSWindow) -> Bool { Self.owns(window, ours: Array(windows.values)) }
+
+    static func owns(_ window: NSWindow, ours: [NSWindow]) -> Bool {
+        var current: NSWindow? = window
+        while let candidate = current {
+            if ours.contains(where: { $0 === candidate }) { return true }
+            current = candidate.sheetParent ?? candidate.parent
+        }
+        return false
+    }
+
     /// Opens a window, or brings back the one already showing the same thing, as the app's scenes do.
     func show(_ kind: StarshipWindow) {
         guard let model else { return }
