@@ -1,4 +1,5 @@
 import AppKit
+import os
 import StarshipAnalysis
 @testable import StarshipPlugin
 import XCTest
@@ -73,10 +74,26 @@ final class PluginLifetimeTests: XCTestCase {
         XCTAssertFalse(Plugin.owns(fm, ours: []))
     }
 
+    func testOnlyTheFirstOfFMsQuitHooksStopsAnything() {
+        // Unity's quit on the main thread and FM's exit on another may come at once.
+        let latch = Latch()
+        let firsts = OSAllocatedUnfairLock(initialState: 0)
+        DispatchQueue.concurrentPerform(iterations: 64) { _ in
+            if latch.set() { firsts.withLock { $0 += 1 } }
+        }
+        XCTAssertEqual(firsts.withLock { $0 }, 1)
+        XCTAssertTrue(latch.isSet)
+        XCTAssertFalse(latch.set())
+    }
+
     func testNothingCallsIntoFMOnceItsQuitting() {
-        IL2CPP.stop()
+        // FM's exit may come on a thread of its own.
+        DispatchQueue.global().sync { _ = IL2CPP.stop() }
         XCTAssertTrue(IL2CPP.stopped)
+        XCTAssertFalse(IL2CPP.stop(), "The hook that comes second does nothing")
         XCTAssertNil(IL2CPP.shared)
         XCTAssertNil(FMElements(IL2CPP.shared))
+        // Already stopped, so this does nothing, off the main thread too: no timers, no log.
+        DispatchQueue.global().sync { FMInterface.quitting("a test") }
     }
 }

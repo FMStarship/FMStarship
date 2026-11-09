@@ -11,6 +11,8 @@ public func starshipPluginStart() {
     NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
         MainActor.assumeIsolated { Plugin.shared.install() }
     }
+    // Unity's quit is heard first once IL2CPP is up; this catches any exit, on whichever thread calls it.
+    atexit { FMInterface.quitting("FM's exit") }
 }
 
 @MainActor
@@ -188,9 +190,10 @@ enum PluginLog {
         return folder.appendingPathComponent("plugin.log")
     }()
 
-    static func write(_ line: String) {
+    /// `waiting` writes the line before returning, for one that a process about to exit would otherwise leave queued.
+    static func write(_ line: String, waiting: Bool = false) {
         let stamped = "\(Date().formatted(.iso8601)) \(line)\n"
-        queue.async {
+        let append = {
             guard let data = stamped.data(using: .utf8) else { return }
             if let handle = try? FileHandle(forWritingTo: file) {
                 handle.seekToEndOfFile()
@@ -200,5 +203,6 @@ enum PluginLog {
                 try? data.write(to: file)
             }
         }
+        if waiting { queue.sync(execute: append) } else { queue.async(execute: append) }
     }
 }

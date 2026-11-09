@@ -98,15 +98,20 @@ final class FMInterface {
             MainActor.assumeIsolated { FMInterface.shared.mouseDown(event) }
             return event
         }
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { FMInterface.shared.stop() }
-        }
     }
 
-    /// FM is quitting. Unity may shut IL2CPP down before the run loop turns again, so no timer of ours fires after this,
-    /// and nothing else calls into FM: `IL2CPP.shared` is nil from now on.
-    private func stop() {
-        IL2CPP.stop()
+    /// FM is quitting, as Unity's Application.quitting or FM's exit says, whichever comes first. NSApplication's
+    /// willTerminate never comes: Unity's player answers AppKit's quit by exiting there and then. Only the first call does
+    /// anything, from whichever thread. Nothing calls into FM after it: `IL2CPP.shared` is nil from now on, so every
+    /// timer, click and refresh of ours returns at once. The timers stop too, but only on the main thread, theirs.
+    nonisolated static func quitting(_ how: String) {
+        guard IL2CPP.stop() else { return }
+        if pthread_main_np() != 0 { MainActor.assumeIsolated { shared.stopTimers() } }
+        // FM exits straight after, so the line can't wait in the log's queue.
+        PluginLog.write("FM is quitting, so FM Starship stops (\(how))", waiting: true)
+    }
+
+    private func stopTimers() {
         timer?.invalidate()
         timer = nil
         rowsTimer?.invalidate()
@@ -114,7 +119,20 @@ final class FMInterface {
         #if STARSHIP_DEVELOPER
         TableDump.shared.stop()
         #endif
-        PluginLog.write("FM is quitting, so FM Starship stops")
+    }
+
+    /// Unity's word that FM is quitting comes before it shuts IL2CPP down, and is listened for once IL2CPP is up.
+    private var listensForQuit = false
+
+    private func listenForQuit(_ il2cpp: IL2CPP) {
+        guard !listensForQuit else { return }
+        listensForQuit = true
+        do {
+            try il2cpp.onQuitting(unityQuitting)
+            PluginLog.write("Listening for FM quitting")
+        } catch {
+            PluginLog.write("Can't hear Unity's quit, so only FM's exit stops FM Starship: \(error)")
+        }
     }
 
     /// A click on FM's own navigation goes back to FM: its tabs, as moving between FM's tabs does, its bookmarks and
@@ -192,6 +210,7 @@ final class FMInterface {
         // Until FM's IL2CPP is up, or if this build lacks something it needs: the next tick tries again.
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
+            listenForQuit(il2cpp)
             do {
                 try keepTab(ui)
                 watchSave(ui)
@@ -1425,6 +1444,11 @@ final class FMInterface {
         if let value = handle { IL2CPP.shared?.unpin(value) }
         handle = nil
     }
+}
+
+/// Unity's Application.quitting, on the main thread.
+private let unityQuitting: @convention(c) (UnsafeMutableRawPointer?, UnsafeRawPointer?) -> Void = { _, _ in
+    FMInterface.quitting("Unity's Application.quitting")
 }
 
 /// How FM draws a tile: its background, border and corners, copied from one of FM's own on screen when there is one.
