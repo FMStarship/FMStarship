@@ -610,6 +610,14 @@ public final class GameReader {
         }
     }
 
+    /// The full name of a team's club as the game's memory holds it now, or "" if there's none there. FM Starship inside
+    /// FM uses it to notice FM loading another save: once FM has let go of the save that was read, the team the read
+    /// found is gone from that address, or something else is there.
+    public static func clubName(team: Int64, in game: GameProcess) -> String {
+        let club = game.readPointer(team + Int64(MacLayout.Team.club))
+        return club == 0 ? "" : game.lengthPrefixedString(game.readPointer(club + Int64(MacLayout.Club.fullName)))
+    }
+
     /// What a club has left to spend, from the start of its CLUB_FINANCE record.
     static func budget(_ finance: [UInt8]) -> (transfer: Int64, wageRoom: Int) {
         typealias F = MacLayout.Finance

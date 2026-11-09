@@ -93,6 +93,8 @@ the new copy. To remove it, clear the launch option and delete that folder.
   FM's game code exports. But FM's own right-click menu on our rows acts in the game, as it does in FM's lists, so an offer or an
   approach made from it is real.
 - **Hidden attributes works as in the app.** With it off, the tables show FM's own scouting columns instead of CA and PA.
+- It reads your save when you first open the tab, and again when you next open it after FM has loaded another save or moved on, so
+  it never shows people from a save FM no longer has. It says it's reading until it's done.
 - Players and Staff put the first 500 people a search finds in FM's table, and say how many were found.
 - Shortlists only reads the files. Make and change shortlists in the app. Staff shortlists aren't there yet.
 - The Staff list needs FM's staff table, which the plugin takes from an FM screen that has one, such as Club. Until you've opened
