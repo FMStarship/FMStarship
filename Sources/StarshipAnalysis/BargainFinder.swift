@@ -81,7 +81,7 @@ public struct BargainFinder {
     /// The max-fee box starts at the transfer budget.
     public var startingMaxFee: String {
         guard let budget = session.budget?.transfer, budget > 0 else { return "" }
-        return NetFormat.fixed(Double(budget) * session.display.units.perPound / 1_000_000, min: 0, max: 1)
+        return NetFormat.fixed(Double(budget) * session.display.units.perPound / 1_000_000, min: 0, max: 1, truncating: true)
     }
 
     public func shortlistName(_ options: BargainOptions) -> String { "Bargains - " + options.kind.shortlistName }

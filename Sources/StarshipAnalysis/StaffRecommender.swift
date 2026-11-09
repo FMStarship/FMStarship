@@ -64,7 +64,7 @@ public struct StaffRecommender {
     public var startingMaxWage: String {
         guard let room = session.budget?.wageRoom, room > 0 else { return "" }
         let units = session.display.units
-        return NetFormat.fixed(units.wageValue(room) * units.perPound / 1000, min: 0, max: 1)
+        return NetFormat.fixed(units.wageValue(room) * units.perPound / 1000, min: 0, max: 1, truncating: true)
     }
 
     public var keenEnabled: Bool { GameRules.engine != nil }
