@@ -130,16 +130,19 @@ struct NativePage {
         return element
     }
 
-    /// The app's tones in colours close to FM's own greens, ambers and reds.
-    func colour(_ element: Pointer, _ tone: Tone) throws {
-        let colour: (Float, Float, Float, Float)
+    /// The app's tones in colours close to FM's own greens, ambers and reds. Plain text has none of its own.
+    nonisolated static func colour(of tone: Tone) -> (Float, Float, Float, Float)? {
         switch tone {
-        case .good, .growth, .star: colour = (0.42, 0.84, 0.55, 1)
-        case .fair: colour = (0.96, 0.76, 0.30, 1)
-        case .bad: colour = (0.95, 0.43, 0.43, 1)
-        case .muted: colour = (0.62, 0.64, 0.72, 1)
-        case .text: return
+        case .good, .growth, .star: return (0.42, 0.84, 0.55, 1)
+        case .fair: return (0.96, 0.76, 0.30, 1)
+        case .bad: return (0.95, 0.43, 0.43, 1)
+        case .muted: return (0.62, 0.64, 0.72, 1)
+        case .text: return nil
         }
+    }
+
+    func colour(_ element: Pointer, _ tone: Tone) throws {
+        guard let colour = Self.colour(of: tone) else { return }
         try ui.style(element) { try $0.color("color", colour) }
     }
 
@@ -148,9 +151,15 @@ struct NativePage {
     /// An engine table as FM's rows: the line above it, a header in small print, a row per entry between dividers,
     /// and the status line below. Columns share the width by the engine's own weights.
     func table(_ section: TableSection, in page: Pointer) throws {
-        let table = section.table
         let tile = try tile()
-        try heading(section.title, note: table.head, in: tile)
+        try heading(section.title, note: section.table.head, in: tile)
+        try rows(of: section, in: tile)
+        try ui.add(tile, to: page)
+    }
+
+    /// An engine table's header, rows and status line, in a tile that has its heading already.
+    func rows(of section: TableSection, in tile: Pointer) throws {
+        let table = section.table
         let total = Float(max(1, table.columns.reduce(0) { $0 + $1.weight }))
         let widths = table.columns.map { Float($0.weight) / total * 100 }
 
@@ -188,7 +197,6 @@ struct NativePage {
         for note in section.notes where !note.isEmpty {
             try ui.add(try spaced(try ui.text(note, ["body-sm", "global-text-secondary"]), top: 4), to: tile)
         }
-        try ui.add(tile, to: page)
     }
 
     /// The engine's status lines end with the app's hints, such as double-clicking for the full profile, which these

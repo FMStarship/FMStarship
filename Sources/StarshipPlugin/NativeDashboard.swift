@@ -1,15 +1,24 @@
 import Foundation
 @preconcurrency import StarshipAnalysis
+import StarshipCore
 
-/// The club dashboard as a screen of FM's own: the app's Dashboard, made of FM's elements and text classes.
+/// The club dashboard as a screen of FM's own: the app's Dashboard, made of FM's elements and text classes, with its
+/// lists of people in FM's own player table, so names open FM's profiles and FM's right-click menu works on them.
 /// What it shows comes from ClubDashboard, which already leaves out what Hidden attributes hides.
 @MainActor
 struct NativeDashboard {
     typealias Pointer = IL2CPP.Pointer
+    /// Puts one of FM's tables with a section's people in a container already in FM's tree, tall enough for so many
+    /// rows, with these of FM's columns.
+    typealias AddTable = (_ section: TableSection, _ columns: [String], _ container: Pointer, _ rows: Int) throws -> Void
+
     let page: NativePage
     private var ui: FMElements { page.ui }
 
-    func build(into body: Pointer, dashboard: ClubDashboard) throws {
+    /// FM's columns for the club's own players: who they are, how old, and where and how they play.
+    static let playerColumns = ["name", "age", "scouted-best-position-and-role"]
+
+    func build(into body: Pointer, dashboard: ClubDashboard, table: AddTable) throws {
         let heading = try ui.box()
         try ui.add(try ui.text(dashboard.club, ["heading-xl", "global-text-primary"]), to: heading)
         try ui.add(try page.spaced(try ui.text(dashboard.line, ["body-md", "global-text-secondary"]), top: 4), to: heading)
@@ -24,52 +33,63 @@ struct NativeDashboard {
         }
         try ui.add(facts, to: body)
 
+        // The tables go in once their tiles are in FM's tree, which FM's tables need to bind.
         let columns = try ui.box(["row-direction-normal", "align-items-start"])
-        if dashboard.showsAbility { try ui.add(try talent(dashboard), to: columns) }
-        try ui.add(try health(dashboard), to: columns)
         try ui.add(columns, to: body)
+        if dashboard.showsAbility { try talent(dashboard, in: columns, table: table) }
+        try health(dashboard, in: columns, table: table)
+    }
+
+    /// A tile sharing the row with the one beside it.
+    private func half(in row: Pointer) throws -> Pointer {
+        let tile = try page.tile()
+        try ui.style(tile) { style in
+            try style.number("flexGrow", 1)
+            try style.number("flexShrink", 1)
+            try style.length("flexBasis", 0)
+        }
+        try ui.add(tile, to: row)
+        return tile
     }
 
     /// Who's 23 or younger, by how good they're likely to get. Only there with Hidden attributes on.
-    private func talent(_ dashboard: ClubDashboard) throws -> Pointer {
-        let tile = try page.tile(width: 476)
+    private func talent(_ dashboard: ClubDashboard, in row: Pointer, table: AddTable) throws {
+        let tile = try half(in: row)
         try page.heading("Young talent", note: "Ability now, then likely peak.", in: tile)
-        if dashboard.prospects.isEmpty {
+        guard !dashboard.prospects.isEmpty else {
             try ui.add(try ui.text("Nobody at the club is 23 or younger.", ["body-md", "global-text-secondary"]), to: tile)
+            return
         }
-        for prospect in dashboard.prospects {
-            try ui.add(try page.divider(), to: tile)
-            let row = try ui.box(["row-direction-normal", "align-items-center"])
-            try ui.add(try ui.text(prospect.player.name, ["body-md-strong", "global-text-primary", "flex-grow-class"]), to: row)
-            try ui.add(try ui.text(prospect.path, ["body-md", "global-text-secondary"]), to: row)
-            try ui.add(try page.spaced(row, top: 8), to: tile)
-            var parts = ["Age \(prospect.player.age)"]
-            if let verdict = prospect.verdict { parts.append(verdict.title) }
-            if let odds = prospect.odds { parts.append(odds) }
-            let detail = try ui.text(parts.joined(separator: " · "), ["body-sm", "global-text-secondary"])
-            if let tone = prospect.verdict?.tone { try page.colour(detail, tone) }
-            try ui.add(try page.spaced(detail, top: 2, bottom: 8), to: tile)
+        let rows = dashboard.prospects.map { prospect in
+            TableRow(cells: [prospect.player.name, prospect.path, prospect.verdict?.title ?? "", prospect.odds ?? ""],
+                     person: prospect.player, tone: prospect.verdict?.tone, toneColumn: 2)
         }
-        return tile
+        let analysis = AnalysisTable(columns: ["Name", "Now → peak", "Outlook", "Odds"].map { TableColumn($0, 5) }, rows: rows)
+        try table(TableSection(title: "Young talent", table: analysis, fmColumns: Self.playerColumns,
+                               fmExtras: ["Now → peak", "Outlook", "Odds"]), Self.playerColumns, tile, rows.count)
     }
 
     /// Who needs something done, worst first.
-    private func health(_ dashboard: ClubDashboard) throws -> Pointer {
-        let tile = try page.tile(width: 476)
+    private func health(_ dashboard: ClubDashboard, in row: Pointer, table: AddTable) throws {
+        let tile = try half(in: row)
         try page.heading("Health check", note: "What wants acting on at the club.", in: tile)
-        if dashboard.issues.isEmpty {
+        guard !dashboard.issues.isEmpty else {
             try ui.add(try ui.text("Nobody needs action.", ["body-md", "global-text-secondary"]), to: tile)
+            return
         }
-        for issue in dashboard.issues {
-            try ui.add(try page.divider(), to: tile)
-            let row = try ui.box(["row-direction-normal", "align-items-center"])
-            try ui.add(try ui.text(issue.name, ["body-md-strong", "global-text-primary", "flex-grow-class"]), to: row)
-            let label = try ui.text(issue.issue, ["body-sm-strong"])
+        let rows = dashboard.issues.compactMap { issue in
+            issue.person.map { TableRow(cells: [issue.name, issue.issue, issue.detail], person: $0, tone: issue.tone, toneColumn: 1) }
+        }
+        if !rows.isEmpty {
+            let analysis = AnalysisTable(columns: ["Name", "Issue", "Detail"].map { TableColumn($0, 5) }, rows: rows)
+            try table(TableSection(title: "Health check", table: analysis, fmColumns: ["name", "age"], fmExtras: ["Issue", "Detail"]),
+                      ["name", "age"], tile, rows.count)
+        }
+        // Anything that isn't about one person stays a line of text.
+        for issue in dashboard.issues where issue.person == nil {
+            let label = try ui.text("\(issue.name): \(issue.issue). \(issue.detail)", ["body-sm", "global-text-secondary"])
             try page.colour(label, issue.tone)
-            try ui.add(label, to: row)
-            try ui.add(try page.spaced(row, top: 8), to: tile)
-            try ui.add(try page.spaced(try ui.text(issue.detail, ["body-sm", "global-text-secondary"]), top: 2, bottom: 8), to: tile)
+            try ui.add(try page.spaced(label, top: 6), to: tile)
         }
-        return tile
     }
 }

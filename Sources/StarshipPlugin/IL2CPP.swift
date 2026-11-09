@@ -65,6 +65,8 @@ final class IL2CPP {
         let fieldOffset: @convention(c) (P) -> Int
         let fieldFlags: @convention(c) (P) -> Int32
         let fieldStaticValue: @convention(c) (P, Pointer) -> Void
+        let fieldSetValue: @convention(c) (P, P, P) -> Void
+        let setFieldWithBarrier: @convention(c) (P, P, P) -> Void
         let free: @convention(c) (P) -> Void
         let runtimeInvoke: @convention(c) (P, P, UnsafeMutablePointer<P>?, UnsafeMutablePointer<P>?) -> P
         let formatException: @convention(c) (P, UnsafeMutablePointer<CChar>, Int32) -> Void
@@ -144,6 +146,8 @@ final class IL2CPP {
             fieldOffset: try load("il2cpp_field_get_offset"),
             fieldFlags: try load("il2cpp_field_get_flags"),
             fieldStaticValue: try load("il2cpp_field_static_get_value"),
+            fieldSetValue: try load("il2cpp_field_set_value"),
+            setFieldWithBarrier: try load("il2cpp_gc_wbarrier_set_field"),
             free: try load("il2cpp_free"),
             runtimeInvoke: try load("il2cpp_runtime_invoke"),
             formatException: try load("il2cpp_format_exception"),
@@ -382,6 +386,39 @@ final class IL2CPP {
         buffer.initializeMemory(as: UInt8.self, repeating: 0, count: size)
         api.fieldStaticValue(found, buffer)
         return buffer.load(as: T.self)
+    }
+
+    /// Sets a field through IL2CPP, which tells FM's garbage collector about a reference written into an object.
+    /// `value` is the field's value itself: a pointer for a reference, the struct or number otherwise.
+    func setField<T>(_ object: Pointer, _ name: String, _ value: T) {
+        guard let found = field(classOf(object), name) else { return }
+        var copy = value
+        withUnsafeMutablePointer(to: &copy) { store(object, found, from: Pointer($0)) }
+    }
+
+    /// Puts the value at `value` in one of an object's fields. IL2CPP's own setter wants the address of a reference,
+    /// except for a generic class's, such as a List<T>, where it stores the address it's given in place of the
+    /// object. So references are stored here instead, through the garbage collector's write barrier.
+    private func store(_ object: Pointer, _ field: P, from value: Pointer) {
+        if let fieldClass = api.classFromType(api.fieldType(field)), !api.classIsValueType(fieldClass) {
+            api.setFieldWithBarrier(object, object + api.fieldOffset(field), value.load(as: P.self))
+        } else {
+            api.fieldSetValue(object, field, value)
+        }
+    }
+
+    /// Copies every instance field of `source` into `target`, an object of the same class, field by field through
+    /// IL2CPP, so FM's garbage collector sees the references the copy now holds.
+    func copyFields(from source: Pointer, to target: Pointer) {
+        var klass = classOf(source)
+        while let k = klass, name(of: k) != "System.Object" {
+            var iterator: P = nil
+            while let f = api.classFields(k, &iterator) {
+                guard api.fieldFlags(f) & 0x10 == 0 else { continue }
+                store(target, f, from: source + api.fieldOffset(f))
+            }
+            klass = api.classParent(k)
+        }
     }
 
     /// What a reference field of the object holds, by the field's name in its class or a parent.
