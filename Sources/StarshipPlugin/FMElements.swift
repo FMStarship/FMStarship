@@ -59,6 +59,35 @@ struct FMElements {
         return element
     }
 
+    /// UI Toolkit's own toggle, which FM's switches are, with FM's classes: on or off, and greyed out when it can't be
+    /// changed.
+    func toggle(_ on: Bool, enabled: Bool, _ classes: [String]) throws -> Pointer {
+        let element = try il2cpp.new(try toolkitClass("Toggle"))
+        try configure(element, classes: classes, name: nil)
+        try setToggle(element, on)
+        if !enabled {
+            var value = false
+            try withUnsafeMutablePointer(to: &value) { _ = try il2cpp.call(element, "SetEnabled", [Pointer($0)]) }
+        }
+        return element
+    }
+
+    func setToggle(_ element: Pointer, _ on: Bool) throws {
+        var value = on
+        try withUnsafeMutablePointer(to: &value) { _ = try il2cpp.call(element, "SetValueWithoutNotify", [Pointer($0)]) }
+    }
+
+    func toggleValue(_ element: Pointer) -> Bool? {
+        il2cpp.unbox(try? il2cpp.call(element, "get_value"), as: Bool.self)
+    }
+
+    /// A scroll view without its vertical bar: it still scrolls with the wheel and trackpad.
+    func hideScroller(_ scrollView: Pointer) throws {
+        // ScrollerVisibility.Hidden
+        var hidden: Int32 = 2
+        try withUnsafeMutablePointer(to: &hidden) { _ = try il2cpp.call(scrollView, "set_verticalScrollerVisibility", [Pointer($0)]) }
+    }
+
     func setText(_ element: Pointer, _ value: String) throws {
         try il2cpp.call(element, "set_text", [il2cpp.managedString(value)])
     }
@@ -174,6 +203,13 @@ struct FMElements {
     func contains(_ element: Pointer, x: Float, y: Float) -> Bool {
         guard let rect = il2cpp.unbox(try? il2cpp.call(element, "get_worldBound"), as: (Float, Float, Float, Float).self) else { return false }
         return x >= rect.0 && x < rect.0 + rect.2 && y >= rect.1 && y < rect.1 + rect.3
+    }
+
+    /// Where the element is on FM's panel, in the panel's units from its top left, and its size. Nil until it's laid out.
+    func worldBound(_ element: Pointer) -> (x: Float, y: Float, width: Float, height: Float)? {
+        guard let rect = il2cpp.unbox(try? il2cpp.call(element, "get_worldBound"), as: (Float, Float, Float, Float).self),
+              rect.0.isFinite, rect.1.isFinite, rect.2.isFinite, rect.3.isFinite else { return nil }
+        return (rect.0, rect.1, rect.2, rect.3)
     }
 
     /// Where the element sits in its parent, and its size.

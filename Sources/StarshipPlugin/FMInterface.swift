@@ -51,6 +51,19 @@ final class FMInterface {
     /// Each screen's content, and the analysis it was made from.
     private var contents: [StarshipScreen: (revision: Int, content: ScreenContent)] = [:]
     private var running: Set<StarshipScreen> = []
+    /// The Recommended signings and Bargains searches, as last applied, set up again for each read of the save.
+    private var signingSearch: SigningSearch?
+    private var bargainSearch: BargainSearch?
+    private weak var searchSession: AnalysisSession?
+    private var searchRevision = -1
+    /// Goes up each time a screen's search changes, so what a search started before then finds isn't shown.
+    private var searchVersions: [StarshipScreen: Int] = [:]
+    /// The search being changed on its screen's Edit Search page, until Apply or Cancel.
+    private var editing: (screen: StarshipScreen, draft: any ScreenSearch)?
+    /// The Edit Search page's switches, which FM's switch changes itself when clicked, so they're read back.
+    private var editToggles: [(id: String, element: Pointer)] = []
+    /// An open dropdown list on the Edit Search page, and the layer behind it.
+    private var openList: [Pointer] = []
     private var shown = ""
     private var look: TileLook?
     private var lastProblem = ""
@@ -418,15 +431,24 @@ final class FMInterface {
         // The app's Players and Staff searches: drawn again when one finishes, and while one runs, as it goes.
         let list = current.listsStaff.flatMap { model?.listInsideGame(staff: $0) }
         let listState = list.map { $0.searching ? "searching \(model?.statusLine ?? "")" : "\($0.version) \($0.filter)" } ?? ""
-        let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState)"
+        if let session = model?.analysis, let revision = model?.analysisRevision { updateSearches(session, revision: revision) }
+        let searchState = editing.map { $0.screen == current ? "editing \($0.draft.key)" : "" } ?? search(for: current)?.key ?? ""
+        let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState) \(searchState)"
         guard key != shown else { return }
         // The tables of what was showing go with it, and so do its clickable entries.
         stopTables()
         for entry in listButtons { ClickActions.actions[entry] = nil }
         listButtons = []
+        editToggles = []
+        openList = []
         try fillSubtabs(ui)
         for child in ui.children(of: element) { try ui.remove(child) }
         let page = NativePage(ui: ui, look: look ?? .fallback)
+        if let editing, editing.screen == current, model?.analysis != nil {
+            try fillEditSearch(editing.draft, in: element, page: page, ui)
+            shown = key
+            return
+        }
         if let staff = current.listsStaff, model?.analysis != nil {
             try fillList(staff: staff, list, in: element, page: page, ui)
             shown = key
@@ -447,6 +469,11 @@ final class FMInterface {
                 try fmTableScreen(section, columns: columns, in: element, page: page, ui)
             } else {
                 let body = try page.body(in: element)
+                if let buttons = try searchButtons(page) {
+                    let row = try ui.box(["row-direction-normal", "justify-content-end"])
+                    try ui.add(buttons, to: row)
+                    try ui.add(try page.spaced(row, bottom: 12), to: body)
+                }
                 for section in sections {
                     if let columns = section.fmColumns, FMTable.ready(section.kind) {
                         try fmTableTile(section, columns: columns, in: body, page: page, ui)
@@ -502,12 +529,208 @@ final class FMInterface {
         listButtons = [button]
     }
 
+    // MARK: Edit Search
+
+    /// The search of a screen that has one, as last applied.
+    private func search(for screen: StarshipScreen) -> (any ScreenSearch)? {
+        switch screen {
+        case .signings: return signingSearch
+        case .bargains: return bargainSearch
+        default: return nil
+        }
+    }
+
+    private func setSearch(_ search: any ScreenSearch, for screen: StarshipScreen) {
+        switch screen {
+        case .signings: if let search = search as? SigningSearch { signingSearch = search }
+        case .bargains: if let search = search as? BargainSearch { bargainSearch = search }
+        default: return
+        }
+        searchVersions[screen, default: 0] += 1
+        contents[screen] = nil
+        PluginLog.write("\(screen.title) searches again: \(search.key)")
+        startWork()
+    }
+
+    /// The searches for this read of the save. As in the app, Bargains' max fee goes back to the transfer budget
+    /// each time the save is read; the rest is kept.
+    private func updateSearches(_ session: AnalysisSession, revision: Int) {
+        guard revision != searchRevision else { return }
+        searchRevision = revision
+        let newSave = searchSession !== session
+        searchSession = session
+        let display = session.display
+        let budget = BargainFinder(session: session).startingMaxFee
+        signingSearch = SigningSearch(options: signingSearch?.options ?? RecommendOptions(), units: display.units, budget: budget)
+        bargainSearch = BargainSearch(keeping: bargainSearch?.options, newSave: newSave, startingMaxFee: budget,
+                                      units: display.units, showsAbility: display.showsAbility,
+                                      canCheckInterest: session.checks.canCheckInterest)
+        if var draft = editing?.draft {
+            // The page being changed keeps what's on it, in the save's new terms.
+            let position = draft.position
+            let criteria = draft.criteria
+            draft = search(for: editing?.screen ?? current) ?? draft
+            draft.position = position
+            for criterion in draft.criteria {
+                guard let was = criteria.first(where: { $0.id == criterion.id }) else { continue }
+                switch (was.control, criterion.control) {
+                case (.choice(let choices, let selected), .choice(let now, _)):
+                    if choices.indices.contains(selected), let index = now.firstIndex(of: choices[selected]) { draft.choose(criterion.id, index) }
+                case (.toggle(let on, _), .toggle(let now, _)):
+                    if on != now { draft.toggle(criterion.id) }
+                default: break
+                }
+            }
+            editing?.draft = draft
+        }
+    }
+
+    /// FM's player database's buttons over its list, for a screen with a search: Clear and Edit Search.
+    private func searchButtons(_ page: NativePage) throws -> Pointer? {
+        guard let search = search(for: current) else { return nil }
+        let buttons = try NativeEditSearch(page: page).searchButtons(search, clear: { FMInterface.shared.clearSearch() },
+                                                                     edit: { FMInterface.shared.editSearch() })
+        listButtons += buttons.clickable
+        return buttons.row
+    }
+
+    private func fillEditSearch(_ draft: any ScreenSearch, in element: Pointer, page: NativePage, _ ui: FMElements) throws {
+        let built = try NativeEditSearch(page: page).build(into: element, search: draft, actions: EditSearchActions(
+            open: { id, dropdown in FMInterface.shared.openDropdown(id, dropdown) },
+            toggled: { id, _ in FMInterface.shared.toggled(id) },
+            position: { FMInterface.shared.changeDraft { $0.position = $1 }($0) },
+            clearAll: { FMInterface.shared.changeDraft { draft, _ in draft.clear() }(0) },
+            cancel: { FMInterface.shared.cancelEdit() },
+            apply: { FMInterface.shared.applySearch() }))
+        listButtons += built.clickable
+        editToggles = built.toggles
+    }
+
+    private func editSearch() {
+        guard let search = search(for: current) else { return }
+        PluginLog.write("Edit Search: \(current.title)")
+        editing = (current, search)
+        refreshLater()
+    }
+
+    private func clearSearch() {
+        guard var search = search(for: current) else { return }
+        search.clear()
+        setSearch(search, for: current)
+        refreshLater()
+    }
+
+    /// A change to the search being edited, which the page then shows.
+    private func changeDraft(_ change: @escaping (inout any ScreenSearch, Int) -> Void) -> (Int) -> Void {
+        { value in
+            let interface = FMInterface.shared
+            interface.readToggles()
+            guard var draft = interface.editing?.draft else { return }
+            change(&draft, value)
+            interface.editing?.draft = draft
+            interface.refreshLater()
+        }
+    }
+
+    /// FM's switch changes itself when clicked, and this follows it; the page is then made again from the search.
+    /// If the switch didn't change itself, `readToggles` would put that right before anything else is done.
+    private func toggled(_ id: String) {
+        guard var draft = editing?.draft else { return }
+        draft.toggle(id)
+        editing?.draft = draft
+        refreshLater()
+    }
+
+    /// The search being edited, as its switches show it.
+    private func readToggles() {
+        guard var draft = editing?.draft, let ui = FMElements(IL2CPP.shared) else { return }
+        for (id, element) in editToggles {
+            guard let on = ui.toggleValue(element), let criterion = draft.criteria.first(where: { $0.id == id }),
+                  case .toggle(let was, true) = criterion.control, on != was else { continue }
+            draft.toggle(id)
+        }
+        editing?.draft = draft
+    }
+
+    private func openDropdown(_ id: String, _ dropdown: Pointer) {
+        readToggles()
+        guard openList.isEmpty, let criterion = editing?.draft.criteria.first(where: { $0.id == id }),
+              case .choice(let choices, let selected) = criterion.control else { return }
+        // Once FM has finished with the click.
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let interface = FMInterface.shared
+                guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp), let element = interface.screen.flatMap(il2cpp.target) else { return }
+                il2cpp.withoutCollection {
+                    do {
+                        let page = NativePage(ui: ui, look: interface.look ?? .fallback)
+                        let list = try NativeEditSearch(page: page).list(
+                            choices, selected: selected, under: dropdown, in: element,
+                            choose: { index in
+                                interface.closeList()
+                                interface.changeDraft { draft, index in draft.choose(id, index) }(index)
+                            },
+                            close: { interface.closeList() })
+                        interface.openList = list.elements
+                        interface.listButtons += list.clickable
+                    } catch {
+                        interface.report(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func closeList() {
+        let elements = openList
+        openList = []
+        guard !elements.isEmpty else { return }
+        // Once FM has finished with the click, which came from the list or the layer behind it.
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard let ui = FMElements(IL2CPP.shared) else { return }
+                for element in elements { try? ui.remove(element) }
+            }
+        }
+    }
+
+    private func cancelEdit() {
+        editing = nil
+        refreshLater()
+    }
+
+    private func applySearch() {
+        readToggles()
+        guard let editing else { return }
+        self.editing = nil
+        if search(for: editing.screen)?.key != editing.draft.key { setSearch(editing.draft, for: editing.screen) }
+        refreshLater()
+    }
+
+    /// Draws the screen again once FM has finished with the click that changed it, which may have come from an
+    /// element the screen is about to lose.
+    private func refreshLater() {
+        DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.refresh() } }
+    }
+
     /// One list in FM's own player table, filling the screen as FM's lists do, with the engine's line below it.
     private func fmTableScreen(_ section: TableSection, columns: [String], in element: Pointer, page: NativePage, _ ui: FMElements) throws {
         let body = try page.fixedBody(in: element)
         let tile = try page.tile()
         try ui.style(tile) { try $0.number("flexGrow", 1) }
-        try page.heading(section.title, note: section.table.head, in: tile)
+        if let buttons = try searchButtons(page) {
+            // FM's table grows to fill the tile, and would squeeze the row above it.
+            let top = try ui.box(["row-direction-normal", "align-items-start"])
+            try ui.style(top) { try $0.number("flexShrink", 0) }
+            let heading = try ui.box()
+            try ui.style(heading) { try $0.number("flexGrow", 1) }
+            try page.heading(section.title, note: section.table.head, in: heading)
+            try ui.add(heading, to: top)
+            try ui.add(buttons, to: top)
+            try ui.add(top, to: tile)
+        } else {
+            try page.heading(section.title, note: section.table.head, in: tile)
+        }
         try ui.add(tile, to: body)
         try addFMTable(section, columns: columns, in: tile, rows: nil, ui)
         try linesBelow(section, in: tile, page: page, ui)
@@ -747,6 +970,8 @@ final class FMInterface {
         guard screen != current else { return }
         PluginLog.write("Subtab chosen: \(screen.title)")
         current = screen
+        // Edit Search is a page of its own, which choosing another screen leaves without applying it.
+        editing = nil
         // Shortlist files change while FM runs, whenever one is saved, so they're read again each time.
         if screen == .shortlists { contents[.shortlists] = nil }
         if let staff = screen.listsStaff { model?.showListInsideGame(staff: staff) }
@@ -768,17 +993,22 @@ final class FMInterface {
         let revision = model.analysisRevision
         let chosen = current
         guard contents[chosen]?.revision != revision, !running.contains(chosen) else { return }
+        updateSearches(session, revision: revision)
+        let signings = signingSearch?.options ?? RecommendOptions()
+        let bargains = bargainSearch?.options
+        let version = searchVersions[chosen, default: 0]
         running.insert(chosen)
         let started = Date()
         DispatchQueue.global(qos: .userInitiated).async {
-            let content = Self.work(chosen, session: session)
+            let content = Self.work(chosen, session: session, signings: signings, bargains: bargains)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     let interface = FMInterface.shared
                     let seconds = String(format: "%.1f", Date().timeIntervalSince(started))
                     PluginLog.write("\(chosen.title) \(content == nil ? "came back empty" : "ready") in \(seconds) s")
                     interface.running.remove(chosen)
-                    if let content { interface.contents[chosen] = (revision, content) }
+                    // A search changed since this started is made again, below.
+                    if let content, version == interface.searchVersions[chosen, default: 0] { interface.contents[chosen] = (revision, content) }
                     interface.refresh()
                     // In case the save was read again while this was being made.
                     interface.startWork()
@@ -787,13 +1017,15 @@ final class FMInterface {
         }
     }
 
-    /// The same engine calls and starting options as the app's screens.
-    nonisolated private static func work(_ screen: StarshipScreen, session: AnalysisSession) -> ScreenContent? {
+    /// The same engine calls as the app's screens, with the searches set on their Edit Search pages: at first, the
+    /// app's own starting options.
+    nonisolated private static func work(_ screen: StarshipScreen, session: AnalysisSession, signings: RecommendOptions,
+                                         bargains: BargainOptions?) -> ScreenContent? {
         switch screen {
         case .dashboard:
             return .dashboard(ClubDashboard(session: session))
         case .signings:
-            guard let table = SigningRecommender(session: session).find(RecommendOptions()) else { return nil }
+            guard let table = SigningRecommender(session: session).find(signings) else { return nil }
             return .tables([TableSection(title: "Recommended signings", table: table, fmColumns: playerColumns,
                                          fmExtras: ["CA", "PA", "Would join on", "vs your best"])])
         case .planner:
@@ -807,9 +1039,9 @@ final class FMInterface {
             return .tables(sections)
         case .bargains:
             let finder = BargainFinder(session: session)
-            var options = BargainOptions()
+            var options = bargains ?? BargainOptions()
             // The app's max fee starts at the transfer budget.
-            options.maxFee = finder.startingMaxFee
+            if bargains == nil { options.maxFee = finder.startingMaxFee }
             guard let table = finder.find(options) else { return nil }
             return .tables([TableSection(title: "Bargains", table: table, fmColumns: bargainColumns, fmExtras: ["CA", "PA", "Would join on"])])
         case .shortlists:
