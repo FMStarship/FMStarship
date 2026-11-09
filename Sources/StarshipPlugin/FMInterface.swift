@@ -572,7 +572,9 @@ final class FMInterface {
         let listState = list.map { $0.searching ? "searching \(model?.statusLine ?? "")" : "\($0.version) \($0.filter)" } ?? ""
         if let session = analysis, let revision = model?.analysisRevision { updateSearches(session, revision: revision) }
         let searchState = editing.map { $0.screen == current ? "editing \($0.draft.key)" : "" } ?? search(for: current)?.key ?? ""
-        let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState) \(searchState)"
+        // Drawn again once FM's own tables are known, in place of plain rows.
+        let known = FMTable.Kind.allCases.map { FMTable.ready($0) ? "1" : "0" }.joined()
+        let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState) \(searchState) \(known)"
         guard key != shown else { return }
         // The tables of what was showing go with it, and so do its clickable entries.
         stopTables()
@@ -593,10 +595,14 @@ final class FMInterface {
         switch content?.content {
         case .dashboard(let dashboard):
             let tables = FMTable.ready
+            // The hint goes over the first tile only: once is enough on one screen.
+            var hinted = false
             try NativeDashboard(page: page).build(into: try page.body(in: element), dashboard: dashboard) { section, columns, tile, rows in
                 if tables {
                     try self.addFMTable(section, columns: columns, in: tile, rows: min(rows, NativePage.rowLimit), ui)
                 } else {
+                    if !hinted { try page.hint(NativePage.tableHint(section.kind), in: tile) }
+                    hinted = true
                     try page.rows(of: section, in: tile)
                 }
             }
@@ -614,7 +620,7 @@ final class FMInterface {
                     if let columns = section.fmColumns, FMTable.ready(section.kind) {
                         try fmTableTile(section, columns: columns, in: body, page: page, ui)
                     } else {
-                        try page.table(section, in: body)
+                        try page.table(section, in: body, hint: Self.fallsBack(section, ready: FMTable.ready) ? NativePage.tableHint(section.kind) : nil)
                     }
                 }
             }
@@ -626,6 +632,7 @@ final class FMInterface {
                     if tables {
                         try self.addFMTable(section, columns: section.fmColumns ?? Self.playerColumns, in: tile, rows: nil, ui)
                     } else {
+                        try page.hint(NativePage.tableHint(section.kind), in: tile)
                         try page.rows(of: section, in: tile)
                     }
                 },
@@ -655,9 +662,8 @@ final class FMInterface {
                 if tables {
                     try self.addFMTable(section, columns: section.fmColumns ?? [], in: tile, rows: nil, ui)
                 } else {
-                    var section = section
-                    // FM's staff table is taken from one of FM's own, the first time a screen of FM's with one is open.
-                    if staff { section.notes = ["Open FM's Club screen once, then FM Starship again, and this list uses FM's own staff table."] }
+                    // FM's tables are taken from one of FM's own, the first time a screen of FM's with one is open.
+                    try page.hint(NativePage.tableHint(kind), in: tile)
                     try page.rows(of: section, in: tile)
                 }
             },
@@ -847,6 +853,12 @@ final class FMInterface {
     /// element the screen is about to lose.
     private func refreshLater() {
         DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.refresh() } }
+    }
+
+    /// Whether a list that goes in FM's own table is in plain rows instead, because FM's table of its kind isn't known
+    /// yet. The engine's own tables, such as the squad's places, are always in plain rows.
+    nonisolated static func fallsBack(_ section: TableSection, ready: (FMTable.Kind) -> Bool) -> Bool {
+        section.fmColumns != nil && !ready(section.kind)
     }
 
     /// One list in FM's own player table, filling the screen as FM's lists do, with the engine's line below it.
@@ -1137,6 +1149,12 @@ final class FMInterface {
 
     /// Changing screens rebuilds the row the click came from, so it waits until FM has finished with the click.
     private func select(_ screen: StarshipScreen) {
+        // FM's own tables may be found by now, in one of FM's screens under ours, which can still be loading when ours
+        // opens. The screen is drawn again with them.
+        if FMTable.Kind.allCases.contains(where: { !FMTable.ready($0) }), let ui = FMElements(IL2CPP.shared) {
+            FMTable.lookForAssets(below: [menuBody, reportBody].compactMap { $0.flatMap(ui.il2cpp.target) }, ui)
+            if screen == current { refreshLater() }
+        }
         guard screen != current else { return }
         PluginLog.write("Subtab chosen: \(screen.title)")
         current = screen

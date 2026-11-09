@@ -166,12 +166,30 @@ struct NativePage {
     // MARK: Tables
 
     /// An engine table as FM's rows: the line above it, a header in small print, a row per entry between dividers,
-    /// and the status line below. Columns share the width by the engine's own weights.
-    func table(_ section: TableSection, in page: Pointer) throws {
+    /// and the status line below. Columns share the width by the engine's own weights. `hint` is a line between the
+    /// heading and the rows.
+    func table(_ section: TableSection, in page: Pointer, hint: String? = nil) throws {
         let tile = try tile()
         try heading(section.title, note: section.table.head, in: tile)
+        if let hint { try self.hint(hint, in: tile) }
         try rows(of: section, in: tile)
         try ui.add(tile, to: page)
+    }
+
+    /// A line over a list, such as `tableHint`.
+    func hint(_ text: String, in tile: Pointer) throws {
+        try ui.add(try spaced(try ui.text(text, ["body-sm", "global-text-secondary"]), bottom: 8), to: tile)
+    }
+
+    /// What a list says when it's in plain rows because FM's own table of its kind isn't known yet: the tables are
+    /// taken from one of FM's own lists, so opening one gets them.
+    nonisolated static func tableHint(_ kind: FMTable.Kind) -> String {
+        switch kind {
+        case .players:
+            return "Open one of FM's own player lists, such as your Squad, then come back here to get FM's tables, with sorting and right-click."
+        case .staff:
+            return "Open one of FM's own staff lists, such as Club > Staff, then come back here to get FM's tables, with sorting and right-click."
+        }
     }
 
     /// An engine table's header, rows and status line, in a tile that has its heading already.
