@@ -3,7 +3,7 @@ import Foundation
 
 /// FM Starship's screens inside FM, under its own subtabs.
 enum StarshipScreen: CaseIterable {
-    case dashboard, signings, planner, bargains
+    case dashboard, signings, planner, bargains, shortlists
 
     var title: String {
         switch self {
@@ -11,6 +11,7 @@ enum StarshipScreen: CaseIterable {
         case .signings: return "Recommended signings"
         case .planner: return "Squad planner"
         case .bargains: return "Bargains"
+        case .shortlists: return "Shortlists"
         }
     }
 
@@ -21,6 +22,7 @@ enum StarshipScreen: CaseIterable {
         case .signings: return "Finding players who'd join you..."
         case .planner: return "Going through your first team..."
         case .bargains: return "Finding bargains..."
+        case .shortlists: return "Reading your shortlists..."
         }
     }
 }
@@ -29,6 +31,7 @@ enum StarshipScreen: CaseIterable {
 enum ScreenContent {
     case dashboard(ClubDashboard)
     case tables([TableSection])
+    case shortlists([ShortlistView])
 }
 
 /// One of the engine's tables on a screen, with a heading over it.

@@ -4,6 +4,7 @@ import FMStarshipUI
 import Foundation
 @preconcurrency import StarshipAnalysis
 @preconcurrency import StarshipCore
+import StarshipFiles
 
 /// FM Starship inside FM's own interface: a tab in FM's navigation bar, and screens made of FM's elements, under
 /// subtabs of their own, where FM shows its own. Going to any of FM's screens puts the game's back.
@@ -413,10 +414,12 @@ final class FMInterface {
         guard let element = screen.flatMap(ui.il2cpp.target) else { return }
         let content = contents[current]
         let status = statusLine
-        let key = "\(current) \(content?.revision ?? -1) \(status)"
+        let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "")"
         guard key != shown else { return }
-        // The tables of what was showing go with it.
+        // The tables of what was showing go with it, and so do its clickable entries.
         stopTables()
+        for entry in listButtons { ClickActions.actions[entry] = nil }
+        listButtons = []
         try fillSubtabs(ui)
         for child in ui.children(of: element) { try ui.remove(child) }
         let page = NativePage(ui: ui, look: look ?? .fallback)
@@ -443,6 +446,18 @@ final class FMInterface {
                     }
                 }
             }
+        case .shortlists(let lists):
+            let tables = FMTable.ready
+            listButtons = try NativeShortlists(page: page).build(
+                into: try page.fixedBody(in: element), lists: lists, chosen: chosenShortlist, columns: Self.playerColumns,
+                table: { section, tile in
+                    if tables {
+                        try self.addFMTable(section, columns: section.fmColumns ?? Self.playerColumns, in: tile, rows: nil, ui)
+                    } else {
+                        try page.rows(of: section, in: tile)
+                    }
+                },
+                choose: { FMInterface.shared.chooseShortlist($0) })
         case nil:
             try page.message(status, title: current.title, in: try page.body(in: element))
         }
@@ -669,6 +684,20 @@ final class FMInterface {
         try ui.add(tabs, to: bar)
     }
 
+    /// The open shortlist, by its file. The newest until one is chosen.
+    private var chosenShortlist: URL?
+    /// The shortlists' entries on the left of their screen, which can be clicked.
+    private var listButtons: [Pointer] = []
+
+    /// Opens another shortlist, once FM has finished with the click on its entry, which goes when the screen is
+    /// rebuilt.
+    private func chooseShortlist(_ url: URL) {
+        guard url != chosenShortlist else { return }
+        PluginLog.write("Shortlist chosen: \(url.deletingPathExtension().lastPathComponent)")
+        chosenShortlist = url
+        DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.refresh() } }
+    }
+
     private func forgetSubtabClicks() {
         for button in subtabButtons { ClickActions.actions[button] = nil }
         subtabButtons = []
@@ -679,6 +708,8 @@ final class FMInterface {
         guard screen != current else { return }
         PluginLog.write("Subtab chosen: \(screen.title)")
         current = screen
+        // Shortlist files change while FM runs, whenever one is saved, so they're read again each time.
+        if screen == .shortlists { contents[.shortlists] = nil }
         startWork()
         DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.refresh() } }
     }
@@ -740,6 +771,16 @@ final class FMInterface {
             options.maxFee = finder.startingMaxFee
             guard let table = finder.find(options) else { return nil }
             return .tables([TableSection(title: "Bargains", table: table, fmColumns: bargainColumns, fmExtras: ["CA", "PA", "Would join on"])])
+        case .shortlists:
+            let players = Dictionary(session.db.players.map { ($0.uid, $0) }, uniquingKeysWith: { first, _ in first })
+            // Only FM's own folders, under Library: looking in Documents, where the Windows game keeps them, would make
+            // macOS ask the player whether FM may, which FM never does itself.
+            let library = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library").path + "/"
+            let roots = ShortlistFile.gameRoots().filter { $0.standardizedFileURL.path.hasPrefix(library) } + [testShortlistRoot].compactMap { $0 }
+            return .shortlists(ShortlistFile.list(isStaff: false, roots: roots).map { entry in
+                ShortlistView(url: entry.url, name: entry.shortlist.name, modified: entry.modified, uids: entry.shortlist.uids,
+                              players: players, club: session.club.name, display: session.display)
+            })
         }
     }
 
@@ -803,10 +844,22 @@ final class FMInterface {
             tableCommand(Array(words.dropFirst()), ui)
         case "methods":
             InterfaceDump.shared.writeMethodMap()
+        case "uids":
+            // Who's in the screen's tables, by FM's unique IDs, for making test files such as a shortlist.
+            for live in liveTables { PluginLog.write(live.people.map { "\($0.uid) \($0.name)" }.joined(separator: "; ")) }
+        case "shortlists":
+            // A folder with a "shortlists" folder in it, read as well as FM's own, for trying the Shortlists screen.
+            Self.testShortlistRoot = words.dropFirst().first.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            contents[.shortlists] = nil
+            PluginLog.write("Shortlists are read from FM's folders\(Self.testShortlistRoot.map { " and \($0.path)" } ?? "")")
+            startWork()
         default:
-            PluginLog.write("Commands: open, close, screen <name>, dump, tables, methods, host panel|body, table ...")
+            PluginLog.write("Commands: open, close, screen <name>, dump, tables, methods, host panel|body, table ..., uids, shortlists <folder>")
         }
     }
+
+    /// The `shortlists` command's folder.
+    nonisolated(unsafe) private static var testShortlistRoot: URL?
 
     /// Trying out how FM's table starts, on the one last made: calling one of its methods that takes nothing, or
     /// changing how the next one is made, which choosing its subtab again does.
