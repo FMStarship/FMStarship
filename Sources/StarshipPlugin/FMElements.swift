@@ -155,13 +155,25 @@ struct FMElements {
         return try? il2cpp.call(q, nil, [root, nil, il2cpp.managedString(styleClass)])
     }
 
-    /// The root of FM's main document, where its navigation bar and screens are.
+    /// The root of FM's main document, where its navigation bar and screens are. It's kept for as long as it's still in
+    /// FM's interface, since finding it asks Unity for every UIDocument, and the timers and clicks want it often.
     func mainRoot() throws -> Pointer? {
+        if let kept = Self.root.flatMap(il2cpp.target), isAttached(kept) { return kept }
+        if let handle = Self.root { il2cpp.unpin(handle) }
+        Self.root = nil
         for document in try findObjects(try toolkitClass("UIDocument")) where il2cpp.text(try il2cpp.call(document, "get_name")) == "MainUIDocument" {
-            return try il2cpp.call(document, "get_rootVisualElement")
+            let root = try il2cpp.call(document, "get_rootVisualElement")
+            Self.root = root.flatMap(il2cpp.pin)
+            return root
         }
         return nil
     }
+
+    private static var root: IL2CPP.Handle?
+
+    /// Whether an element is in a panel Unity draws. One FM has taken out of its interface, as when it builds its bar
+    /// again, isn't.
+    func isAttached(_ element: Pointer) -> Bool { (try? il2cpp.call(element, "get_panel")) != nil }
 
     func findObjects(_ klass: Pointer) throws -> [Pointer] {
         let find = il2cpp.method(il2cpp.findClass("UnityEngine", "Object"), "FindObjectsByType", parameters: 2, firstParameter: "System.Type")
