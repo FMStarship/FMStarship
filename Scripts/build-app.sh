@@ -2,6 +2,11 @@
 # Builds "FM Starship.app": the release binary, Info.plist and the agent that FM loads at launch.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# It deletes the app before rebuilding it, so it stops while FM or FM Starship is open.
+if pgrep -x "Football Manager 27" >/dev/null || pgrep -x FMStarship >/dev/null; then
+    echo "Close Football Manager and FM Starship first. This deletes build/FM Starship.app before rebuilding it." >&2
+    exit 1
+fi
 Scripts/build-agent.sh
 swift build -c release --product FMStarship
 BIN="$(swift build -c release --show-bin-path)"
