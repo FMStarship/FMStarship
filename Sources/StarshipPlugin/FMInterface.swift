@@ -67,10 +67,18 @@ final class FMInterface {
     private var shown = ""
     private var look: TileLook?
     private var lastProblem = ""
+    /// What our timers cost FM's main thread, written to the log once a minute.
+    private let tickCost = TimerCost(), rowsCost = TimerCost()
+    private var costsWritten = Date()
 
     func start(model: AppModel) {
         self.model = model
-        let timer = Timer(timeInterval: 0.5, repeats: true) { _ in MainActor.assumeIsolated { FMInterface.shared.tick() } }
+        let timer = Timer(timeInterval: 0.5, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                FMInterface.shared.tickCost.measure { FMInterface.shared.tick() }
+                FMInterface.shared.writeCosts()
+            }
+        }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         watching = model.objectWillChange.sink { _ in
@@ -171,6 +179,14 @@ final class FMInterface {
                 report(error)
             }
         }
+    }
+
+    private func writeCosts() {
+        guard Date().timeIntervalSince(costsWritten) >= 60 else { return }
+        costsWritten = Date()
+        let costs = [("tick", tickCost), ("refreshRows", rowsCost), ("checkGame", model?.checkGameCost)]
+            .compactMap { name, cost in cost?.take().map { "\(name) \($0)" } }
+        if !costs.isEmpty { PluginLog.write("FM's main thread, last minute: " + costs.joined(separator: "; ")) }
     }
 
     private func report(_ error: Error) {
@@ -818,7 +834,9 @@ final class FMInterface {
         liveTables.append(LiveTable(handle: handle, extras: extras, people: people))
         guard rowsTimer == nil else { return }
         // Often enough that a row FM reuses while scrolling or sorting shows its new person's values at once.
-        let timer = Timer(timeInterval: 0.1, repeats: true) { _ in MainActor.assumeIsolated { FMInterface.shared.refreshRows() } }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
+            MainActor.assumeIsolated { FMInterface.shared.rowsCost.measure { FMInterface.shared.refreshRows() } }
+        }
         RunLoop.main.add(timer, forMode: .common)
         rowsTimer = timer
     }

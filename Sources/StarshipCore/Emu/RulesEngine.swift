@@ -39,10 +39,12 @@ public final class RulesEngine: GameRulesEngine {
     /// First team, reserves, youth.
     public static let staffLevels = [1, 3, 4]
 
-    private let game: GameProcess
+    public let game: GameProcess
     private let sandbox: Sandbox
     /// The process this engine reads. Its addresses mean nothing in any other run of the game.
     public var pid: Int32 { game.pid }
+    /// How many of FM's pages the sandbox has copied so far. It keeps them for as long as the engine lasts.
+    public var cachedPages: Int { sandbox.cachedPages }
     private let manager: Int64
     private let interestFunction: Int64
     private let statusFunction: Int64

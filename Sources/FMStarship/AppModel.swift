@@ -177,13 +177,18 @@ package final class AppModel: ObservableObject {
     private var playersByUID: [UInt32: Player] = [:]
     private var staffByUID: [UInt32: Staff] = [:]
     private var laterChecks = LaterChecks()
+    /// What the poll below costs. Inside FM it runs on FM's main thread, and the plugin logs it.
+    package let checkGameCost = TimerCost()
 
     init() {
         tellFilters()
         colors = AppColors(themeNamed: Settings.current.theme)
         reloadColumns()
         poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkGame() }
+            Task { @MainActor in
+                guard let self else { return }
+                self.checkGameCost.measure { self.checkGame() }
+            }
         }
     }
 
@@ -359,9 +364,9 @@ package final class AppModel: ObservableObject {
         status = "Connecting to Football Manager..."
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                let (database, engine) = try GameReader.connect { text in
+                let (database, engine) = try GameReader.connect(status: { text in
                     Task { @MainActor in self?.status = text }
-                }
+                }, log: AppLog.write)
                 await self?.finished(database, engine)
             } catch {
                 await self?.failed("\(error)")
@@ -433,6 +438,8 @@ package final class AppModel: ObservableObject {
         seasonToken = token
         readingSeasonStats = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            let rules = engine as? RulesEngine
+            let clock = rules.map { ReadClock($0.game) }
             let players = database.players.filter { $0.block > 0 }
             var found = [SeasonStats?](repeating: nil, count: players.count)
             var forms = [String](repeating: "", count: players.count)
@@ -451,6 +458,10 @@ package final class AppModel: ObservableObject {
                         }
                     }
                 }
+            }
+            if let rules, let clock {
+                clock.lap(token.isCancelled ? "stopped after" : works ? "answered in" : "not answered, in")
+                AppLog.write("Season stats for \(players.count) players \(clock.line), \(rules.cachedPages) of FM's pages copied")
             }
             let answers = found, formAnswers = forms
             Task { @MainActor in
@@ -709,7 +720,7 @@ package final class AppModel: ObservableObject {
         if wanted.transfer || wanted.loan {
             interest = InterestStep(
                 label: "Checking interest in joining \(RulesState.shared.clubName)",
-                check: { batch, token in RulesState.shared.checkAll(batch, cancelled: { token.isCancelled }) },
+                check: Self.timingFirstBatch("players") { batch, token in RulesState.shared.checkAll(batch, cancelled: { token.isCancelled }) },
                 passes: { filter.matchesInterest($0) },
                 answered: { RulesState.shared.known($0) != nil })
         }
@@ -730,7 +741,7 @@ package final class AppModel: ObservableObject {
         if wanted.firstTeam || wanted.reserves || wanted.youth {
             interest = InterestStep(
                 label: "Checking which staff would join \(RulesState.shared.clubName)",
-                check: { batch, token in RulesState.shared.checkAllStaff(batch, cancelled: { token.isCancelled }) },
+                check: Self.timingFirstBatch("staff") { batch, token in RulesState.shared.checkAllStaff(batch, cancelled: { token.isCancelled }) },
                 passes: { filter.matchesInterest($0) },
                 answered: { RulesState.shared.staffKnown($0) != nil })
         }
@@ -739,6 +750,21 @@ package final class AppModel: ObservableObject {
                             columnFilters: parsedFilters(staffColumns, staffColumnFilters), shortlist: shortlist,
                             interest: interest, sortBy: sortBy, descending: descending,
                             ordered: { Columns.ordered(staff: $0, sortBy: sortBy, descending: descending, rankArea: rankArea) })
+    }
+
+    /// Logs how long a search's first batch of checks took. After a read, that's the batch that copies FM's memory
+    /// into the sandbox.
+    nonisolated private static func timingFirstBatch<Row>(_ people: String, _ check: @escaping ([Row], CancelToken) -> Void)
+        -> ([Row], CancelToken) -> Void {
+        var first = true
+        return { batch, token in
+            let clock = first ? (GameRules.engine as? RulesEngine).map { ReadClock($0.game) } : nil
+            first = false
+            check(batch, token)
+            guard let clock, !token.isCancelled else { return }
+            clock.lap("First interest batch, \(batch.count) \(people),")
+            AppLog.write(clock.line)
+        }
     }
 
     private func openShortlistFilter(isStaff: Bool) -> ShortlistFilter? {
