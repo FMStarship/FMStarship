@@ -12,51 +12,74 @@ import StarshipCore
 struct FMTable {
     typealias Pointer = IL2CPP.Pointer
     let ui: FMElements
+    /// Which of FM's tables: its players', or the one it lists other people in, such as staff.
+    var kind = Kind.players
     private var il2cpp: IL2CPP { ui.il2cpp }
+
+    init(ui: FMElements, kind: Kind = .players) {
+        self.ui = ui
+        self.kind = kind
+    }
 
     // MARK: FM's assets
 
-    /// What FM's player tables are made from, as FM's own asset references: the column factory, the row and header
-    /// templates, and the right-click menu. In the order of the table's setters below.
-    private static var assets: [IL2CPP.Handle]?
+    /// FM's two kinds of people table, by the column factory each is made from.
+    enum Kind: CaseIterable {
+        case players, staff
+
+        var factoryName: String { self == .players ? "PlayerTableFactory" : "NonPlayerTableFactory" }
+        var name: String { self == .players ? "player" : "staff" }
+        /// The GUIDs of its assets, kept from one start to the next, in FM Starship's own folder.
+        var assetFile: URL {
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+                "Library/Application Support/FMStarship/Plugin/\(self == .players ? "fm-table-assets.json" : "fm-staff-table-assets.json")")
+        }
+        /// FM's column for a hidden value only FM's editor fills, empty in a game, which ours are copies of.
+        var spareColumn: String { self == .players ? "hidden-asking-price" : Self.staffSpareColumn }
+        /// Set from the staff factory's columns once they're known.
+        static var staffSpareColumn = ""
+    }
+
+    /// What FM's tables of each kind are made from, as FM's own asset references: the column factory, the row and
+    /// header templates, and the right-click menu, in the order of the table's setters below. FM's staff tables
+    /// have no row template or menu of their own.
+    private static var assets: [Kind: [IL2CPP.Handle?]] = [:]
     private static let setters = ["set_FactoryAsset", "set_RowElementAsset", "set_HeaderCellAsset", "set_ContextMenuData"]
     private static let getters = ["get_FactoryAsset", "get_RowElementAsset", "get_HeaderCellAsset", "get_ContextMenuData"]
-    private static let factoryName = "PlayerTableFactory"
-    /// The GUIDs of those assets, kept from one start to the next, in FM Starship's own folder.
-    private static let assetFile = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/FMStarship/Plugin/fm-table-assets.json")
-    /// The factory's column IDs, once a table of FM's has been seen with it loaded.
-    private(set) static var knownColumns: Set<String> = []
+    /// The ones a table can't be made without: the factory and the header.
+    private static let needed: Set<Int> = [0, 2]
+    /// Each factory's column IDs, once a table of FM's has been seen with it loaded.
+    private(set) static var knownColumns: [Kind: Set<String>] = [:]
 
-    static var ready: Bool { assets != nil }
+    static var ready: Bool { ready(.players) }
+    static func ready(_ kind: Kind) -> Bool { assets[kind] != nil }
 
-    /// Keeps the assets of FM's own player table, the first time one is seen with its factory loaded, and their
-    /// GUIDs for the next start.
+    /// Keeps the assets of one of FM's own people tables, the first time one of each kind is seen with its factory
+    /// loaded, and their GUIDs for the next start.
     static func keepAssets(from table: Pointer, _ ui: FMElements) {
         let il2cpp = ui.il2cpp
         guard let factory = il2cpp.fieldObject(table, "m_loadedFactoryAsset"),
-              il2cpp.text(try? il2cpp.call(factory, "get_name")) == factoryName else { return }
-        if knownColumns.isEmpty { writeColumns(factory, il2cpp) }
-        guard assets == nil else { return }
-        let references = getters.compactMap { try? il2cpp.call(table, $0) }
-        let handles = references.compactMap { il2cpp.pin($0) }
-        guard references.count == getters.count, handles.count == getters.count else {
-            handles.forEach(il2cpp.unpin)
-            PluginLog.write("FM's player table had \(references.count) of its \(getters.count) asset references")
+              let kind = Kind.allCases.first(where: { il2cpp.text(try? il2cpp.call(factory, "get_name")) == $0.factoryName }) else { return }
+        if knownColumns[kind] == nil { writeColumns(factory, kind, il2cpp) }
+        guard assets[kind] == nil else { return }
+        let references = getters.map { (try? il2cpp.call(table, $0)) ?? nil }
+        guard needed.allSatisfy({ references[$0] != nil }) else {
+            PluginLog.write("FM's \(kind.name) table had \(references.compactMap { $0 }.count) of its \(getters.count) asset references")
             return
         }
-        assets = handles
-        let guids = references.map { il2cpp.text(try? il2cpp.call($0, "get_AssetGUID")) ?? "" }
-        if !guids.contains(where: \.isEmpty), let data = try? JSONEncoder().encode(guids) { try? data.write(to: assetFile) }
-        PluginLog.write("FM's player table assets kept: \(guids.joined(separator: " "))")
+        assets[kind] = references.map { $0.flatMap { il2cpp.pin($0) } }
+        let guids = references.map { $0.flatMap { il2cpp.text(try? il2cpp.call($0, "get_AssetGUID")) } ?? "" }
+        if needed.allSatisfy({ !guids[$0].isEmpty }), let data = try? JSONEncoder().encode(guids) { try? data.write(to: kind.assetFile) }
+        PluginLog.write("FM's \(kind.name) table assets kept: \(guids.joined(separator: " "))")
     }
 
-    /// Looks through FM's screens, shown or not, for one of its player tables to take the assets from.
+    /// Looks through FM's screens, shown or not, for its people tables to take the assets from.
     static func lookForAssets(below roots: [Pointer], _ ui: FMElements) {
-        guard assets == nil || knownColumns.isEmpty, let tableClass = ui.il2cpp.findClass("SI.Bindable", "StreamedTable") else { return }
+        let wanted = { Kind.allCases.contains { assets[$0] == nil || knownColumns[$0] == nil } }
+        guard wanted(), let tableClass = ui.il2cpp.findClass("SI.Bindable", "StreamedTable") else { return }
         var queue = roots
         var looked = 0
-        while !queue.isEmpty, looked < 40_000, assets == nil || knownColumns.isEmpty {
+        while !queue.isEmpty, looked < 40_000, wanted() {
             let element = queue.removeFirst()
             looked += 1
             if ui.il2cpp.isSubclass(ui.il2cpp.classOf(element), of: tableClass) {
@@ -69,11 +92,19 @@ struct FMTable {
 
     /// The assets from the GUIDs kept last time, made into FM's asset references again.
     static func loadAssets(_ ui: FMElements) {
+        for kind in Kind.allCases { loadAssets(kind, ui) }
+    }
+
+    private static func loadAssets(_ kind: Kind, _ ui: FMElements) {
         let il2cpp = ui.il2cpp
-        guard assets == nil, let data = try? Data(contentsOf: assetFile), let guids = try? JSONDecoder().decode([String].self, from: data),
+        guard assets[kind] == nil, let data = try? Data(contentsOf: kind.assetFile), let guids = try? JSONDecoder().decode([String].self, from: data),
               guids.count == setters.count, let tableClass = il2cpp.findClass("SI.Bindable", "StreamedTable") else { return }
-        var handles: [IL2CPP.Handle] = []
+        var handles: [IL2CPP.Handle?] = []
         for (setter, guid) in zip(setters, guids) {
+            guard !guid.isEmpty else {
+                handles.append(nil)
+                continue
+            }
             do {
                 guard let method = il2cpp.method(tableClass, setter, parameters: 1),
                       let referenceClass = il2cpp.klass(of: il2cpp.methodParameter(method, 0)) else {
@@ -83,40 +114,48 @@ struct FMTable {
                 guard let handle = il2cpp.pin(reference) else { throw IL2CPP.Failure("Couldn't hold \(setter)'s asset") }
                 handles.append(handle)
             } catch {
-                handles.forEach(il2cpp.unpin)
-                PluginLog.write("FM's player table assets couldn't be made from last time's: \(error)")
+                handles.compactMap { $0 }.forEach(il2cpp.unpin)
+                PluginLog.write("FM's \(kind.name) table assets couldn't be made from last time's: \(error)")
                 return
             }
         }
-        assets = handles
-        PluginLog.write("FM's player table assets made from last time's GUIDs")
+        assets[kind] = handles
+        PluginLog.write("FM's \(kind.name) table assets made from last time's GUIDs")
     }
 
     /// Writes the factory's column IDs to the log folder, to choose columns from, and keeps them.
-    private static func writeColumns(_ factory: Pointer, _ il2cpp: IL2CPP) {
+    private static func writeColumns(_ factory: Pointer, _ kind: Kind, _ il2cpp: IL2CPP) {
         guard let rows = il2cpp.fieldObject(factory, "m_rowData") else { return }
         var lines: [String] = []
+        var widths: [String: Float] = [:]
         for row in il2cpp.items(of: rows) {
             guard let id = il2cpp.fieldObject(row, "m_id").flatMap(il2cpp.text) else { continue }
             let width = il2cpp.fieldOffset(il2cpp.classOf(row), "m_defaultWidth").map { row.load(fromByteOffset: $0, as: Float.self) } ?? 0
-            defaultWidths[id] = width
+            widths[id] = width
             lines.append("\(id) \(FMElements.whole(width))")
         }
-        knownColumns = Set(defaultWidths.keys)
-        let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/FM Starship/fm-player-columns.txt")
+        defaultWidths[kind] = widths
+        knownColumns[kind] = Set(widths.keys)
+        if kind == .staff { Kind.staffSpareColumn = Self.spare(among: Array(widths.keys)) ?? "" }
+        let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/FM Starship/fm-\(kind.name)-columns.txt")
         try? lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
-        PluginLog.write("FM's player table has \(lines.count) columns to choose from")
+        PluginLog.write("FM's \(kind.name) table has \(lines.count) columns to choose from")
     }
 
-    /// Each of the factory's columns' width before FM fits the table to the screen, which it does in proportion.
-    private(set) static var defaultWidths: [String: Float] = [:]
+    /// Of a factory's columns, one for a hidden value that only FM's editor fills, for our own to copy.
+    nonisolated static func spare(among columns: [String]) -> String? {
+        columns.filter { $0.hasPrefix("hidden-") && !abilityHosts.values.contains($0) }.sorted().first
+    }
+
+    /// Each factory's columns' widths before FM fits the table to the screen, which it does in proportion.
+    private(set) static var defaultWidths: [Kind: [String: Float]] = [:]
 
     /// Takes the factory's columns from a table of ours once it has loaded it, when no table of FM's has been seen
     /// with it. True when that's new, so the table can be made again with columns chosen to fit.
-    static func noteFactory(of table: Pointer, _ il2cpp: IL2CPP) -> Bool {
-        guard defaultWidths.isEmpty, let factory = il2cpp.fieldObject(table, "m_loadedFactoryAsset") else { return false }
-        writeColumns(factory, il2cpp)
-        return !defaultWidths.isEmpty
+    static func noteFactory(of table: Pointer, _ kind: Kind, _ il2cpp: IL2CPP) -> Bool {
+        guard defaultWidths[kind] == nil, let factory = il2cpp.fieldObject(table, "m_loadedFactoryAsset") else { return false }
+        writeColumns(factory, kind, il2cpp)
+        return defaultWidths[kind] != nil
     }
 
     // MARK: Making one
@@ -124,7 +163,7 @@ struct FMTable {
     /// A new table of FM's, set up with its player table assets but empty. Rows and columns go in once it's in FM's
     /// tree, with `fill`, since the table loads its factory when it's attached.
     func make(name: String) throws -> Pointer {
-        guard let assets = Self.assets else { throw IL2CPP.Failure("FM's player table assets aren't known yet") }
+        guard let assets = Self.assets[kind] else { throw IL2CPP.Failure("FM's \(kind.name) table assets aren't known yet") }
         guard let tableClass = il2cpp.findClass("SI.Bindable", "StreamedTable") else { throw IL2CPP.Failure("No StreamedTable in FM") }
         let table = try il2cpp.new(tableClass)
         try il2cpp.call(table, "set_name", [il2cpp.managedString(name)])
@@ -135,6 +174,7 @@ struct FMTable {
         // and a player dropped on a table that isn't about a squad sends FM's game an event about nothing, which
         // closes FM.
         for (setter, handle) in zip(Self.setters, assets) where setter != "set_RowElementAsset" {
+            guard let handle else { continue }
             guard let reference = il2cpp.target(of: handle) else { throw IL2CPP.Failure("\(setter)'s asset is gone") }
             try il2cpp.call(table, setter, [reference])
         }
@@ -154,9 +194,10 @@ struct FMTable {
     func fill(_ table: Pointer, people: [Person], columns: [String], own: [String: Float] = [:], extras: [Extra] = []) throws {
         if let factory = il2cpp.fieldObject(table, "m_loadedFactoryAsset") {
             // FM's own column IDs first, so the choice of columns below knows them.
-            if Self.defaultWidths.isEmpty { Self.writeColumns(factory, il2cpp) }
+            if Self.defaultWidths[kind] == nil { Self.writeColumns(factory, kind, il2cpp) }
             addOwnColumns(extras, to: factory)
-            let chosen = Self.knownColumns.isEmpty ? columns : columns.filter(Self.knownColumns.contains)
+            let known = Self.knownColumns[kind] ?? []
+            let chosen = known.isEmpty ? columns : columns.filter(known.contains)
             try il2cpp.call(table, "UpdateStreamedTableView", [try view(chosen, own: own)])
         }
         try il2cpp.call(table, "SetList", [try rows(people)])
@@ -296,8 +337,8 @@ struct FMTable {
         return (columns, extras)
     }
 
-    /// Our own columns in FM's player table: copies of FM's column for a hidden asking price, which only FM's editor
-    /// fills, under IDs of ours and as wide as our values need. They go in the factory's lookup for as long as FM
+    /// Our own columns in FM's table: copies of FM's column for a hidden value, such as a player's asking price,
+    /// which only FM's editor fills, under IDs of ours and as wide as our values need. They go in the factory's lookup for as long as FM
     /// keeps the factory loaded; FM's own tables never ask for them.
     func addOwnColumns(_ extras: [Extra], to factory: Pointer) {
         guard let lookup = il2cpp.fieldObject(factory, "m_rowDataLookup") else { return }
@@ -305,7 +346,7 @@ struct FMTable {
             extra.title != nil && il2cpp.unbox(try? il2cpp.call(lookup, "ContainsKey", [il2cpp.managedString(extra.host)]), as: Bool.self) == false
         }
         guard !wanted.isEmpty, let rows = il2cpp.fieldObject(factory, "m_rowData"),
-              let source = il2cpp.items(of: rows).first(where: { il2cpp.fieldObject($0, "m_id").flatMap(il2cpp.text) == "hidden-asking-price" }),
+              let source = il2cpp.items(of: rows).first(where: { il2cpp.fieldObject($0, "m_id").flatMap(il2cpp.text) == kind.spareColumn }),
               let rowClass = il2cpp.classOf(source) else { return }
         for extra in wanted {
             do {
@@ -315,7 +356,7 @@ struct FMTable {
                 il2cpp.setField(column, "m_defaultWidth", extra.width)
                 il2cpp.setField(column, "m_minimumWidth", Float(48))
                 try il2cpp.call(lookup, "set_Item", [il2cpp.managedString(extra.host), column])
-                Self.knownColumns.insert(extra.host)
+                Self.knownColumns[kind, default: []].insert(extra.host)
             } catch {
                 PluginLog.write("Our column \(extra.host) couldn't go in FM's table: \(error)")
             }

@@ -281,7 +281,7 @@ final class FMInterface {
         guard let root = try ui.mainRoot(), let body = ui.query(root, "MenuBody") else { throw IL2CPP.Failure("No screen area in FM") }
         let fmScreens = ui.children(of: body)
         if look == nil { look = TileLook.copied(from: fmScreens, ui) }
-        if !FMTable.ready {
+        if !FMTable.ready(.players) || !FMTable.ready(.staff) {
             // From one of FM's own player tables, if a screen of FM's has one, or from the last start's.
             FMTable.lookForAssets(below: [body] + [ui.query(root, "ReportBody")].compactMap { $0 }, ui)
             FMTable.loadAssets(ui)
@@ -332,6 +332,7 @@ final class FMInterface {
         shown = ""
         model?.loadSaveIfEmpty()
         startWork()
+        if let staff = current.listsStaff { model?.showListInsideGame(staff: staff) }
         try fill(ui)
         PluginLog.write("FM Starship screen shown")
     }
@@ -414,7 +415,10 @@ final class FMInterface {
         guard let element = screen.flatMap(ui.il2cpp.target) else { return }
         let content = contents[current]
         let status = statusLine
-        let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "")"
+        // The app's Players and Staff searches: drawn again when one finishes, and while one runs, as it goes.
+        let list = current.listsStaff.flatMap { model?.listInsideGame(staff: $0) }
+        let listState = list.map { $0.searching ? "searching \(model?.statusLine ?? "")" : "\($0.version) \($0.filter)" } ?? ""
+        let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState)"
         guard key != shown else { return }
         // The tables of what was showing go with it, and so do its clickable entries.
         stopTables()
@@ -423,6 +427,11 @@ final class FMInterface {
         try fillSubtabs(ui)
         for child in ui.children(of: element) { try ui.remove(child) }
         let page = NativePage(ui: ui, look: look ?? .fallback)
+        if let staff = current.listsStaff, model?.analysis != nil {
+            try fillList(staff: staff, list, in: element, page: page, ui)
+            shown = key
+            return
+        }
         switch content?.content {
         case .dashboard(let dashboard):
             let tables = FMTable.ready
@@ -434,12 +443,12 @@ final class FMInterface {
                 }
             }
         case .tables(let sections):
-            if sections.count == 1, let section = sections.first, let columns = section.fmColumns, FMTable.ready {
+            if sections.count == 1, let section = sections.first, let columns = section.fmColumns, FMTable.ready(section.kind) {
                 try fmTableScreen(section, columns: columns, in: element, page: page, ui)
             } else {
                 let body = try page.body(in: element)
                 for section in sections {
-                    if let columns = section.fmColumns, FMTable.ready {
+                    if let columns = section.fmColumns, FMTable.ready(section.kind) {
                         try fmTableTile(section, columns: columns, in: body, page: page, ui)
                     } else {
                         try page.table(section, in: body)
@@ -462,6 +471,35 @@ final class FMInterface {
             try page.message(status, title: current.title, in: try page.body(in: element))
         }
         shown = key
+    }
+
+    /// The app's Players or Staff search, in FM's own table, with a button for the app's filters.
+    private func fillList(staff: Bool, _ list: (people: [Person], searching: Bool, filter: String, version: Int)?, in element: Pointer,
+                          page: NativePage, _ ui: FMElements) throws {
+        guard let model, let session = model.analysis else { return }
+        guard let list else {
+            try page.message("FM Starship's own window is on another screen. Choose \(current.title) here again to search.",
+                             title: current.title, in: try page.body(in: element))
+            return
+        }
+        let view = PeopleListView(people: list.people, staff: staff, filter: list.filter, display: session.display)
+        let kind: FMTable.Kind = staff ? .staff : .players
+        let tables = FMTable.ready(kind)
+        let searching = list.searching ? (model.statusLine.isEmpty ? current.working : model.statusLine) : nil
+        let button = try NativeSearch(page: page).build(
+            into: try page.fixedBody(in: element), list: view, searching: searching,
+            table: { section, tile in
+                if tables {
+                    try self.addFMTable(section, columns: section.fmColumns ?? [], in: tile, rows: nil, ui)
+                } else {
+                    var section = section
+                    // FM's staff table is taken from one of FM's own, the first time a screen of FM's with one is open.
+                    if staff { section.notes = ["Open FM's Club screen once, then FM Starship again, and this list uses FM's own staff table."] }
+                    try page.rows(of: section, in: tile)
+                }
+            },
+            editFilters: { FMInterface.shared.model?.editFiltersInsideGame(staff: staff) })
+        listButtons = [button]
     }
 
     /// One list in FM's own player table, filling the screen as FM's lists do, with the engine's line below it.
@@ -504,7 +542,7 @@ final class FMInterface {
     /// for `rows` rows, or filling the container. FM's columns, then the engine's own, as `section.fmExtras` names them.
     @discardableResult
     func addFMTable(_ section: TableSection, columns: [String], in container: IL2CPP.Pointer, rows: Int?, _ ui: FMElements) throws -> IL2CPP.Pointer {
-        let fmTable = FMTable(ui: ui)
+        let fmTable = FMTable(ui: ui, kind: section.kind)
         let table = try fmTable.make(name: "FMStarship-\(current)-\(liveTables.count)")
         try ui.style(table) { style in
             if let rows {
@@ -529,7 +567,7 @@ final class FMInterface {
         try fmTable.fill(table, people: people, columns: chosen, own: own, extras: extras)
         PluginLog.write("FM's table for \(current.title): \(fmTable.report(table))")
         keepRows(table, extras, people: people)
-        checkLater(table, people: people, columns: chosen, own: own, extras: extras, attempt: 1)
+        checkLater(table, kind: section.kind, people: people, columns: chosen, own: own, extras: extras, attempt: 1)
         return table
     }
 
@@ -604,7 +642,8 @@ final class FMInterface {
 
     /// The table loads FM's column factory once it's in the tree. A moment later, this says what it made of it, and
     /// puts the columns and rows in again if it has none yet.
-    private func checkLater(_ table: Pointer, people: [Person], columns: [String], own: [String: Float], extras: [FMTable.Extra], attempt: Int) {
+    private func checkLater(_ table: Pointer, kind: FMTable.Kind, people: [Person], columns: [String], own: [String: Float], extras: [FMTable.Extra],
+                            attempt: Int) {
         guard let handle = IL2CPP.shared?.pin(table) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             MainActor.assumeIsolated {
@@ -612,7 +651,7 @@ final class FMInterface {
                 defer { il2cpp.unpin(handle) }
                 il2cpp.withoutCollection {
                     guard let table = il2cpp.target(of: handle), ui.parent(of: table) != nil else { return }
-                    let fmTable = FMTable(ui: ui)
+                    let fmTable = FMTable(ui: ui, kind: kind)
                     PluginLog.write("FM's table, check \(attempt): \(fmTable.report(table))")
                     guard fmTable.columnCount(table) == 0, attempt < 3 else { return }
                     if FMTable.bindIfIdle, !fmTable.isBound(table) {
@@ -623,7 +662,7 @@ final class FMInterface {
                     } catch {
                         FMInterface.shared.report(error)
                     }
-                    FMInterface.shared.checkLater(table, people: people, columns: columns, own: own, extras: extras, attempt: attempt + 1)
+                    FMInterface.shared.checkLater(table, kind: kind, people: people, columns: columns, own: own, extras: extras, attempt: attempt + 1)
                 }
             }
         }
@@ -633,7 +672,7 @@ final class FMInterface {
     private var statusLine: String {
         guard let model else { return "" }
         if model.analysis == nil { return model.statusLine.isEmpty ? "Reading your save..." : model.statusLine }
-        return contents[current] == nil ? current.working : ""
+        return contents[current] == nil && current.listsStaff == nil ? current.working : ""
     }
 
     // MARK: The subtabs
@@ -710,6 +749,7 @@ final class FMInterface {
         current = screen
         // Shortlist files change while FM runs, whenever one is saved, so they're read again each time.
         if screen == .shortlists { contents[.shortlists] = nil }
+        if let staff = screen.listsStaff { model?.showListInsideGame(staff: staff) }
         startWork()
         DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.refresh() } }
     }
@@ -723,7 +763,8 @@ final class FMInterface {
 
     /// Works out the chosen screen in the background, once per analysis, as the app's screens do.
     private func startWork() {
-        guard screen != nil, let model, let session = model.analysis else { return }
+        // The app runs its own searches for the Players and Staff screens.
+        guard screen != nil, current.listsStaff == nil, let model, let session = model.analysis else { return }
         let revision = model.analysisRevision
         let chosen = current
         guard contents[chosen]?.revision != revision, !running.contains(chosen) else { return }
@@ -781,6 +822,9 @@ final class FMInterface {
                 ShortlistView(url: entry.url, name: entry.shortlist.name, modified: entry.modified, uids: entry.shortlist.uids,
                               players: players, club: session.club.name, display: session.display)
             })
+        case .players, .staff:
+            // The app's own searches, which the app runs.
+            return nil
         }
     }
 
