@@ -169,25 +169,28 @@ static uint8_t *overlay_new_page(a64 *c) {
 }
 
 // Keys are page | 1, so that page zero isn't mistaken for an empty slot.
-static uint8_t **overlay_slot(a64 *c, uint64_t key) {
+static size_t overlay_slot(a64 *c, uint64_t key) {
     size_t mask = c->overlay_capacity - 1;
     for (size_t i = mix(key >> 12) & mask;; i = (i + 1) & mask) {
         if (c->overlay_keys[i] == 0 || c->overlay_keys[i] == key) {
             c->overlay_keys[i] = key;
-            return &c->overlay_pages[i];
+            return i;
         }
     }
 }
 
 static void overlay_grow(a64 *c) {
-    size_t old_capacity = c->overlay_capacity;
     uint64_t *old_keys = c->overlay_keys;
     uint8_t **old_pages = c->overlay_pages;
-    c->overlay_capacity = old_capacity * 2;
+    c->overlay_capacity *= 2;
     c->overlay_keys = calloc(c->overlay_capacity, sizeof(uint64_t));
     c->overlay_pages = calloc(c->overlay_capacity, sizeof(uint8_t *));
-    for (size_t i = 0; i < old_capacity; i++)
-        if (old_keys[i]) *overlay_slot(c, old_keys[i]) = old_pages[i];
+    c->overlay_used = realloc(c->overlay_used, c->overlay_capacity * sizeof(size_t));
+    for (size_t n = 0; n < c->overlay_count; n++) {
+        size_t old = c->overlay_used[n], slot = overlay_slot(c, old_keys[old]);
+        c->overlay_pages[slot] = old_pages[old];
+        c->overlay_used[n] = slot;
+    }
     free(old_keys);
     free(old_pages);
 }
@@ -206,8 +209,9 @@ static uint8_t *overlay_create(a64 *c, uint64_t page, int copy_from_image) {
     uint8_t *data = overlay_new_page(c);
     if (copy_from_image) memcpy(data, a64_image_page(c->image, page), A64_PAGE);
     else memset(data, 0, A64_PAGE);
-    *overlay_slot(c, page | 1) = data;
-    c->overlay_count++;
+    size_t slot = overlay_slot(c, page | 1);
+    c->overlay_pages[slot] = data;
+    c->overlay_used[c->overlay_count++] = slot;
     return data;
 }
 
@@ -245,6 +249,7 @@ a64 *a64_new(a64_image *image) {
     c->overlay_capacity = 4096;
     c->overlay_keys = calloc(c->overlay_capacity, sizeof(uint64_t));
     c->overlay_pages = calloc(c->overlay_capacity, sizeof(uint8_t *));
+    c->overlay_used = malloc(c->overlay_capacity * sizeof(size_t));
     a64_reset(c);
     return c;
 }
@@ -254,12 +259,13 @@ void a64_free(a64 *c) {
     free(c->arena);
     free(c->overlay_keys);
     free(c->overlay_pages);
+    free(c->overlay_used);
     free(c->heap_sizes);
     free(c);
 }
 
 void a64_reset(a64 *c) {
-    memset(c->overlay_keys, 0, c->overlay_capacity * sizeof(uint64_t));
+    for (size_t i = 0; i < c->overlay_count; i++) c->overlay_keys[c->overlay_used[i]] = 0;
     c->overlay_count = 0;
     c->arena_used = 0;
     memset(c->tlb_tag, 0xff, sizeof c->tlb_tag);
