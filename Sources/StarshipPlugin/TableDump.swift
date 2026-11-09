@@ -1,5 +1,7 @@
 import Foundation
 
+// Only in developer builds: `Scripts/install-plugin.sh --developer`.
+#if STARSHIP_DEVELOPER
 /// A developer's look at FM's own tables, such as the squad and the player database: each StreamedTable on the open
 /// screen, with its elements, its fields, what feeds its rows, its columns and view, and FM's objects behind them a
 /// few levels down, then the fields and methods of FM's classes among them. This is how FM Starship finds out whether
@@ -199,3 +201,4 @@ final class TableDump {
         !["System", "UnityEngine", "Unity.", "Mono.", "TMPro", "Newtonsoft"].contains { className.hasPrefix($0) } && className != "null"
     }
 }
+#endif

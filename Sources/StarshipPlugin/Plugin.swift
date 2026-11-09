@@ -6,7 +6,7 @@ import SwiftUI
 /// Control-Option-S shows and hides it, and in windowed mode there's also an FM Starship menu in FM's menu bar.
 @_cdecl("starship_plugin_start")
 public func starshipPluginStart() {
-    PluginLog.write("Loaded into FM, pid \(getpid())")
+    PluginLog.write("Loaded into FM, pid \(getpid())\(PluginBuild.developerTools ? ", with the developer tools" : "")")
     // The constructor runs before FM's main(), so nothing in AppKit is up yet.
     NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
         MainActor.assumeIsolated { Plugin.shared.install() }
@@ -119,11 +119,13 @@ final class Plugin: NSObject, NSWindowDelegate {
             toggle()
             return true
         }
+        #if STARSHIP_DEVELOPER
         // While FM Starship's screens are being built into FM's interface: write out how FM's interface is put together.
         if modifiers == [.control, .option], event.keyCode == 2 {
             InterfaceDump.shared.write()
             return true
         }
+        #endif
         guard let key = NSApp.keyWindow, windows.values.contains(where: { $0 === key }), let model else { return false }
         if let action = editingAction(event, modifiers) {
             return NSApp.sendAction(action, to: nil, from: nil)
@@ -152,6 +154,16 @@ final class Plugin: NSObject, NSWindowDelegate {
         default: return nil
         }
     }
+}
+
+/// Whether this build has the developer tools: the command file, Control-Option-D and the table watch.
+/// `Scripts/install-plugin.sh --developer` builds them in, and a plain install leaves them out.
+enum PluginBuild {
+    #if STARSHIP_DEVELOPER
+    static let developerTools = true
+    #else
+    static let developerTools = false
+    #endif
 }
 
 /// What the plugin did, for finding out why when something doesn't show up inside FM.

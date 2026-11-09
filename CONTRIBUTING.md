@@ -23,8 +23,8 @@ You need:
 - A Mac with Apple Silicon, on macOS 14 or later
 - A recent Xcode. CI builds with Swift 6.3, so anything older may not compile
 - Homebrew's `zstd`: `brew install zstd`
-- The Steam version of Football Manager 27, but only for work on the reader, the game's rules, or anything you want to see with
-  real data
+- The Steam version of Football Manager 27, but only for work on the reader, the game's rules, the plugin, or anything you want to
+  see with real data
 
 Fork the repo, then:
 
@@ -39,6 +39,9 @@ open "build/FM Starship.app"
 `swift build` and `swift test` are safe at any time. **Don't run `Scripts/build-app.sh` while FM or FM Starship is running**,
 because it deletes the running app.
 
+To try the plugin inside FM, run `Scripts/install-plugin.sh` and set the Steam launch option it prints, as the
+[README](README.md#installing-it) explains. That's safe while FM is running, and the next start of FM gets the new copy.
+
 ### Working without FM
 
 Search, analysis and file code can all be tested with made-up data, and `Tests/StarshipAnalysisTests/AbilityOffTests.swift` shows
@@ -47,15 +50,44 @@ how to build a small world of players. Tests that need the game skip themselves 
 If you own FM27, **File > Save Snapshot** keeps a copy of your save's data, and **File > Open Snapshot** opens it later without the
 game. Role stars, who'd join and the planner's picks need the live game, so they stay off in a snapshot.
 
+The plugin's screens are built from the same engine output as the app's, so the logic behind them can be tested without FM too.
+`Tests/StarshipPluginTests` shows how.
+
+### Working on the plugin
+
+The plugin runs in FM's own process, so:
+
+- A trap in it, such as a force unwrap, an index out of range or a NaN made into an `Int`, closes FM. Handle the failure and write it
+  to the log instead.
+- It only goes through the IL2CPP API that FM's game code exports. It never patches FM's code.
+- It never looks in `~/Documents`, because macOS would then ask the player whether FM may.
+- Its log is `~/Library/Logs/FM Starship/plugin.log`, and FM's own is
+  `~/Library/Logs/Sports Interactive/Football Manager 27/Player.log`, which names errors our elements cause in FM's code. Check both
+  after trying a change.
+
+`Scripts/install-plugin.sh --developer` builds in the developer tools, which a plain install leaves out:
+
+- **Control-Option-D** writes FM's live interface, with each element's classes, size, text and colours, to `~/Library/Logs/FM Starship`.
+  That's where the element names and style classes the screens use come from.
+- **The command file**, `~/Library/Application Support/FMStarship/Plugin/command`, is read twice a second and then removed. Its
+  commands open, switch and close FM Starship's screen, write FM's interface and tables out, and try out FM's table settings, so you
+  can check a screen without clicking in FM. An unknown command writes the list of commands to the log.
+- **`watch-tables`**, an empty file in the same folder, makes the plugin write out the tables of each screen FM opens, if it's there
+  when FM starts.
+
+Any program running as you can write that command file, so only run a developer build while you're working on the plugin. The tools
+are behind the `STARSHIP_DEVELOPER` flag, and CI builds the plugin with it too, so they keep compiling.
+
 ## Testing
 
 - `swift test` has to pass, and a change in behaviour needs a test.
 - If you changed `Sources/CA64`, run `tools/run-emutest.sh`. It checks the interpreter against the real CPU.
 - If you changed the reader or the rules, check it in the app on a real save, and look at **Help > Compatibility**.
 - If you changed a screen, check it in the app, in both light and dark themes.
+- If you changed the plugin, check it inside FM on a real save, with Hidden attributes on and off, and look at both logs.
 
-CI runs the tests, the interpreter check and a full app build on every pull request. It doesn't have FM, so it can't check anything
-that needs a real save. That part is on you, and the pull request template asks what you checked.
+CI runs the tests, the interpreter check, the plugin's developer build and a full app build on every pull request. It doesn't have
+FM, so it can't check anything that needs a real save. That part is on you, and the pull request template asks what you checked.
 
 ## Pull requests
 
@@ -69,9 +101,13 @@ have to be resolved. Pull requests are squashed when they merge, so the title be
 
 ## The rules the app lives by
 
-1. **The app only reads.** It never changes the game or a save. The agent's protocol has no write operation and has to stay that way,
-   and FM's rules run in a sandbox whose writes are thrown away. The only files it writes for FM are shortlists, when asked.
-2. **It never closes the game.** If FM is already running, the app asks the player to save and quit.
+1. **It never changes the game by itself.** The app and the plugin read the game, and neither writes a save or patches FM's code. The
+   agent's protocol has no write operation and has to stay that way, and FM's rules run in a sandbox whose writes are thrown away. The
+   plugin adds screens to FM's interface through FM's exported IL2CPP API and does nothing else to the game. FM's own right-click
+   menu on our rows acts in the game, as it does in FM's lists, because the player chooses to. The only files the app writes for FM
+   are shortlists, when asked.
+2. **It never closes the game.** If FM is already running, the app asks the player to save and quit. Inside FM, the plugin mustn't
+   crash either, because FM would go with it.
 3. **Hidden means hidden.** With Hidden attributes off, nothing hidden may be shown or used. CA and PA count as hidden, and off means
    gone, not dashes. The one exception is CA and PA deciding a rank, a standing or an order, because those screens have nothing else to
    go on. Exports follow the same rule.

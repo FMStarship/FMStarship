@@ -8,6 +8,8 @@ macos
 
 Native macOS app in SwiftUI with AppKit tables, not a web view. Follow Mac conventions.
 
+A preview plugin also shows some of its screens inside FM27, as an FM STARSHIP tab built from FM's own interface elements and tables. There, FM's conventions win.
+
 ## Users
 
 Football Manager 27 players on a Mac, running a club in their own save. The first user manages Molde FK and plays FM in Norwegian; the app may be shared with other FM players later, so a screen has to explain itself to someone who has never seen it.
@@ -25,6 +27,7 @@ It reads the live game's memory and runs FM's own role and interest rules, so st
 ## Operating Context
 
 - Load Save reads the game. The app is read-only towards the save and writes only shortlist files when asked.
+- Inside FM, the plugin reads the save in FM's own process and never writes it. FM's own right-click menu on its rows acts in the game, as it does in FM's lists.
 - Many answers come from asking the game, so results can fill in over seconds.
 - Typical window is around 1380 by 830 points. Tables hold 32,000 players, 150 attributes-worth of columns, and club views of 11 to 50 rows.
 - FM's own language can differ from the app's English.
@@ -39,7 +42,7 @@ It reads the live game's memory and runs FM's own role and interest rules, so st
 
 ## Brand Commitments
 
-The name is FM Starship. It is an independent companion and must not imitate Football Manager's or Sports Interactive's identity.
+The name is FM Starship. It is an independent companion and must not imitate Football Manager's or Sports Interactive's identity. Inside FM, the plugin's screens are made of FM's own elements, style classes and tables, so they sit in the game like its own screens, but the tab is always FM STARSHIP and nothing of FM's ships with it.
 
 It looks like a clean, dark, modern analytics dashboard, with no football costume and no fuss. The user chose this over more characterful directions on 2026-10-31, so keep to the category standard.
 

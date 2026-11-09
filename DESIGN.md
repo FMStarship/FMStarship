@@ -189,6 +189,8 @@ FM Starship looks like the best dark analytics dashboards, applied to a football
 
 It is dense on purpose. Tables hold 32,000 players at 12pt, yet every grouped thing sits in the same panel, every row is split by the same hairline, and every number lines up on tabular digits. Colour is rationed by job, so an amber value, a red pill and a blue bar each mean one thing wherever they appear.
 
+This system is for the app's own windows, which Control-Option-S also opens over FM. Inside FM, the plugin's screens don't use it: they're made of FM's own interface elements, style classes and tables, and copy the look of FM's tiles, so they read as part of the game around them.
+
 Everything is a job, not a hue. The colour tokens below are the default Starship palette. Nineteen other palettes and a System option fill the same jobs, including light ones, and macOS semantic colours stand in under System. New UI asks for a job and works in all of them. The app is native: system type, Mac controls, a real sidebar and toolbar. It is independent of Football Manager and does not borrow that game's identity.
 
 **Key Characteristics:**
