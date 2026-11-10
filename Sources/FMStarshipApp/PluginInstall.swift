@@ -47,7 +47,7 @@ enum PluginInstallError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .notInApp:
-            return "This copy of FM Starship doesn't carry the plugin. Build the app with Scripts/build-app.sh, or install the plugin with Scripts/install-plugin.sh."
+            return "This copy of FM Starship doesn't carry the plugin. Download FM Starship again. A build of your own only has it when it's made with Scripts/build-app.sh."
         case .notSigned(let name, let status):
             return "The app's copy of \(name) failed its signature check (\(status)). Download FM Starship again."
         case .otherSigner(let name):

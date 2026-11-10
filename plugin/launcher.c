@@ -90,8 +90,8 @@ int main(int argc, char **argv) {
     if (!home || !*home)
         say("Starting FM without FM Starship, because HOME isn't set, so the plugin can't be found.");
     else if (access(plugin, R_OK) != 0)
-        say("Starting FM without FM Starship, because %s can't be read (%s). Run Scripts/install-plugin.sh again, or clear "
-            "FM's launch option in Steam.", plugin, strerror(errno));
+        say("Starting FM without FM Starship, because %s can't be read (%s). Open the FM Starship app and choose "
+            "FM Starship > Add FM Starship to FM, or clear FM's launch option in Steam.", plugin, strerror(errno));
     else if ((existing && *existing ? asprintf(&libraries, "%s:%s", plugin, existing) : asprintf(&libraries, "%s", plugin)) < 0)
         say("Starting FM without FM Starship, because there wasn't the memory to add it.");
     else {

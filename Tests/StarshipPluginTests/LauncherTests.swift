@@ -144,6 +144,9 @@ final class LauncherTests: XCTestCase {
         XCTAssertNil(fm.environment["FAKE_PLUGIN"])
         XCTAssertEqual(fm.environment["FAKE_OVERLAY"], "1")
         XCTAssertTrue(run.stderr.contains("Starting FM without FM Starship, because \(plugin.path) can't be read"), run.stderr)
+        XCTAssertTrue(run.stderr.contains("Open the FM Starship app and choose FM Starship > Add FM Starship to FM, or clear FM's "
+                                          + "launch option in Steam."), run.stderr)
+        XCTAssertFalse(run.stderr.contains("install-plugin.sh"), "players add it from the app, not from the source")
         XCTAssertTrue(try String(contentsOf: log, encoding: .utf8).contains("Launcher: Starting FM without FM Starship"))
     }
 
