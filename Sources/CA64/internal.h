@@ -32,6 +32,7 @@ struct a64 {
     uint64_t *overlay_keys;
     uint8_t **overlay_pages;
     size_t overlay_capacity, overlay_count;
+    size_t *overlay_used;  // the slots filled since the last reset, so a reset clears only those
     uint8_t **arena;
     size_t arena_count, arena_capacity, arena_used;
 
