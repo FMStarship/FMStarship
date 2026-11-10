@@ -28,19 +28,27 @@ public struct DisplayOptions {
     public var reveal: AbilityReveal
     public var showHidden: Bool
     public var units: MoneyUnits
+    /// Inside FM, where FM Starship's tab has a Hidden attributes switch of its own, so the hints point there.
+    public var insideGame: Bool
 
-    public init(reveal: AbilityReveal = .numbers, showHidden: Bool = false, units: MoneyUnits = MoneyUnits()) {
+    public init(reveal: AbilityReveal = .numbers, showHidden: Bool = false, units: MoneyUnits = MoneyUnits(), insideGame: Bool = false) {
         self.reveal = reveal
         self.showHidden = showHidden
         self.units = units
+        self.insideGame = insideGame
     }
 
     /// False while CA and PA are off, so a screen can leave out whatever would give them away.
     public var showsAbility: Bool { reveal != .hidden }
 
-    /// What to press to see something that needs CA and PA.
+    /// What to press to see something that needs CA and PA. Inside FM, Ability is only in FM Starship's own window.
     public var abilityHint: String {
-        showHidden ? "Set Ability in the toolbar to Exact or Stars" : "Switch on Hidden attributes (the eye in the toolbar)"
+        switch (showHidden, insideGame) {
+        case (false, false): return "Switch on Hidden attributes (the eye in the toolbar)"
+        case (false, true): return "Switch on Hidden attributes at the top right of FM Starship's tab"
+        case (true, false): return "Set Ability in the toolbar to Exact or Stars"
+        case (true, true): return "Set Ability to Exact or Stars in FM Starship's window (Control-Option-S)"
+        }
     }
 
     /// The table to show: while CA and PA are off, without their columns, those worked out from them, and `others`.

@@ -64,8 +64,9 @@ The tab has these screens:
 - **Shortlists:** the player shortlists you've saved from the app
 - **Players** and **Staff:** the app's own searches, with its filters
 
-Control-Option-S opens the app's own windows over FM, for everything else, including Hidden attributes and Settings. When FM is in a
-window rather than full screen, its menu bar has an FM Starship menu too.
+**Hidden attributes** is a switch at the right of the tab's subtabs. Control-Option-S opens the app's own windows over FM, for
+everything else, including Ability and Settings. When FM is in a window rather than full screen, its menu bar has an FM Starship menu
+too.
 
 ### Installing it
 
@@ -98,7 +99,8 @@ folder. The other way round, Steam can't start FM until the launch option is cle
 - **It never writes your save, and it doesn't patch FM's code.** It adds its screens to FM's interface through the IL2CPP API that
   FM's game code exports. But FM's own right-click menu on our rows acts in the game, as it does in FM's lists, so an offer or an
   approach made from it is real.
-- **Hidden attributes works as in the app.** With it off, the tables show FM's own scouting columns instead of CA and PA.
+- **Hidden attributes works as in the app**, and the tab's switch is the same setting as the eye in the app's toolbar. With it off,
+  the tables show FM's own scouting columns instead of CA and PA.
 - It reads your save when you first open the tab, and again when you next open it after FM has loaded another save or moved on, so
   it never shows people from a save FM no longer has. It says it's reading until it's done.
 - Players and Staff put the first 500 people a search finds in FM's table, and say how many were found.

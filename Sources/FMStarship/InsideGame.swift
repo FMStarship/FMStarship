@@ -36,6 +36,9 @@ extension AppModel {
     /// Shown in About inside FM, where the main bundle is the game's.
     package static var editionInsideGame: String?
 
+    /// Whether this is the plugin, inside FM, where the screens' hints point at FM Starship's tab, not the app's toolbar.
+    static var isInsideGame: Bool { editionInsideGame != nil }
+
     /// The model, with the settings it starts from. The same for the app and the plugin.
     package static func startUp() -> AppModel {
         // Before the model, which reads its starting state from the settings.
@@ -63,6 +66,13 @@ extension AppModel {
 
     /// What the model is doing or what went wrong, while there's no analysis to show.
     package var statusLine: String { status }
+
+    /// Hidden attributes, as the eye in the toolbar shows and sets it, for the switch in FM Starship's tab inside FM.
+    /// Setting it to what it already is changes nothing, where setting `showHidden` would search again.
+    package var hiddenAttributes: Bool {
+        get { showHidden }
+        set { if newValue != showHidden { showHidden = newValue } }
+    }
 
     /// Goes to the Players or Staff screen, which runs its search with that screen's filters, for FM Starship's
     /// screen inside FM to show what it finds.
