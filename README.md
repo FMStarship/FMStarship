@@ -70,25 +70,31 @@ too.
 
 ### Installing it
 
-The plugin isn't in the disk image yet, so you build it from the source. You need Xcode and Homebrew's `zstd`, as
-[CONTRIBUTING.md](CONTRIBUTING.md#getting-set-up) explains.
+The app carries the plugin, so you don't need Xcode.
 
-1. In a copy of the source, run `Scripts/install-plugin.sh`. It builds the plugin and a small launcher app into
-   `~/Library/Application Support/FMStarship/Plugin`, then prints a Steam launch option like this one:
+1. In FM Starship, choose **FM Starship > Add FM Starship to FM**. It puts the plugin and a small launcher app in
+   `~/Library/Application Support/FMStarship/Plugin`, then shows a Steam launch option like this one, with a Copy button:
 
    ```
    "/Users/you/Library/Application Support/FMStarship/Plugin/FM Starship Launcher.app" %command%
    ```
 
-2. In Steam, open Football Manager 27 > Properties > General > Launch Options, and paste it in.
+2. In Steam, open Football Manager 27 > Properties > General > Launch Options, and paste it in. Steam doesn't let other apps
+   set it, so this is the one step you do yourself, once.
 3. Start FM from Steam and load your career. The FM STARSHIP tab appears after FM's own tabs.
 
 Steam then starts the launcher in FM's place, and the launcher starts FM with the plugin. Starting FM from the app's Start Football
 Manager button doesn't load the plugin. The app can still read a game started from Steam this way, without a restart.
 
-To update the plugin, get the new source and run the script again. That's safe while FM is running, and the next start of FM gets
-the new copy. To remove it, clear the launch option first, then run `Scripts/install-plugin.sh --uninstall`, which deletes that
-folder. The other way round, Steam can't start FM until the launch option is cleared.
+Adding it is safe while FM is running: a game that's open keeps what it has, and the next start of FM from Steam gets the new copy.
+When the app updates, it updates its copy of the plugin the next time it opens, and the launch option stays the same. To remove it,
+choose **FM Starship > Remove FM Starship from FM**. It asks you to clear the launch option first, because Steam can't start FM
+while the option names a launcher that's gone.
+
+**To build the plugin yourself**, run `Scripts/install-plugin.sh` in a copy of the source. You need Xcode and Homebrew's `zstd`, as
+[CONTRIBUTING.md](CONTRIBUTING.md#getting-set-up) explains. It puts your own build in the same folder and prints the same launch
+option. The app leaves a build of your own alone when it starts, and asks before Add FM Starship to FM replaces it.
+`Scripts/install-plugin.sh --uninstall` removes the folder, once the launch option is cleared.
 
 ### What to know
 
@@ -108,7 +114,7 @@ folder. The other way round, Steam can't start FM until the launch option is cle
 - The lists need FM's own player and staff tables, which the plugin takes from an FM screen that has one, such as your Squad or
   Club > Staff. Until you've opened one, they're plain lists, without sorting or right-click, and say so. After that, they're
   remembered until FM's next patch.
-- The plugin never goes online, and it doesn't update itself.
+- The plugin never goes online, and it doesn't update itself. The app updates it, from its own copy.
 - It writes what it does to `~/Library/Logs/FM Starship/plugin.log`. Please attach that file to a bug report about the plugin.
 
 ## Updates
@@ -299,7 +305,7 @@ FM Starship's own parts, and how to check them after a patch:
 | `Sources/StarshipAnalysis` | Recommendations, planner, bargains, club reports |
 | `Sources/StarshipFiles` | Shortlists, snapshots, export, themes |
 | `Sources/FMStarship` | The app's screens, shared by the app and the plugin |
-| `Sources/FMStarshipApp` | The app's entry point and its updater |
+| `Sources/FMStarshipApp` | The app's entry point, its updater, and Add FM Starship to FM |
 | `Sources/StarshipPlugin` | The plugin: the IL2CPP bridge, FM's tables, and the screens inside FM |
 | `Sources/StarshipPluginStart` | Starts the plugin, only inside FM |
 | `Sources/fmprobe` | Developer probe |

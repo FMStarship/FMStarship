@@ -3,8 +3,8 @@ import StarshipFiles
 import StarshipSearch
 import SwiftUI
 
-/// The app's windows. The app itself adds only its entry point and the updater, so that the plugin can show the same
-/// screens inside Football Manager.
+/// The app's windows. The app itself adds only its entry point, the updater and the menu that adds the plugin to FM,
+/// so that the plugin can show the same screens inside Football Manager.
 package struct StarshipScenes<Updates: UpdateChecking>: Scene {
     /// Not observed here: scenes would be rebuilt on every change. Views observe it themselves.
     private let model: AppModel
