@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import StarshipAnalysis
 
 /// The save FM has loaded, as far as it can be told without reading it: the date in FM's bar, and the names FM's memory
 /// holds now where the read found the human managers' clubs. Nil where it can't be told, such as during a match, when
@@ -70,16 +71,32 @@ struct SaveWatch {
     }
 }
 
-/// One of FM Starship's screens as it was made: from which analysis, and with Hidden attributes on or off.
+/// The settings that decide what a screen of FM Starship's shows from a read: how Ability shows CA and PA, if at all,
+/// whether Hidden attributes is on, and the units for money, wages and heights. That's all of `DisplayOptions` but
+/// `insideGame`, which is always true here.
+struct ShownAs: Equatable {
+    let reveal: AbilityReveal
+    let showHidden: Bool
+    let units: MoneyUnits
+
+    init(_ display: DisplayOptions) {
+        reveal = display.reveal
+        showHidden = display.showHidden
+        units = display.units
+    }
+}
+
+/// One of FM Starship's screens as it was made: from which analysis, and with which settings.
 struct MadeScreen<Content> {
     let revision: Int
-    let showsAbility: Bool
+    let shownAs: ShownAs
     let content: Content
 
-    /// Whether it may be shown with Hidden attributes as it is now. Nil `now` means there's no read to show.
-    func fits(showsAbility now: Bool?) -> Bool { Self.fits(madeWith: showsAbility, now: now) }
+    /// Whether it may be shown with the settings as they are now. Nil `now` means there's no read to show.
+    func fits(_ now: ShownAs?) -> Bool { Self.fits(madeWith: shownAs, now: now) }
 
-    /// Whatever was made with Hidden attributes on can hold CA and PA, so it doesn't stay up once it's off, not even
-    /// until it's made again. One made with it off is missing them once it's on.
-    static func fits(madeWith: Bool, now: Bool?) -> Bool { madeWith == now }
+    /// Whatever was made with Hidden attributes on can hold hidden attributes, and CA and PA unless Ability is off, so
+    /// it doesn't stay up once it's off, not even until it's made again. One made with it off is missing them once it's
+    /// on, and one made with another Ability or other units shows other numbers. Nil is no read, which nothing fits.
+    static func fits(madeWith: ShownAs?, now: ShownAs?) -> Bool { madeWith != nil && madeWith == now }
 }
