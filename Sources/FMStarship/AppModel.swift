@@ -66,6 +66,22 @@ struct OpenShortlist: Equatable {
     let uids: [UInt32]
 }
 
+/// A database, and what `AppModel.install` needs from it that takes a while to build. The background task that read
+/// the data builds it, so the main thread doesn't have to, and inside FM the main thread is FM's.
+struct NewData {
+    let database: Database
+    let playerOptions: SearchOptions
+    let staffOptions: SearchOptions
+    let squads: OpenSquad.Choices
+
+    init(_ database: Database) {
+        self.database = database
+        playerOptions = SearchOptions(database.players)
+        staffOptions = SearchOptions(database.staff)
+        squads = OpenSquad.Choices(db: database)
+    }
+}
+
 @MainActor
 package final class AppModel: ObservableObject {
     @Published var database: Database? { didSet { updateMenuState() } }
@@ -142,7 +158,7 @@ package final class AppModel: ObservableObject {
 
     let menuState = MenuState()
     let fileJob = BackgroundJob<String>()
-    let snapshotJob = BackgroundJob<Database>()
+    let snapshotJob = BackgroundJob<NewData>()
 
     lazy var dashboard = DashboardState(model: self)
     lazy var myClub = MyClubState(model: self)
@@ -367,18 +383,19 @@ package final class AppModel: ObservableObject {
                 let (database, engine) = try GameReader.connect(status: { text in
                     Task { @MainActor in self?.status = text }
                 }, log: AppLog.write)
-                await self?.finished(database, engine)
+                let data = NewData(database)
+                await self?.finished(data, engine)
             } catch {
                 await self?.failed("\(error)")
             }
         }
     }
 
-    private func finished(_ database: Database, _ engine: RulesEngine?) {
+    private func finished(_ data: NewData, _ engine: RulesEngine?) {
         GameRules.engine = engine
         loading = false
-        install(database)
-        let club = session?.club.name ?? ""
+        install(data)
+        let database = data.database, club = session?.club.name ?? ""
         DispatchQueue.global(qos: .utility).async { DevelopmentStore().save(db: database, club: club) }
         if let engine { loadSeasonStats(database, engine) }
     }
@@ -390,7 +407,8 @@ package final class AppModel: ObservableObject {
     }
 
     /// Everything that follows new data, wherever it came from.
-    func install(_ database: Database) {
+    func install(_ data: NewData) {
+        let database = data.database
         seasonToken?.cancel()
         readingSeasonStats = false
         seasonStatsAvailable = true
@@ -405,13 +423,13 @@ package final class AppModel: ObservableObject {
         self.database = database
         playersByUID = Dictionary(database.players.map { ($0.uid, $0) }, uniquingKeysWith: { first, _ in first })
         staffByUID = Dictionary(database.staff.map { ($0.uid, $0) }, uniquingKeysWith: { first, _ in first })
-        playerOptions = SearchOptions(database.players)
-        staffOptions = SearchOptions(database.staff)
+        playerOptions = data.playerOptions
+        staffOptions = data.staffOptions
         for keyPath in [\AppModel.playerFilter, \.squadPlayerFilter, \.listPlayerFilter] { self[keyPath: keyPath].fill(playerOptions) }
         for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] { self[keyPath: keyPath].fill(staffOptions) }
 
         session = AnalysisSession(db: database, club: chosenClub(in: database), display: displayOptions, library: FMData.library)
-        squadCatalogue = session.map { OpenSquad(session: $0) }
+        squadCatalogue = session.map { OpenSquad(session: $0, choices: data.squads) }
         analysisVersion += 1
         openShortlist = nil
         selection = []
