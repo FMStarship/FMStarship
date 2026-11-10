@@ -133,6 +133,41 @@ final class FMTableTests: XCTestCase {
         XCTAssertEqual(NativePage.withoutAppHints("Double-click for the full profile; right-click to compare or add to a shortlist."), "")
         XCTAssertEqual(NativePage.withoutAppHints("Nothing found"), "Nothing found")
     }
+
+    func testHeadingsGoOnAgainOnlyWhenFMsHeadersOrTheSortChangeOrASecondHasGone() {
+        let shown = FMTable.Shown()
+        let first = IL2CPP.Pointer(bitPattern: 0x1000), second = IL2CPP.Pointer(bitPattern: 0x2000)
+        let start = Date()
+        XCTAssertTrue(shown.needsHeadings([first, second], sort: nil, now: start), "Not put on yet")
+        shown.headers = [first, second]
+        shown.headedSort = nil
+        shown.headedAt = start
+        XCTAssertFalse(shown.needsHeadings([first, second], sort: nil, now: start.addingTimeInterval(0.1)))
+        XCTAssertFalse(shown.needsHeadings([first, second], sort: nil, now: start.addingTimeInterval(0.9)))
+        XCTAssertTrue(shown.needsHeadings([first, second], sort: nil, now: start.addingTimeInterval(1)), "In case FM set its arrows back")
+        XCTAssertTrue(shown.needsHeadings([first, nil], sort: nil, now: start.addingTimeInterval(0.1)), "FM made a header again")
+        XCTAssertTrue(shown.needsHeadings([second, first], sort: nil, now: start.addingTimeInterval(0.1)))
+        let byCA = FMTable.Sort(host: "hidden-current-ability", descending: true)
+        XCTAssertTrue(shown.needsHeadings([first, second], sort: byCA, now: start.addingTimeInterval(0.1)), "Sorted by ours")
+        shown.headedSort = byCA
+        XCTAssertTrue(shown.needsHeadings([first, second], sort: FMTable.Sort(host: "hidden-current-ability", descending: false),
+                                          now: start.addingTimeInterval(0.1)), "The other way")
+        XCTAssertTrue(shown.needsHeadings([first, second], sort: nil, now: start.addingTimeInterval(0.1)), "Sorted by one of FM's")
+        shown.forget(nil)
+        XCTAssertTrue(shown.needsHeadings([first, second], sort: byCA, now: start.addingTimeInterval(0.1)), "FM built its columns again")
+    }
+
+    func testOnlyASearchsEndRedrawsItsListNotHowItsGoing() {
+        // How the search is going isn't part of the list's state: it goes into the line already up.
+        XCTAssertEqual(FMInterface.listState(searching: true, version: 3, filter: "Age 16-21"),
+                       FMInterface.listState(searching: true, version: 4, filter: "Age 16-21"))
+        XCTAssertNotEqual(FMInterface.listState(searching: true, version: 4, filter: "Age 16-21"),
+                          FMInterface.listState(searching: false, version: 4, filter: "Age 16-21"), "Its rows once it's done")
+        XCTAssertNotEqual(FMInterface.listState(searching: false, version: 4, filter: "Age 16-21"),
+                          FMInterface.listState(searching: false, version: 5, filter: "Age 16-21"))
+        XCTAssertNotEqual(FMInterface.listState(searching: false, version: 4, filter: "Age 16-21"),
+                          FMInterface.listState(searching: false, version: 4, filter: "No filters."))
+    }
 }
 
 /// Whether FM has moved on from the screen under ours goes by the screens it shows, not by the ones it has hidden.

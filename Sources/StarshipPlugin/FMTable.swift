@@ -420,6 +420,10 @@ struct FMTable {
         var pinned: [Pointer: IL2CPP.Handle] = [:]
         /// The headings' buttons whose clicks are ours.
         var buttons: [Pointer] = []
+        /// FM's headers, and the sort, when our headings and sort arrows were last put on them, and when that was.
+        var headers: [Pointer?] = []
+        var headedSort: Sort?
+        var headedAt: Date?
 
         /// Forgets the rows and headings, and lets go of them, when the table goes or FM builds its columns again.
         @MainActor
@@ -432,6 +436,16 @@ struct FMTable {
             hooked = []
             pinned = [:]
             buttons = []
+            headers = []
+            headedSort = nil
+            headedAt = nil
+        }
+
+        /// Whether the headings need putting on again: FM has made its headers again, the sort has changed, or it's been
+        /// a second, in case FM has set its sort arrows back on its own.
+        func needsHeadings(_ headers: [Pointer?], sort: Sort?, now: Date) -> Bool {
+            guard let headedAt, headers == self.headers, sort == headedSort else { return true }
+            return now.timeIntervalSince(headedAt) >= 1
         }
 
         @MainActor
@@ -488,33 +502,51 @@ struct FMTable {
             shown.person[root] = index
         }
         guard let columns = il2cpp.fieldObject(table, "m_columns") else { return }
-        for column in il2cpp.items(of: columns) {
+        let fmColumns = il2cpp.items(of: columns)
+        let headers = fmColumns.map { il2cpp.fieldObject($0, "m_header") }
+        let now = Date()
+        guard shown.needsHeadings(headers, sort: sort, now: now) else { return }
+        var complete = true
+        for column in fmColumns {
             guard let id = il2cpp.fieldObject(column, "<ColumnID>k__BackingField").flatMap(il2cpp.text),
                   let extra = extras.first(where: { $0.host == id }),
                   let header = il2cpp.fieldObject(column, "m_header") else { continue }
-            if let title = extra.title { heading(header, title) }
+            // Kept by its address until the table goes, so a header FM makes in its place can't be taken for it.
+            shown.pin(header, il2cpp)
+            if let title = extra.title, !heading(header, title) { complete = false }
             if !shown.hooked.contains(header), let button = il2cpp.fieldObject(header, "m_button") {
                 // FM can't sort by our values, so clicking the heading sorts the list by them here.
                 try? ui.onButtonClick(button) { onSort(id) }
                 shown.hooked.insert(header)
                 shown.buttons.append(button)
             }
-            if let icon = il2cpp.fieldObject(header, "m_sortIcon") { sortIcon(icon, sort?.host == id ? sort?.descending : nil) }
+            if let icon = il2cpp.fieldObject(header, "m_sortIcon") {
+                sortIcon(icon, sort?.host == id ? sort?.descending : nil)
+            } else {
+                complete = false
+            }
         }
+        // Until every heading is on, such as while FM is still filling a new header, it's tried again each time.
+        guard complete else { return }
+        shown.headers = headers
+        shown.headedSort = sort
+        shown.headedAt = now
     }
 
     /// The engine's heading in place of FM's: a label of ours, in the style of FM's, with FM's hidden. FM writes
-    /// its own heading into its label again whenever it binds the headings, and that no longer shows.
-    private func heading(_ header: Pointer, _ title: String) {
-        guard let label = il2cpp.fieldObject(header, "<TextLabel>k__BackingField"), let parent = ui.parent(of: label) else { return }
+    /// its own heading into its label again whenever it binds the headings, and that no longer shows. False if ours
+    /// couldn't go on yet.
+    private func heading(_ header: Pointer, _ title: String) -> Bool {
+        guard let label = il2cpp.fieldObject(header, "<TextLabel>k__BackingField"), let parent = ui.parent(of: label) else { return false }
         if let ours = ui.query(parent, "FMStarshipHeading") {
             if il2cpp.text(try? il2cpp.call(ours, "get_text")) != title { try? ui.setText(ours, title) }
-            return
+            return true
         }
         guard let ours = try? ui.text(title, ui.classes(of: label), name: "FMStarshipHeading"),
-              let index = ui.children(of: parent).firstIndex(of: label) else { return }
-        try? ui.insert(ours, into: parent, at: index + 1)
+              let index = ui.children(of: parent).firstIndex(of: label) else { return false }
+        guard (try? ui.insert(ours, into: parent, at: index + 1)) != nil else { return false }
         try? ui.style(label) { try $0.keyword("display", 1) }
+        return true
     }
 
     /// FM's own sort arrow on a heading: down when sorted highest first, up the other way, hidden when not sorted.
@@ -651,6 +683,8 @@ struct FMTable {
 
     /// Set once a row's key has been found not to be as expected, so that's logged only once.
     private static var keysUnreadable = false
+    /// Where a row keeps its person, under its key, as the characters `Bindings.Get` reads.
+    private static let bindingPath = Array("binding".utf16)
 
     /// The database index of the person in a row FM has drawn: the reference FM put in the row's key as "binding".
     private func personIndex(of row: Pointer, bindings: Pointer) -> Int32? {
@@ -665,8 +699,7 @@ struct FMTable {
         }
         guard let key = il2cpp.unbox(try? il2cpp.call(getKey, row), as: UInt64.self), key != 0 else { return nil }
         var rowKey = key
-        let path = Array("binding".utf16)
-        let value: Pointer? = path.withUnsafeBufferPointer { chars in
+        let value: Pointer? = Self.bindingPath.withUnsafeBufferPointer { chars in
             guard let start = chars.baseAddress else { return nil }
             // ReadOnlySpan<char>: where the characters are, then how many.
             var span: (UnsafeRawPointer, Int32) = (UnsafeRawPointer(start), Int32(chars.count))

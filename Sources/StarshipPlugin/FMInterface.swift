@@ -301,8 +301,20 @@ final class FMInterface {
 
     // MARK: The tab
 
+    /// FM's group of tabs in its navigation bar, kept for as long as it's still in FM's interface: FM builds the bar again
+    /// on loading a save and after a match, and finding it searches FM's whole interface.
+    private var tabGroup: IL2CPP.Handle?
+
+    private func fmTabGroup(_ ui: FMElements) throws -> Pointer? {
+        if let kept = tabGroup.flatMap(ui.il2cpp.target), ui.isAttached(kept) { return kept }
+        release(&tabGroup)
+        guard let root = try ui.mainRoot(), let group = ui.query(root, "ManagingClubButtons") else { return nil }
+        tabGroup = ui.il2cpp.pin(group)
+        return group
+    }
+
     private func keepTab(_ ui: FMElements) throws {
-        guard let root = try ui.mainRoot(), let group = ui.query(root, "ManagingClubButtons") else { return }
+        guard let group = try fmTabGroup(ui) else { return }
         if let element = tab.flatMap(ui.il2cpp.target), ui.parent(of: element) == group { return }
         // FM built its bar again, or this is the first time we've seen it with a career loaded.
         if screen != nil { leave(ui) }
@@ -361,7 +373,7 @@ final class FMInterface {
 
     /// FM's tabs, each with its button, as FM's bar holds them now. Ours isn't one of them.
     private func fmTabs(_ ui: FMElements) throws -> [(tab: Pointer, button: Pointer)] {
-        guard let root = try ui.mainRoot(), let group = ui.query(root, "ManagingClubButtons") else { return [] }
+        guard let group = try fmTabGroup(ui) else { return [] }
         return ui.children(of: group).compactMap { tab in
             let name = ui.name(of: tab)
             guard name.hasSuffix("Button"), name != "FMStarshipButton",
@@ -588,13 +600,16 @@ final class FMInterface {
         let status = statusLine
         // The app's Players and Staff searches: drawn again when one finishes, and while one runs, as it goes.
         let list = current.listsStaff.flatMap { model?.listInsideGame(staff: $0) }
-        let listState = list.map { $0.searching ? "searching \(model?.statusLine ?? "")" : "\($0.version) \($0.filter)" } ?? ""
+        let listState = list.map { Self.listState(searching: $0.searching, version: $0.version, filter: $0.filter) } ?? ""
         if let session = analysis, let revision = model?.analysisRevision { updateSearches(session, revision: revision) }
         let searchState = editing.map { $0.screen == current ? "editing \($0.draft.key)" : "" } ?? search(for: current)?.key ?? ""
         // Drawn again once FM's own tables are known, in place of plain rows.
         let known = FMTable.Kind.allCases.map { FMTable.ready($0) ? "1" : "0" }.joined()
         let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState) \(searchState) \(known)"
-        guard key != shown else { return }
+        if key == shown {
+            if let progress = list.flatMap(searchProgress) { showProgress(progress, ui) }
+            return
+        }
         // The tables of what was showing go with it, and so do its clickable entries.
         stopTables()
         forgetListClicks()
@@ -665,7 +680,7 @@ final class FMInterface {
     /// The app's Players or Staff search, in FM's own table, with a button for the app's filters.
     private func fillList(staff: Bool, _ list: (people: [Person], searching: Bool, filter: String, version: Int)?, in element: Pointer,
                           page: NativePage, _ ui: FMElements) throws {
-        guard let model, let session = analysis else { return }
+        guard model != nil, let session = analysis else { return }
         guard let list else {
             try page.message("FM Starship's own window is on another screen. Choose \(current.title) here again to search.",
                              title: current.title, in: try page.body(in: element))
@@ -674,8 +689,8 @@ final class FMInterface {
         let view = PeopleListView(people: list.people, staff: staff, filter: list.filter, display: session.display)
         let kind: FMTable.Kind = staff ? .staff : .players
         let tables = FMTable.ready(kind)
-        let searching = list.searching ? (model.statusLine.isEmpty ? current.working : model.statusLine) : nil
-        let button = try NativeSearch(page: page).build(
+        let searching = searchProgress(list)
+        let built = try NativeSearch(page: page).build(
             into: try page.fixedBody(in: element), list: view, searching: searching,
             table: { section, tile in
                 if tables {
@@ -687,7 +702,35 @@ final class FMInterface {
                 }
             },
             editFilters: { FMInterface.shared.model?.editFiltersInsideGame(staff: staff) })
-        listButtons = [button]
+        listButtons = [built.filters]
+        progressLine = built.progress.flatMap(ui.il2cpp.pin)
+        progressShown = searching
+    }
+
+    /// A Players or Staff list as the screen's key has it. While a search runs, only how it's going changes, which
+    /// goes into the line already up instead of building the screen again; its rows come in the table once it's done.
+    nonisolated static func listState(searching: Bool, version: Int, filter: String) -> String {
+        searching ? "searching" : "\(version) \(filter)"
+    }
+
+    /// What a running Players or Staff search says about how it's going. Nil while none is running.
+    private func searchProgress(_ list: (people: [Person], searching: Bool, filter: String, version: Int)) -> String? {
+        guard list.searching, let model else { return nil }
+        return model.statusLine.isEmpty ? current.working : model.statusLine
+    }
+
+    /// The line a running search's progress is in, and what it says.
+    private var progressLine: IL2CPP.Handle?
+    private var progressShown: String?
+
+    private func showProgress(_ progress: String, _ ui: FMElements) {
+        guard progress != progressShown, let line = progressLine.flatMap(ui.il2cpp.target) else { return }
+        do {
+            try ui.setText(line, progress)
+            progressShown = progress
+        } catch {
+            report(error)
+        }
     }
 
     // MARK: Edit Search
@@ -1158,12 +1201,15 @@ final class FMInterface {
         subtabButtons = []
     }
 
-    /// The screen's own clickable entries, its switches and an open dropdown, which go with what's showing.
+    /// The screen's own clickable entries, its switches, an open dropdown and a search's progress line, which go with
+    /// what's showing.
     private func forgetListClicks() {
         for entry in listButtons { ClickActions.actions[entry] = nil }
         listButtons = []
         editToggles = []
         openList = []
+        release(&progressLine)
+        progressShown = nil
     }
 
     /// Changing screens rebuilds the row the click came from, so it waits until FM has finished with the click.

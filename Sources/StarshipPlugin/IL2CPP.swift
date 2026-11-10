@@ -112,8 +112,19 @@ final class IL2CPP {
 
     private let api: API
     private lazy var images: [Pointer] = loadImages()
-    private var methodCache: [String: Pointer] = [:]
+    /// Methods found by name, which the timers ask for many times a second: keyed without making a string, which cost
+    /// more than finding the method in the cache did.
+    private var methodCache: [MethodKey: Pointer] = [:]
     private var nativeMethods: [Pointer: Pointer] = [:]
+
+    private struct MethodKey: Hashable {
+        let klass: Pointer?
+        let name: String
+        let parameters: Int
+        let firstParameter: String?
+        let parameterTypes: [String]?
+        let inherited: Bool
+    }
 
     private init() throws {
         // Unity loads GameAssembly on its own, so its functions aren't in the global namespace: ask the library itself.
@@ -316,7 +327,8 @@ final class IL2CPP {
     /// can't be called as they are, and `firstParameter` or `parameterTypes` tell overloads apart.
     func method(_ klass: Pointer?, _ name: String, parameters: Int, firstParameter: String? = nil,
                 parameterTypes: [String]? = nil, inherited: Bool = true) -> Pointer? {
-        let key = "\(Int(bitPattern: klass)) \(name) \(parameters) \(firstParameter ?? "") \(parameterTypes ?? []) \(inherited)"
+        let key = MethodKey(klass: klass, name: name, parameters: parameters, firstParameter: firstParameter,
+                            parameterTypes: parameterTypes, inherited: inherited)
         if let cached = methodCache[key] { return cached }
         var current = klass
         while let k = current {

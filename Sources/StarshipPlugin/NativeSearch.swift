@@ -59,10 +59,11 @@ struct NativeSearch {
     static let staffColumns = ["portrait-name", "age", "nation-small", "club", "clubjob", "context-contract-wage-no-border",
                                "context-contract-expiry-date-small"]
 
-    /// Returns the Filters button, which `editFilters` is called for when clicked.
+    /// Returns the Filters button, which `editFilters` is called for when clicked, and while a search runs, the line
+    /// that says how it's going.
     @discardableResult
     func build(into body: Pointer, list: PeopleListView, searching: String?, table: AddTable,
-               editFilters: @escaping @MainActor () -> Void) throws -> Pointer {
+               editFilters: @escaping @MainActor () -> Void) throws -> (filters: Pointer, progress: Pointer?) {
         let tile = try page.tile()
         try ui.style(tile) { try $0.number("flexGrow", 1) }
         try ui.add(tile, to: body)
@@ -79,8 +80,11 @@ struct NativeSearch {
         try ui.onClick(button) { editFilters() }
         try ui.add(top, to: tile)
 
+        var progress: Pointer?
         if let searching {
-            try ui.add(try ui.text(searching, ["body-md", "global-text-secondary"]), to: tile)
+            let line = try ui.text(searching, ["body-md", "global-text-secondary"])
+            try ui.add(line, to: tile)
+            progress = line
         } else if list.table.rows.isEmpty {
             try ui.add(try ui.text("Nobody matches these filters.", ["body-md", "global-text-secondary"]), to: tile)
         } else {
@@ -89,7 +93,7 @@ struct NativeSearch {
                                    kind: list.staff ? .staff : .players), tile)
             try ui.add(try page.spaced(try ui.text(list.count, ["body-sm", "global-text-secondary"]), top: 8), to: tile)
         }
-        return button
+        return (button, progress)
     }
 
     /// A button like FM's own small ones, which opens the app's filters for the list.
