@@ -3,14 +3,36 @@
 What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 [Releases](https://github.com/FMStarship/FMStarship/releases) page.
 
-## Unreleased
+## 27.0.6
 
+- **Works with FM27's full release.** FM's launch update (27.0.1.2494769) moved the game functions FM Starship runs for "would
+  join", role stars, season stats, staff numbers, injury days and formation names. They're found again on the new build, and
+  checked in FM with a live save.
 - **FM Starship inside FM, as a preview.** A plugin adds an FM STARSHIP tab to FM27's top bar, with the Dashboard, Recommended
   signings, Bargains, the Squad planner, Shortlists, Players and Staff. Its screens are made of FM's own interface elements, and its
   lists are FM's own player and staff tables: names open FM's profiles, every column sorts, and FM's right-click menu works on the
   rows, acting in the game as it does in FM's lists. Recommended signings and Bargains have an Edit Search like FM's. The plugin
   never writes your save. It isn't in the disk image yet, so build it from the source with `Scripts/install-plugin.sh` and set the
   Steam launch option it prints, as the README explains. It has been tried on FM 27.0.1.2494769, the full release.
+- **Reading FM is much quicker.** The agent now sends FM's memory in larger pieces. FM's own rules run faster in the interpreter,
+  and FM is asked whether a player would join once per read rather than once per screen. On a 34,000-player save, a full read
+  with season stats now takes about 5 seconds. You get the agent's part after updating and starting FM from FM Starship again.
+- **Less work while FM runs.** FM Starship no longer looks through every process on the Mac every two seconds to find FM, and
+  inside FM it doesn't look at all. Search lists are built in the background after a read.
+- **Inside FM, the preview plugin is steadier:**
+  - **On an FM build it hasn't been checked on,** it turns off what doesn't fit and says so, rather than crash or leave FM's
+    screen blank.
+  - **If the plugin is missing,** FM still starts from Steam, and `Scripts/install-plugin.sh --uninstall` removes it.
+  - **After Load Save, a new day or a match,** the FM STARSHIP tab reads your save again, so it never shows another save's players
+    or old figures.
+  - **When FM quits,** the plugin stops cleanly.
+  - **It does less on FM's main thread.**
+- **A Hidden attributes switch inside FM.** The FM STARSHIP tab has its own Hidden attributes switch. Switching it, or the app's
+  eye, redraws every screen at once, so no CA, PA or other hidden value is left showing.
+- **Lists say why they're empty.** A list with nobody in it now says why: for example, that young signings are picked on PA,
+  which is off.
+- **Read timings in the log.** The app writes how long each part of a read takes to `~/Library/Logs/FM Starship/app.log`, to help
+  find what makes a read slow.
 - **Doubtful and Persuadable players count as willing to join.** "Would join" used to mean only players FM calls Interested. It
   now also takes in FM's Persuadable and Doubtful players, the levels FM's own recruitment search offers. Recommended signings,
   Bargains, Squad overview, the Squad planner and the "Would join you" filter all find more players, though the less keen may want
