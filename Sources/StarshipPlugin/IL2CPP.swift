@@ -18,6 +18,7 @@ final class IL2CPP {
     /// Only success is kept: until then each use tries again, so a look before FM is ready doesn't leave FM Starship
     /// off until FM starts again.
     static var shared: IL2CPP? {
+        guard !stopped else { return nil }
         if let attached { return attached }
         do {
             attached = try IL2CPP()
@@ -33,6 +34,11 @@ final class IL2CPP {
     private static var attached: IL2CPP?
     /// Why it last couldn't attach, logged once rather than on every try.
     private static var lastFailure = ""
+    /// Set as FM quits, when Unity may shut the runtime down before anything of ours runs again.
+    private(set) static var stopped = false
+
+    /// Nothing calls into FM's runtime after this: `shared` is nil from now on.
+    static func stop() { stopped = true }
 
     private typealias P = UnsafeMutableRawPointer?
     private typealias Text = UnsafePointer<CChar>?
@@ -110,7 +116,12 @@ final class IL2CPP {
         let path = (0..<_dyld_image_count()).lazy.compactMap { _dyld_get_image_name($0).map { String(cString: $0) } }
             .first { $0.hasSuffix("GameAssembly.dylib") }
         guard let path else { throw Failure("GameAssembly isn't loaded") }
-        guard let library = dlopen(path, RTLD_LAZY | RTLD_NOLOAD) ?? UnsafeMutableRawPointer(bitPattern: -2) else {
+        // RTLD_NOLOAD still counts a reference to the library. Each try that fails gives it back, so the tries made
+        // until FM is ready don't pile up references; the one that works keeps it, for the functions it holds.
+        let opened = dlopen(path, RTLD_LAZY | RTLD_NOLOAD)
+        var kept = false
+        defer { if !kept, let opened { dlclose(opened) } }
+        guard let library = opened ?? UnsafeMutableRawPointer(bitPattern: -2) else {
             throw Failure("No handle for \(path)")
         }
         func load<T>(_ name: String) throws -> T {
@@ -187,6 +198,7 @@ final class IL2CPP {
         guard findClass("UnityEngine.UIElements", "VisualElement") != nil else { throw Failure("UI Toolkit isn't loaded yet") }
         // Unity's main thread is attached already, so this only hands back its thread.
         _ = api.threadAttach(domain)
+        kept = true
     }
 
     /// GameAssembly's Mach-O UUID, which is new each time FM's game code is built. Nil while it isn't loaded.
@@ -701,7 +713,7 @@ final class IL2CPP {
             items = elements(object)
         } else if className.hasPrefix("System.Collections.Generic.List`1"),
                   let itemsField = field(klass, "_items"), let sizeField = field(klass, "_size") {
-            let count = Int(object.load(fromByteOffset: api.fieldOffset(sizeField), as: Int32.self))
+            let count = max(0, Int(object.load(fromByteOffset: api.fieldOffset(sizeField), as: Int32.self)))
             // A list of structs keeps them inline, which this doesn't read.
             guard let array = object.load(fromByteOffset: api.fieldOffset(itemsField), as: P.self), !holdsValues(array) else {
                 return line + " count \(count)"

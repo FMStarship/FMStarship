@@ -415,6 +415,29 @@ struct FMTable {
         var fitted: Set<Pointer> = []
         var hooked: Set<Pointer> = []
         var columns: [String] = []
+        /// The rows and cells kept above by their addresses, held through GC handles: one FM let go of could otherwise be
+        /// collected, and a new one made at its address taken for it.
+        var pinned: [Pointer: IL2CPP.Handle] = [:]
+        /// The headings' buttons whose clicks are ours.
+        var buttons: [Pointer] = []
+
+        /// Forgets the rows and headings, and lets go of them, when the table goes or FM builds its columns again.
+        @MainActor
+        func forget(_ il2cpp: IL2CPP?) {
+            for handle in pinned.values { il2cpp?.unpin(handle) }
+            for button in buttons { ClickActions.actions[button] = nil }
+            person = [:]
+            cells = [:]
+            fitted = []
+            hooked = []
+            pinned = [:]
+            buttons = []
+        }
+
+        @MainActor
+        fileprivate func pin(_ element: Pointer, _ il2cpp: IL2CPP) {
+            if pinned[element] == nil, let handle = il2cpp.pin(element) { pinned[element] = handle }
+        }
     }
 
     /// Set once FM's rows have been found not to be as expected, so that's logged only once.
@@ -441,15 +464,14 @@ struct FMTable {
         }
         let ids = il2cpp.strings(inList: il2cpp.fieldObject(table, "m_columnIDs"))
         if ids != shown.columns {
-            // FM built its columns again, and the rows' cells with them.
-            shown.person = [:]
-            shown.cells = [:]
-            shown.fitted = []
+            // FM built its columns again, and the rows' cells and headings with them.
+            shown.forget(il2cpp)
             shown.columns = ids
         }
         let placed = extras.compactMap { extra in ids.firstIndex(of: extra.host).map { (extra, $0) } }
         for row in rows {
             guard let rowOffset, let root = row.load(fromByteOffset: rowOffset, as: IL2CPP.Pointer?.self) else { continue }
+            shown.pin(root, il2cpp)
             if !shown.fitted.contains(root) {
                 fit(root)
                 shown.fitted.insert(root)
@@ -458,6 +480,7 @@ struct FMTable {
             let index = personIndex(of: root, bindings: bindings) ?? -1
             guard shown.person[root] != index else { continue }
             let cells = shown.cells[root] ?? self.cells(in: root)
+            if shown.cells[root] == nil { cells.forEach { shown.pin($0, il2cpp) } }
             shown.cells[root] = cells
             for (extra, column) in placed where column < cells.count {
                 setValue(extra.values[index] ?? "", tone: extra.tones[index], quiet: extra.quiet, in: cells[column])
@@ -474,6 +497,7 @@ struct FMTable {
                 // FM can't sort by our values, so clicking the heading sorts the list by them here.
                 try? ui.onButtonClick(button) { onSort(id) }
                 shown.hooked.insert(header)
+                shown.buttons.append(button)
             }
             if let icon = il2cpp.fieldObject(header, "m_sortIcon") { sortIcon(icon, sort?.host == id ? sort?.descending : nil) }
         }
@@ -625,11 +649,21 @@ struct FMTable {
         }
     }
 
+    /// Set once a row's key has been found not to be as expected, so that's logged only once.
+    private static var keysUnreadable = false
+
     /// The database index of the person in a row FM has drawn: the reference FM put in the row's key as "binding".
     private func personIndex(of row: Pointer, bindings: Pointer) -> Int32? {
         guard let get = il2cpp.method(il2cpp.classOf(bindings), "Get", parameters: 2, firstParameter: "SI.Bindable.Bindings.Key&"),
               il2cpp.valueSize(il2cpp.methodParameter(get, 1)) == 16,
-              let key = il2cpp.unbox(try? il2cpp.call(row, "get_Key"), as: UInt64.self), key != 0 else { return nil }
+              let getKey = il2cpp.method(il2cpp.classOf(row), "get_Key", parameters: 0) else { return nil }
+        // The key is read as the 8 bytes it is now. If it grows, its first 8 would find another person's values.
+        guard il2cpp.valueSize(il2cpp.returnType(getKey)) == 8 else {
+            if !Self.keysUnreadable { PluginLog.write("FM's row keys aren't as expected on this build of FM, so our values are off") }
+            Self.keysUnreadable = true
+            return nil
+        }
+        guard let key = il2cpp.unbox(try? il2cpp.call(getKey, row), as: UInt64.self), key != 0 else { return nil }
         var rowKey = key
         let path = Array("binding".utf16)
         let value: Pointer? = path.withUnsafeBufferPointer { chars in

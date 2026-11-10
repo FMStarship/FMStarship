@@ -51,6 +51,8 @@ final class FMInterface {
     /// Each screen's content, and the analysis it was made from.
     private var contents: [StarshipScreen: MadeScreen<ScreenContent>] = [:]
     private var running: Set<StarshipScreen> = []
+    /// The analysis and search each screen's work last came back empty for.
+    private var cameBackEmpty: [StarshipScreen: WorkFor] = [:]
     /// Which of the model's reads the screens may be made from: none from before FM loaded another save.
     private var saveWatch = SaveWatch()
     /// FM's memory, for the clubs' names in `saveNow`.
@@ -96,6 +98,23 @@ final class FMInterface {
             MainActor.assumeIsolated { FMInterface.shared.mouseDown(event) }
             return event
         }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { FMInterface.shared.stop() }
+        }
+    }
+
+    /// FM is quitting. Unity may shut IL2CPP down before the run loop turns again, so no timer of ours fires after this,
+    /// and nothing else calls into FM: `IL2CPP.shared` is nil from now on.
+    private func stop() {
+        IL2CPP.stop()
+        timer?.invalidate()
+        timer = nil
+        rowsTimer?.invalidate()
+        rowsTimer = nil
+        #if STARSHIP_DEVELOPER
+        TableDump.shared.stop()
+        #endif
+        PluginLog.write("FM is quitting, so FM Starship stops")
     }
 
     /// A click on FM's own navigation goes back to FM: its tabs, as moving between FM's tabs does, its bookmarks and
@@ -103,8 +122,9 @@ final class FMInterface {
     /// A tab's dropdown arrow only opens FM's menu, and choosing from that changes FM's screen, which `followFM`
     /// notices.
     private func mouseDown(_ event: NSEvent) {
-        guard let view = event.window?.contentView, view.bounds.width > 0, view.bounds.height > 0,
-              let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
+        // A click in FM Starship's own windows over FM isn't one on FM's interface, wherever it lands.
+        guard let window = event.window, !Plugin.shared.owns(window), let view = window.contentView, view.bounds.width > 0,
+              view.bounds.height > 0, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
             guard let root = try? ui.mainRoot(), let panel = ui.layout(root) else { return }
             // FM's interface fills the window, in its own units, from the top left.
@@ -486,6 +506,7 @@ final class FMInterface {
         release(&reportBody)
         stopTables()
         forgetSubtabClicks()
+        forgetListClicks()
         setTabActive(false, ui)
         relightFMTab(ui)
         PluginLog.write("FM Starship screen closed")
@@ -555,10 +576,7 @@ final class FMInterface {
         guard key != shown else { return }
         // The tables of what was showing go with it, and so do its clickable entries.
         stopTables()
-        for entry in listButtons { ClickActions.actions[entry] = nil }
-        listButtons = []
-        editToggles = []
-        openList = []
+        forgetListClicks()
         try fillSubtabs(ui)
         for child in ui.children(of: element) { try ui.remove(child) }
         let page = NativePage(ui: ui, look: look ?? .fallback)
@@ -963,7 +981,10 @@ final class FMInterface {
                 // Sorting by one of FM's own columns takes over from ours.
                 if live.sort != nil, fmTable.sortedByFM(table, besides: live.extras) { live.sort = nil }
                 fmTable.refreshRows(table, live.extras, shown: live.shown, sort: live.sort) { [weak live] host in
-                    if let live { FMInterface.shared.sort(live, by: host) }
+                    // Sorting rebuilds the table, so it waits until FM has finished with the click on its heading.
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { if let live { FMInterface.shared.sort(live, by: host) } }
+                    }
                 }
             }
         }
@@ -989,7 +1010,10 @@ final class FMInterface {
     private func stopTables() {
         rowsTimer?.invalidate()
         rowsTimer = nil
-        for live in liveTables { IL2CPP.shared?.unpin(live.handle) }
+        for live in liveTables {
+            live.shown.forget(IL2CPP.shared)
+            IL2CPP.shared?.unpin(live.handle)
+        }
         liveTables = []
     }
 
@@ -1003,7 +1027,9 @@ final class FMInterface {
                 guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
                 defer { il2cpp.unpin(handle) }
                 il2cpp.withoutCollection {
-                    guard let table = il2cpp.target(of: handle), ui.parent(of: table) != nil else { return }
+                    // A table of a screen that's gone still has a parent, so it's looked for among the tables up now.
+                    guard let table = il2cpp.target(of: handle),
+                          FMInterface.shared.liveTables.contains(where: { il2cpp.target(of: $0.handle) == table }) else { return }
                     let fmTable = FMTable(ui: ui, kind: kind)
                     PluginLog.write("FM's table, check \(attempt): \(fmTable.report(table))")
                     guard fmTable.columnCount(table) == 0, attempt < 3 else { return }
@@ -1101,6 +1127,14 @@ final class FMInterface {
         subtabButtons = []
     }
 
+    /// The screen's own clickable entries, its switches and an open dropdown, which go with what's showing.
+    private func forgetListClicks() {
+        for entry in listButtons { ClickActions.actions[entry] = nil }
+        listButtons = []
+        editToggles = []
+        openList = []
+    }
+
     /// Changing screens rebuilds the row the click came from, so it waits until FM has finished with the click.
     private func select(_ screen: StarshipScreen) {
         guard screen != current else { return }
@@ -1129,11 +1163,12 @@ final class FMInterface {
         let revision = model.analysisRevision
         let showsAbility = session.display.showsAbility
         let chosen = current
-        guard contents[chosen]?.revision != revision, !running.contains(chosen) else { return }
+        let version = searchVersions[chosen, default: 0]
+        guard Self.needsWork(made: contents[chosen]?.revision, empty: cameBackEmpty[chosen], running: running.contains(chosen),
+                             now: WorkFor(revision: revision, version: version)) else { return }
         updateSearches(session, revision: revision)
         let signings = signingSearch?.options ?? RecommendOptions()
         let bargains = bargainSearch?.options
-        let version = searchVersions[chosen, default: 0]
         running.insert(chosen)
         let started = Date()
         DispatchQueue.global(qos: .userInitiated).async {
@@ -1149,12 +1184,25 @@ final class FMInterface {
                     if let content, version == interface.searchVersions[chosen, default: 0], session === interface.analysis {
                         interface.contents[chosen] = MadeScreen(revision: revision, showsAbility: showsAbility, content: content)
                     }
+                    if content == nil { interface.cameBackEmpty[chosen] = WorkFor(revision: revision, version: version) }
                     interface.refresh()
                     // In case the save was read again while this was being made.
                     interface.startWork()
                 }
             }
         }
+    }
+
+    /// What a screen's work is done for: the analysis, and the screen's search.
+    struct WorkFor: Equatable {
+        let revision: Int
+        let version: Int
+    }
+
+    /// Whether a screen's work starts: not while it's running, nor for the analysis it was last made from, nor again
+    /// for an analysis and search it came back empty for, since it would come back empty again, over and over.
+    nonisolated static func needsWork(made: Int?, empty: WorkFor?, running: Bool, now: WorkFor) -> Bool {
+        !running && made != now.revision && empty != now
     }
 
     /// The same engine calls as the app's screens, with the searches set on their Edit Search pages: at first, the

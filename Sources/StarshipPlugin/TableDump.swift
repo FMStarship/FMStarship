@@ -37,6 +37,12 @@ final class TableDump {
         PluginLog.write("Watching FM's screens for tables")
     }
 
+    /// FM is quitting.
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
     /// Writes once the screens FM shows have stayed the same for two seconds, so its tables have had time to fill.
     private func check() {
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
