@@ -20,6 +20,7 @@ public final class GameProcess: @unchecked Sendable {
 
     private let lock = NSLock()
     private var idle: [AgentConnection] = []
+    private var traffic = (requests: 0, bytes: 0)
 
     static let smallHeapTags: Set<UInt32> = [1, 2, 7, 11]
     /// Thread stacks hold none of FM's records. Inside FM they hold the reader's own copies of the class tables it
@@ -177,17 +178,33 @@ public final class GameProcess: @unchecked Sendable {
             return result == KERN_SUCCESS && got == mach_vm_size_t(count)
         }
         let limit = Int(STARSHIP_MAX_READ)
-        return (try? withConnection { connection in
+        var requests = 0, bytes = 0
+        let done = (try? withConnection { connection in
             var offset = 0
             while offset < count {
                 let chunk = min(limit, count - offset)
+                requests += 1
                 guard try connection.read(address: UInt64(address) + UInt64(offset), into: buffer + offset, length: chunk) else {
                     return false
                 }
+                bytes += chunk
                 offset += chunk
             }
             return true
         }) ?? false
+        lock.lock()
+        traffic.requests += requests
+        traffic.bytes += bytes
+        lock.unlock()
+        return done
+    }
+
+    /// Reads asked of the agent so far, and the bytes they brought back, for timing a read. Swift's own atomics need
+    /// macOS 15, so these are kept under the pool's lock, which costs nothing next to a round trip. Zero inside FM.
+    public var agentTraffic: (requests: Int, bytes: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        return traffic
     }
 
     public func read(_ address: Int64, count: Int) -> [UInt8]? {

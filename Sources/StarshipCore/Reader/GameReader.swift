@@ -73,10 +73,12 @@ public final class GameReader {
     private let clubs = Memo<Club>()
     private let injuryNames = Memo<String>()
     private var teamTypes: [Int64: Int] = [:]
+    private let clock: ReadClock
 
     public init(game: GameProcess, status: @escaping (String) -> Void) {
         self.game = game
         self.status = status
+        clock = ReadClock(game)
     }
 
     public static func read(status: @escaping (String) -> Void) throws -> Database {
@@ -95,12 +97,15 @@ public final class GameReader {
 
     /// Reads the game and sets up its rules. A nil engine leaves those features switched off.
     /// Inside FM, as the plugin, straight from memory; from the app, through the agent.
-    public static func connect(status: @escaping (String) -> Void) throws -> (database: Database, engine: RulesEngine?) {
-        try connect(to: GameProcess.runsInsideGame ? GameProcess.insideGame() : GameProcess(), status: status)
+    /// `log` is told how long each part took.
+    public static func connect(status: @escaping (String) -> Void, log: (String) -> Void = { _ in }) throws -> (database: Database, engine: RulesEngine?) {
+        try connect(to: GameProcess.runsInsideGame ? GameProcess.insideGame() : GameProcess(), status: status, log: log)
     }
 
-    public static func connect(to game: GameProcess, status: @escaping (String) -> Void) throws -> (database: Database, engine: RulesEngine?) {
-        let database = try GameReader(game: game, status: status).readAll()
+    public static func connect(to game: GameProcess, status: @escaping (String) -> Void,
+                               log: (String) -> Void = { _ in }) throws -> (database: Database, engine: RulesEngine?) {
+        let reader = GameReader(game: game, status: status)
+        let database = try reader.readAll()
         // A read that fails only leaves a hole, so FM closing part way through has to be caught here.
         guard GameProcess.runningPID() == game.pid else { throw AgentError.connectionLost }
         status("Setting up the game's rules...")
@@ -116,6 +121,8 @@ public final class GameReader {
                 database.tactics[team]?.fmShapeWithoutBall = engine.shapeName(tactic.slots.map { ($0.positionWithoutBall, $0.sideWithoutBall) })
             }
         }
+        reader.clock.lap("engine set-up")
+        log("Read \(database.players.count) players and \(database.staff.count) staff: \(reader.clock.line)")
         return (database, engine)
     }
 
@@ -132,6 +139,7 @@ public final class GameReader {
         let tacticSessionVt = vt("TACTIC_EDIT_SESSION"), tacticArrayVt = vt("PREPARED_TACTICS_CREATOR_ARRAY")
         let loanContractVt = vt("LOAN_CONTRACT"), bTeamContractVt = vt("B_CLUB_CONTRACT")
         guard playerVt != 0, staffVt != 0 else { throw ReadError.classesNotFound("players or staff") }
+        clock.lap("classes")
 
         let pieces = game.pieces(size: 1 << 23, overlap: 0x400, writableOnly: true)
         var parts = [ScanPart?](repeating: nil, count: pieces.count)
@@ -212,11 +220,13 @@ public final class GameReader {
                 teamTypes[team.address] = team.type
             }
         }
+        clock.lap("sweep")
         guard !pending.isEmpty else { throw ReadError.noPlayers }
 
         status("Reading names and clubs for \(pending.count.formatted()) people...")
         DispatchQueue.concurrentPerform(iterations: pending.count) { resolve(pending[$0]) }
         pending = GameReader.liveRecords(pending)
+        clock.lap("resolve")
         applyLoans(pending, contracts: loanContracts.sorted(), bTeamContract: bTeamContractVt)
 
         for item in pending where !item.person.club.isEmpty && !(item.person is Staff) && item.person.squad.isEmpty {
@@ -242,6 +252,7 @@ public final class GameReader {
         separateSides(pending.map(\.person), in: database)
         if let today = database.gameDate { applyInjuries(pending, today: today) }
         readTactics(sessions: tacticSessions.sorted(), arrays: tacticArrays.sorted(), people: pending.map(\.person), into: database)
+        clock.lap("loans, humans, tactics")
 
         status("Applying the game's rules...")
         for person in pending.map(\.person) {
@@ -268,6 +279,7 @@ public final class GameReader {
         status("Self-checks...")
         database.prepare()
         database.checks = GameReader.selfCheck(database)
+        clock.lap("post-processing")
         return database
     }
 
