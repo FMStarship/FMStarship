@@ -59,6 +59,25 @@ struct TableSection {
     var kind = FMTable.Kind.players
 }
 
+extension TableSection {
+    /// Whether anybody in the list is for a table. FM's table with nobody in it would stand empty, with no word of why.
+    var hasPeople: Bool { table.rows.contains { $0.person != nil } }
+
+    /// The small print under the list's heading: the engine's line over the list, while there's a table under it.
+    var headingNote: String { hasPeople ? table.head : "" }
+
+    /// What a list with nobody in it says where its table would be, in the screen's own size of text: the engine's
+    /// line over the list, such as why youngsters need Hidden attributes. Without one, the lines under the list say
+    /// why, and without those either, that there's nobody. Nil while there's somebody to show.
+    var inPlaceOfTable: String? {
+        guard !hasPeople else { return nil }
+        if !table.head.isEmpty { return table.head }
+        let below = table.rows.contains { $0.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
+            || !NativePage.withoutAppHints(table.status).isEmpty || notes.contains { !$0.isEmpty }
+        return below ? nil : "Nobody to show."
+    }
+}
+
 /// The pieces FM Starship's screens are made of, from FM's elements and style classes.
 @MainActor
 struct NativePage {
@@ -170,8 +189,9 @@ struct NativePage {
     /// heading and the rows.
     func table(_ section: TableSection, in page: Pointer, hint: String? = nil) throws {
         let tile = try tile()
-        try heading(section.title, note: section.table.head, in: tile)
+        try heading(section.title, note: section.headingNote, in: tile)
         if let hint { try self.hint(hint, in: tile) }
+        if let line = section.inPlaceOfTable { try ui.add(try ui.text(line, ["body-md", "global-text-secondary"]), to: tile) }
         try rows(of: section, in: tile)
         try ui.add(tile, to: page)
     }

@@ -934,25 +934,33 @@ final class FMInterface {
             try ui.style(top) { try $0.number("flexShrink", 0) }
             let heading = try ui.box()
             try ui.style(heading) { try $0.number("flexGrow", 1) }
-            try page.heading(section.title, note: section.table.head, in: heading)
+            try page.heading(section.title, note: section.headingNote, in: heading)
             try ui.add(heading, to: top)
             try ui.add(buttons, to: top)
             try ui.add(top, to: tile)
         } else {
-            try page.heading(section.title, note: section.table.head, in: tile)
+            try page.heading(section.title, note: section.headingNote, in: tile)
         }
         try ui.add(tile, to: body)
-        try addFMTable(section, columns: columns, in: tile, rows: nil, ui)
+        if section.hasPeople {
+            try addFMTable(section, columns: columns, in: tile, rows: nil, ui)
+        } else if let line = section.inPlaceOfTable {
+            try ui.add(try ui.text(line, ["body-md", "global-text-secondary"]), to: tile)
+        }
         try linesBelow(section, in: tile, page: page, ui)
     }
 
     /// One list in FM's own player table, in a tile of its own on a page with others, as tall as its rows.
     private func fmTableTile(_ section: TableSection, columns: [String], in body: Pointer, page: NativePage, _ ui: FMElements) throws {
         let tile = try page.tile()
-        try page.heading(section.title, note: section.table.head, in: tile)
+        try page.heading(section.title, note: section.headingNote, in: tile)
         try ui.add(tile, to: body)
         let people = section.table.rows.filter { $0.person != nil }.count
-        if people > 0 { try addFMTable(section, columns: columns, in: tile, rows: min(people, NativePage.rowLimit), ui) }
+        if people > 0 {
+            try addFMTable(section, columns: columns, in: tile, rows: min(people, NativePage.rowLimit), ui)
+        } else if let line = section.inPlaceOfTable {
+            try ui.add(try ui.text(line, ["body-md", "global-text-secondary"]), to: tile)
+        }
         try linesBelow(section, in: tile, page: page, ui)
     }
 
