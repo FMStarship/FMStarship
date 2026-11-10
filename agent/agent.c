@@ -178,6 +178,10 @@ static void *accept_loop(void *arg) {
         // setsockopt fails once the peer has hung up. Nothing may be written in that case.
         int on = 1;
         if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on) != 0) { close(fd); continue; }
+        // The default 8 KiB send buffer cuts every read of the sweep into a thousand pushes. 256 KiB made bulk reads
+        // about four times as fast in testing, and more was no faster. Without it, reads still work, just slower.
+        int send_buffer = 256 * 1024;
+        setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &send_buffer, sizeof send_buffer);
 
         pthread_t thread;
         pthread_attr_t attr;
