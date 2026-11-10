@@ -69,8 +69,29 @@ struct FMTable {
         }
         assets[kind] = references.map { $0.flatMap { il2cpp.pin($0) } }
         let guids = references.map { $0.flatMap { il2cpp.text(try? il2cpp.call($0, "get_AssetGUID")) } ?? "" }
-        if needed.allSatisfy({ !guids[$0].isEmpty }), let data = try? JSONEncoder().encode(guids) { try? data.write(to: kind.assetFile) }
+        if needed.allSatisfy({ !guids[$0].isEmpty }), let build = fmBuild,
+           let data = try? JSONEncoder().encode(SavedAssets(build: build, guids: guids)) { try? data.write(to: kind.assetFile) }
         PluginLog.write("FM's \(kind.name) table assets kept: \(guids.joined(separator: " "))")
+    }
+
+    /// An asset file: the GUIDs, and the build of FM they were kept on.
+    struct SavedAssets: Codable {
+        let build: String
+        let guids: [String]
+    }
+
+    /// The GUIDs in an asset file, if it was kept on this build of FM. After a patch a GUID may be gone, or point at
+    /// something else, so they're taken from one of FM's own tables again instead.
+    nonisolated static func savedGUIDs(_ data: Data, build: String?) -> [String]? {
+        guard let build, let saved = try? JSONDecoder().decode(SavedAssets.self, from: data), saved.build == build else { return nil }
+        return saved.guids
+    }
+
+    /// Which build of FM this is: its version, and GameAssembly's UUID, which a patch changes. Nil if the UUID can't be
+    /// read, and then no GUIDs are kept or used.
+    static var fmBuild: String? {
+        guard let uuid = IL2CPP.gameAssemblyUUID() else { return nil }
+        return "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") \(uuid)"
     }
 
     /// Looks through FM's screens, shown or not, for its people tables to take the assets from.
@@ -97,8 +118,12 @@ struct FMTable {
 
     private static func loadAssets(_ kind: Kind, _ ui: FMElements) {
         let il2cpp = ui.il2cpp
-        guard assets[kind] == nil, let data = try? Data(contentsOf: kind.assetFile), let guids = try? JSONDecoder().decode([String].self, from: data),
-              guids.count == setters.count, let tableClass = il2cpp.findClass("SI.Bindable", "StreamedTable") else { return }
+        guard assets[kind] == nil, let data = try? Data(contentsOf: kind.assetFile) else { return }
+        guard let guids = savedGUIDs(data, build: fmBuild), guids.count == setters.count else {
+            PluginLog.write("FM's \(kind.name) table assets weren't kept on this build of FM, so they'll be taken from FM's own table")
+            return
+        }
+        guard let tableClass = il2cpp.findClass("SI.Bindable", "StreamedTable") else { return }
         var handles: [IL2CPP.Handle?] = []
         for (setter, guid) in zip(setters, guids) {
             guard !guid.isEmpty else {
@@ -130,7 +155,7 @@ struct FMTable {
         var widths: [String: Float] = [:]
         for row in il2cpp.items(of: rows) {
             guard let id = il2cpp.fieldObject(row, "m_id").flatMap(il2cpp.text) else { continue }
-            let width = il2cpp.fieldOffset(il2cpp.classOf(row), "m_defaultWidth").map { row.load(fromByteOffset: $0, as: Float.self) } ?? 0
+            let width = il2cpp.value(row, "m_defaultWidth", as: Float.self) ?? 0
             widths[id] = width
             lines.append("\(id) \(FMElements.whole(width))")
         }
@@ -196,11 +221,18 @@ struct FMTable {
             // FM's own column IDs first, so the choice of columns below knows them.
             if Self.defaultWidths[kind] == nil { Self.writeColumns(factory, kind, il2cpp) }
             addOwnColumns(extras, to: factory)
-            let known = Self.knownColumns[kind] ?? []
-            let chosen = known.isEmpty ? columns : columns.filter(known.contains)
+            let (chosen, dropped) = Self.available(columns, known: Self.knownColumns[kind] ?? [])
+            for id in dropped { PluginLog.write("FM's \(kind.name) table has no column \(id) on this build of FM, so it's left out") }
             try il2cpp.call(table, "UpdateStreamedTableView", [try view(chosen, own: own)])
         }
         try il2cpp.call(table, "SetList", [try rows(people)])
+    }
+
+    /// Of the columns asked for, those FM's factory has, and those it hasn't, which are left out. Until the factory's
+    /// columns are known, all of them are kept.
+    nonisolated static func available(_ columns: [String], known: Set<String>) -> (kept: [String], dropped: [String]) {
+        guard !known.isEmpty else { return (columns, []) }
+        return (columns.filter(known.contains), columns.filter { !known.contains($0) })
     }
 
     /// A view of FM's, as FM keeps for each way of looking at a table, with these columns. Those holding FM
@@ -238,27 +270,25 @@ struct FMTable {
     /// sorting by its header, which would sort by what FM keeps in it.
     private func ownMetadata(_ configClass: Pointer, width: Float) throws -> Pointer {
         guard let withMetadata = il2cpp.method(configClass, ".ctor", parameters: 3, firstParameter: "System.String", inherited: false),
-              let metadataClass = il2cpp.klass(of: il2cpp.methodParameter(withMetadata, 1)),
-              let sorting = il2cpp.fieldOffset(metadataClass, "m_sortingDisabled"),
-              let widthOffset = il2cpp.fieldOffset(metadataClass, "m_widthOverride"),
-              let minimum = il2cpp.fieldOffset(metadataClass, "m_minWidthOverride") else {
+              let metadataClass = il2cpp.klass(of: il2cpp.methodParameter(withMetadata, 1)) else {
             throw IL2CPP.Failure("FM's column settings aren't as expected")
         }
         var required = false
         let metadata = try withUnsafeMutablePointer(to: &required) {
             try il2cpp.new(metadataClass, [Pointer($0)], firstParameter: "System.Boolean")
         }
-        metadata.storeBytes(of: true, toByteOffset: sorting, as: Bool.self)
+        // Through IL2CPP, which refuses a field that's no longer the size of the value.
+        try il2cpp.setField(metadata, "m_sortingDisabled", true)
         switch Self.widths {
         case .none: break
         case .min:
-            metadata.storeBytes(of: width, toByteOffset: minimum, as: Float.self)
+            try il2cpp.setField(metadata, "m_minWidthOverride", width)
         case .width:
-            metadata.storeBytes(of: width, toByteOffset: widthOffset, as: Float.self)
-            metadata.storeBytes(of: width, toByteOffset: minimum, as: Float.self)
+            try il2cpp.setField(metadata, "m_widthOverride", width)
+            try il2cpp.setField(metadata, "m_minWidthOverride", width)
         case .both:
-            metadata.storeBytes(of: width, toByteOffset: widthOffset, as: Float.self)
-            metadata.storeBytes(of: min(width, 60), toByteOffset: minimum, as: Float.self)
+            try il2cpp.setField(metadata, "m_widthOverride", width)
+            try il2cpp.setField(metadata, "m_minWidthOverride", min(width, 60))
         }
         return metadata
     }
@@ -352,9 +382,9 @@ struct FMTable {
             do {
                 let column = try il2cpp.new(rowClass)
                 il2cpp.copyFields(from: source, to: column)
-                il2cpp.setField(column, "m_id", il2cpp.managedString(extra.host))
-                il2cpp.setField(column, "m_defaultWidth", extra.width)
-                il2cpp.setField(column, "m_minimumWidth", Float(48))
+                try il2cpp.setField(column, "m_id", il2cpp.managedString(extra.host))
+                try il2cpp.setField(column, "m_defaultWidth", extra.width)
+                try il2cpp.setField(column, "m_minimumWidth", Float(48))
                 try il2cpp.call(lookup, "set_Item", [il2cpp.managedString(extra.host), column])
                 Self.knownColumns[kind, default: []].insert(extra.host)
             } catch {
@@ -387,6 +417,9 @@ struct FMTable {
         var columns: [String] = []
     }
 
+    /// Set once FM's rows have been found not to be as expected, so that's logged only once.
+    private static var rowsUnreadable = false
+
     /// Which of our columns the list is sorted by, and which way.
     struct Sort: Equatable {
         let host: String
@@ -398,6 +431,14 @@ struct FMTable {
     /// scrolls or sorts, so this runs again and again while the table is up.
     func refreshRows(_ table: Pointer, _ extras: [Extra], shown: Shown, sort: Sort?, onSort: @escaping @MainActor (String) -> Void) {
         guard let bindings = il2cpp.fieldObject(table, "m_bindings"), let rowList = il2cpp.fieldObject(table, "m_rows") else { return }
+        // FM keeps each row as a 16-byte pair: the row's BindingRoot, which has its key and its cells, and an element.
+        // The BindingRoot is found by its type. If it isn't there, or the pair has changed size, our values are off.
+        let rowOffset = il2cpp.findClass("SI.Bindable", "BindingRoot").flatMap { il2cpp.offset(of: $0, inStructsOf: rowList) }
+        let rows = rowOffset == nil ? [] : il2cpp.structItems(of: rowList, size: 16)
+        if rows.isEmpty, (il2cpp.value(rowList, "_size", as: Int32.self) ?? 0) > 0, !Self.rowsUnreadable {
+            PluginLog.write("FM's table rows aren't as expected on this build of FM, so our values are off")
+            Self.rowsUnreadable = true
+        }
         let ids = il2cpp.strings(inList: il2cpp.fieldObject(table, "m_columnIDs"))
         if ids != shown.columns {
             // FM built its columns again, and the rows' cells with them.
@@ -407,8 +448,8 @@ struct FMTable {
             shown.columns = ids
         }
         let placed = extras.compactMap { extra in ids.firstIndex(of: extra.host).map { (extra, $0) } }
-        for row in il2cpp.structItems(of: rowList, size: 16) {
-            guard let root = row.load(as: IL2CPP.Pointer?.self) else { continue }
+        for row in rows {
+            guard let rowOffset, let root = row.load(fromByteOffset: rowOffset, as: IL2CPP.Pointer?.self) else { continue }
             if !shown.fitted.contains(root) {
                 fit(root)
                 shown.fitted.insert(root)
@@ -599,9 +640,8 @@ struct FMTable {
                 withUnsafeMutablePointer(to: &span) { (try? il2cpp.call(get, bindings, [Pointer(keyPointer), Pointer($0)])) ?? nil }
             }
         }
-        guard let value, let reference = il2cpp.fieldObject(value, "m_value"),
-              let offset = il2cpp.fieldOffset(il2cpp.classOf(reference), "m_index") else { return nil }
-        return reference.load(fromByteOffset: offset, as: Int32.self)
+        guard let value, let reference = il2cpp.fieldObject(value, "m_value") else { return nil }
+        return il2cpp.value(reference, "m_index", as: Int32.self)
     }
 
     /// FM's tables take a list of TypedValues, each holding FM's reference to a person in its database.
