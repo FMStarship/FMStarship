@@ -52,18 +52,38 @@ public final class GameProcess: @unchecked Sendable {
 
     private static let gameExecutable = "/fm.app/Contents/MacOS/Football Manager 27"
 
+    private static let lastGameLock = NSLock()
+    private static var lastGame: Int32?
+
+    /// FM's pid. The app asks every two seconds, and the plugin does too, on FM's main thread, so this doesn't walk
+    /// every process each time: inside FM the game is this process, and otherwise the pid found last time is checked
+    /// first, until FM quits.
     public static func runningPID() -> Int32? {
+        if runsInsideGame { return getpid() }
+        lastGameLock.lock()
+        defer { lastGameLock.unlock() }
+        lastGame = gamePID(remembered: lastGame, isGame: isGame, all: allPIDs)
+        return lastGame
+    }
+
+    /// The remembered pid while it's still the game, else the first of all the pids that is.
+    static func gamePID(remembered: Int32?, isGame: (Int32) -> Bool, all: () -> [Int32]) -> Int32? {
+        if let remembered, isGame(remembered) { return remembered }
+        return all().first(where: isGame)
+    }
+
+    private static func isGame(_ pid: Int32) -> Bool {
+        withUnsafeTemporaryAllocation(of: CChar.self, capacity: 4096) { buffer in
+            proc_pidpath(pid, buffer.baseAddress, UInt32(buffer.count)) > 0 && String(cString: buffer.baseAddress!).hasSuffix(gameExecutable)
+        }
+    }
+
+    private static func allPIDs() -> [Int32] {
         var pids = [pid_t](repeating: 0, count: 4096)
         let bytes = pids.withUnsafeMutableBufferPointer {
             proc_listpids(UInt32(PROC_ALL_PIDS), 0, $0.baseAddress, Int32($0.count * MemoryLayout<pid_t>.size))
         }
-        var buffer = [CChar](repeating: 0, count: 4096)
-        for pid in pids.prefix(Int(bytes) / MemoryLayout<pid_t>.size) where pid > 0 {
-            guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { continue }
-            let path = String(cString: buffer)
-            if path.hasSuffix(gameExecutable) { return pid }
-        }
-        return nil
+        return pids.prefix(Int(bytes) / MemoryLayout<pid_t>.size).filter { $0 > 0 }
     }
 
     /// True when this code is running inside FM itself, as the plugin.
