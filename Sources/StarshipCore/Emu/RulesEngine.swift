@@ -57,6 +57,7 @@ public final class RulesEngine: GameRulesEngine {
     public var viewers: [Int64: Int64] = [:]
     /// The human clubs that are women's sides, from `Database.womensTeams`.
     public var womensTeams: Set<Int64> = []
+    private let interestAnswers = InterestAnswers()
     private let roleLock = NSLock()
     private var roleMasks: [Int: UInt64] = [:]
     private let failureLock = NSLock()
@@ -97,6 +98,10 @@ public final class RulesEngine: GameRulesEngine {
     public func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? {
         // FM's rule only weighs up the move, so without this it says a woman would join a men's club.
         guard player.isWoman == womensTeams.contains(team) else { return (.notInterested, .notInterested) }
+        return interestAnswers.answer(player: player.block, team: team) { askInterest(player: player, team: team) }
+    }
+
+    private func askInterest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? {
         let club = game.readPointer(team + Int64(MacLayout.Team.club))
         guard let status = try? status(player, team: team), club != 0,
               let transfer = try? score(player, club: club, type: RulesEngine.transfer, status: status) else { return nil }
@@ -382,5 +387,28 @@ public final class RulesEngine: GameRulesEngine {
             return nil
         }
         return found.days
+    }
+}
+
+/// FM's interest answers for one engine, by player record and team. RulesState and GameChecks each keep their own
+/// answers, so without this a player that both ask about costs FM's rule twice. A failure isn't kept, so the next
+/// ask tries again.
+final class InterestAnswers {
+    typealias Answer = (transfer: JoinInterest, loan: JoinInterest)
+    private struct Key: Hashable {
+        let player: Int64
+        let team: Int64
+    }
+
+    private let lock = NSLock()
+    private var answers: [Key: Answer] = [:]
+
+    /// Asks outside the lock, so the threads checking a list don't wait on each other's rule calls.
+    func answer(player: Int64, team: Int64, ask: () -> Answer?) -> Answer? {
+        let key = Key(player: player, team: team)
+        if let known = lock.withLock({ answers[key] }) { return known }
+        guard let answer = ask() else { return nil }
+        lock.withLock { answers[key] = answer }
+        return answer
     }
 }

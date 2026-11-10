@@ -48,7 +48,7 @@ let package = Package(
         .testTarget(name: "StarshipCoreTests", dependencies: ["StarshipCore"]),
         .testTarget(name: "StarshipFilesTests", dependencies: ["StarshipFiles", "StarshipCore"]),
         .testTarget(name: "StarshipSearchTests", dependencies: ["StarshipSearch", "StarshipCore"]),
-        .testTarget(name: "StarshipAnalysisTests", dependencies: ["StarshipAnalysis", "StarshipCore"]),
+        .testTarget(name: "StarshipAnalysisTests", dependencies: ["StarshipAnalysis", "StarshipSearch", "StarshipCore"]),
         .testTarget(name: "StarshipPluginTests", dependencies: ["StarshipPlugin", "StarshipAnalysis", "StarshipCore"]),
     ]
 )
