@@ -26,7 +26,7 @@ final class Plugin: NSObject, NSWindowDelegate {
     func install() {
         guard model == nil else { return }
         AppModel.editionInsideGame = "preview, inside Football Manager"
-        AppLog.write = PluginLog.write
+        AppLog.write = { PluginLog.write($0) }
         let model = AppModel.startUp()
         model.openInsideGame = { [weak self] window in self?.show(window) }
         model.applyAppearanceInsideGame = { [weak self] appearance in
