@@ -1,9 +1,19 @@
 #!/bin/bash
-# Installs the FM Starship plugin prototype for this user and prints the Steam launch option that loads it into FM.
+# Installs the FM Starship plugin preview for this user and prints the Steam launch option that loads it into FM.
 # Safe while FM is running: a game started with the old copy keeps it, and the next start gets the new one.
+#
+# --developer builds in the developer tools: the command file, Control-Option-D and the table watch. They're for
+# working on the plugin, so a plain install leaves them out.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-swift build -c release --product StarshipPlugin
+FLAGS=()
+case "${1:-}" in
+    "") ;;
+    --developer) FLAGS=(-Xswiftc -DSTARSHIP_DEVELOPER) ;;
+    *) echo "Usage: $0 [--developer]" >&2; exit 2 ;;
+esac
+# The odd expansion keeps macOS's bash 3.2 from calling an empty list unbound.
+swift build -c release --product StarshipPlugin ${FLAGS[@]+"${FLAGS[@]}"}
 BIN="$(swift build -c release --show-bin-path)"
 
 DEST="$HOME/Library/Application Support/FMStarship/Plugin"
@@ -33,5 +43,6 @@ EOF
 codesign -f -s - "$APP"
 
 echo "Installed in $DEST"
+if [ ${#FLAGS[@]} -gt 0 ]; then echo "This is a developer build, with the command file and Control-Option-D."; fi
 echo "In Steam, open Football Manager 27 > Properties > General > Launch Options and enter:"
 echo "\"$APP\" %command%"

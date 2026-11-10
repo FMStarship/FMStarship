@@ -1,5 +1,7 @@
 import Foundation
 
+// Only in developer builds: `Scripts/install-plugin.sh --developer`.
+#if STARSHIP_DEVELOPER
 /// A developer's look at how FM builds its interface: the live tree with each element's classes, size, text and resolved
 /// colours, and FM's navigation types and objects. Control-Option-D writes it to the log folder, which is how FM
 /// Starship's own screens find the element names and style classes to use.
@@ -196,3 +198,4 @@ final class InterfaceDump {
     }
 
 }
+#endif

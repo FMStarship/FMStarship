@@ -7,7 +7,8 @@
 A native Mac scouting and club-management companion for Football Manager 27. It reads your running save and shows everything
 the game knows about every player and member of staff, using the game's own rules for things like who would join you. On top of
 that it has a club dashboard, squad and staff overviews, a squad planner built on your own tactic, a best eleven, and tactic advice
-fitted to your squad.
+fitted to your squad. As a preview, it can also run [inside FM](#inside-fm-preview), as an FM STARSHIP tab made of the game's own
+interface elements and player tables.
 
 ![The club dashboard](Assets/Screenshots/01-dashboard.jpg)
 
@@ -43,6 +44,61 @@ With that on, Ability chooses whether CA and PA show as numbers, as stars or not
 
 If FM is already running when you open FM Starship, the app asks you to save and quit it first. It never closes the
 game for you.
+
+## Inside FM (preview)
+
+FM Starship can also run inside FM27, as an **FM STARSHIP** tab at the end of FM's own tabs in the top bar. Its screens are made of
+FM's own interface elements and text styles, and its lists are FM's own player and staff tables. Names open FM's profiles, every
+column sorts, FM's Back button returns to the list, and FM's right-click menu works on the rows.
+
+The tab has these screens:
+
+- **Dashboard:** young talent and the health check
+- **Recommended signings** and **Bargains**, each with an Edit Search laid out like FM's own
+- **Squad planner:** your first team, place by place, and the signings for the plan
+- **Shortlists:** the player shortlists you've saved from the app
+- **Players** and **Staff:** the app's own searches, with its filters
+
+Control-Option-S opens the app's own windows over FM, for everything else, including Hidden attributes and Settings. When FM is in a
+window rather than full screen, its menu bar has an FM Starship menu too.
+
+### Installing it
+
+The plugin isn't in the disk image yet, so you build it from the source. You need Xcode and Homebrew's `zstd`, as
+[CONTRIBUTING.md](CONTRIBUTING.md#getting-set-up) explains.
+
+1. In a copy of the source, run `Scripts/install-plugin.sh`. It builds the plugin and a small launcher app into
+   `~/Library/Application Support/FMStarship/Plugin`, then prints a Steam launch option like this one:
+
+   ```
+   "/Users/you/Library/Application Support/FMStarship/Plugin/FM Starship Launcher.app" %command%
+   ```
+
+2. In Steam, open Football Manager 27 > Properties > General > Launch Options, and paste it in.
+3. Start FM from Steam and load your career. The FM STARSHIP tab appears after FM's own tabs.
+
+Steam then starts the launcher in FM's place, and the launcher starts FM with the plugin. Starting FM from the app's Start Football
+Manager button doesn't load the plugin. The app can still read a game started from Steam this way, without a restart.
+
+To update the plugin, get the new source and run the script again. That's safe while FM is running, and the next start of FM gets
+the new copy. To remove it, clear the launch option and delete that folder.
+
+### What to know
+
+- **It's a preview.** It has only been tried on FM27 27.0.1.2494769 (the full release) and the Launch Preview build before it, with FM in full screen. It finds FM's interface by the names
+  of FM's classes, methods and elements, so an FM patch can stop the tab appearing or a screen opening. Clear the launch option to play
+  without it.
+- **It runs inside FM**, so if the plugin crashes, FM closes with it. Save your career before you try something new.
+- **It never writes your save, and it doesn't patch FM's code.** It adds its screens to FM's interface through the IL2CPP API that
+  FM's game code exports. But FM's own right-click menu on our rows acts in the game, as it does in FM's lists, so an offer or an
+  approach made from it is real.
+- **Hidden attributes works as in the app.** With it off, the tables show FM's own scouting columns instead of CA and PA.
+- Players and Staff put the first 500 people a search finds in FM's table, and say how many were found.
+- Shortlists only reads the files. Make and change shortlists in the app. Staff shortlists aren't there yet.
+- The Staff list needs FM's staff table, which the plugin takes from an FM screen that has one, such as Club. Until you've opened
+  one, the Staff list uses a simpler table and says so. After that, it's remembered.
+- The plugin never goes online, and it doesn't update itself.
+- It writes what it does to `~/Library/Logs/FM Starship/plugin.log`. Please attach that file to a bug report about the plugin.
 
 ## Updates
 
@@ -93,6 +149,21 @@ own compiled code is run on a copy of its memory, inside an interpreter (`Source
 x86-64; this one runs ARM64, because that is what FM runs on a Mac. All writes go to a private overlay that is
 thrown away after each call, so this code can never change your game or save.
 
+**The plugin** (`Sources/StarshipPlugin`) is a library that FM's Steam launch option loads into the game:
+
+- **Steam starts the launcher** (`plugin/launcher.c`) in FM's place. The launcher starts FM with the plugin in
+  `DYLD_INSERT_LIBRARIES`, through the same entitlement the agent uses, and waits for FM to quit, so Steam still sees the game
+  running. The plugin clears that variable as it loads, so nothing FM starts inherits it, and it does nothing in any process but
+  FM's (`Sources/StarshipPluginStart`).
+- **It reads the save from inside FM**, with the same reader, in about 2 seconds instead of about 100 through the agent. The
+  rules run in the same sandbox. It carries the agent too, so the app and `fmprobe` can read a game started this way.
+- **It builds its screens through the IL2CPP API** that FM's `GameAssembly` exports (`IL2CPP.swift`), on Unity's main thread.
+  It makes FM's own interface elements and tables, gives them their style classes, rows and columns through FM's own methods, and
+  gets clicks back through delegates of its own. FM's code isn't patched, and no game file is changed. FM keeps how our tables
+  are sorted with its own interface settings, as it does for its own tables.
+- **It never writes the save.** Anything that acts in the game is one of FM's own actions, chosen by the player from FM's
+  right-click menu on our rows.
+
 ## What works
 
 Everything FM Moleman does on Windows, on FM27 27.0.0 for Mac:
@@ -113,6 +184,7 @@ Everything FM Moleman does on Windows, on FM27 27.0.0 for Mac:
 | Optimized tactic and roles: FM's 90 preset tactics fitted to your squad | FM's own files and role ratings |
 | Filters, columns, search, shortlists, snapshots, export, themes | Ported |
 | Recommendations, planner, bargains, staff tools, club reports | Ported |
+| The FM STARSHIP tab inside FM, with FM's own player and staff tables (preview) | FM's IL2CPP API |
 
 Help > Compatibility shows what is working on the build you have.
 
@@ -155,6 +227,12 @@ table. `FMData` reads the container and `.tac` format, and `swift test` checks t
 app's own blend, not an FM number; the tactics, roles, stars, attributes and complexity are FM's. A preset's role only changes to
 one FM uses in that place in that style, and only if FM's presets put it next to the neighbouring roles.
 
+The plugin finds FM's interface by name: classes, methods and fields through IL2CPP's metadata, and elements and style classes
+in FM's live interface. A patch that renames them can stop the tab appearing or a screen opening, and `plugin.log` says what it
+couldn't find. Built with `Scripts/install-plugin.sh --developer`, the plugin writes FM's live interface out with
+Control-Option-D, which is how those names were found. [CONTRIBUTING.md](CONTRIBUTING.md#working-on-the-plugin) covers the other
+developer tools.
+
 Things FM Starship has that FM Moleman doesn't:
 
 - **Your tactic** is read from `TACTIC_EDIT_SESSION` objects, with offsets in `MacLayout.Tactic`. If they move, the planner
@@ -190,13 +268,17 @@ Things FM Starship has that FM Moleman doesn't:
 
 | Path | What |
 | --- | --- |
-| `agent/` | The library loaded into FM |
+| `agent/` | The library the app loads into FM, also built into the plugin |
+| `plugin/` | The launcher Steam starts in FM's place |
 | `Sources/CA64` | ARM64 interpreter, verified instruction-for-instruction against the real CPU |
 | `Sources/StarshipCore` | Memory access, RTTI, the reader, the data model, the rules engine |
 | `Sources/StarshipSearch` | Columns, filters, units, settings |
 | `Sources/StarshipAnalysis` | Recommendations, planner, bargains, club reports |
 | `Sources/StarshipFiles` | Shortlists, snapshots, export, themes |
-| `Sources/FMStarship` | The app |
+| `Sources/FMStarship` | The app's screens, shared by the app and the plugin |
+| `Sources/FMStarshipApp` | The app's entry point and its updater |
+| `Sources/StarshipPlugin` | The plugin: the IL2CPP bridge, FM's tables, and the screens inside FM |
+| `Sources/StarshipPluginStart` | Starts the plugin, only inside FM |
 | `Sources/fmprobe` | Developer probe |
 | `Assets` | The app icon and the README's screenshots. `Scripts/make-icon.py` draws the icon, and needs `rsvg-convert` |
 
@@ -209,6 +291,7 @@ says what they need.
 - FM keeps some B teams (in Spain and the MLS, for example) as clubs of their own. Best eleven counts a club's players there, but
   other screens show them as on loan, the way FM's data has them.
 - Rule functions are tied to one FM build, so expect those features to switch off for a while after each patch.
+- The plugin is a preview, with its own limits, listed under [Inside FM](#what-to-know).
 
 ## Contributing
 

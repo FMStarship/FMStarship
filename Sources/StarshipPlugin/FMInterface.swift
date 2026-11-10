@@ -77,7 +77,9 @@ final class FMInterface {
             // objectWillChange comes before the change, so look once it's made.
             DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.modelChanged() } }
         }
+        #if STARSHIP_DEVELOPER
         TableDump.shared.startWatchingIfAsked()
+        #endif
         NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
             MainActor.assumeIsolated { FMInterface.shared.mouseDown(event) }
             return event
@@ -162,7 +164,9 @@ final class FMInterface {
         il2cpp.withoutCollection {
             do {
                 try keepTab(ui)
+                #if STARSHIP_DEVELOPER
                 runCommand(ui)
+                #endif
                 waitToComeBack(ui)
                 if screen != nil { followFM(ui) }
                 if screen != nil { watchFMTab(ui) }
@@ -1049,7 +1053,10 @@ final class FMInterface {
             // Only FM's own folders, under Library: looking in Documents, where the Windows game keeps them, would make
             // macOS ask the player whether FM may, which FM never does itself.
             let library = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library").path + "/"
-            let roots = ShortlistFile.gameRoots().filter { $0.standardizedFileURL.path.hasPrefix(library) } + [testShortlistRoot].compactMap { $0 }
+            var roots = ShortlistFile.gameRoots().filter { $0.standardizedFileURL.path.hasPrefix(library) }
+            #if STARSHIP_DEVELOPER
+            roots += [testShortlistRoot].compactMap { $0 }
+            #endif
             return .shortlists(ShortlistFile.list(isStaff: false, roots: roots).map { entry in
                 ShortlistView(url: entry.url, name: entry.shortlist.name, modified: entry.modified, uids: entry.shortlist.uids,
                               players: players, club: session.club.name, display: session.display)
@@ -1084,9 +1091,11 @@ final class FMInterface {
 
     // MARK: Development
 
+    #if STARSHIP_DEVELOPER
     /// For checking these screens without a hand on FM, which ignores clicks while it isn't the front app: a command
     /// written to this file, which is then removed, opens, switches or closes FM Starship's screen, or writes out FM's
-    /// interface or its tables. Nothing in it changes the game's own screens or data.
+    /// interface or its tables. Nothing in it changes the game's own screens or data. Only in developer builds
+    /// (`Scripts/install-plugin.sh --developer`), because any program running as the player could write the file.
     static let commandFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/FMStarship/Plugin/command")
 
@@ -1202,6 +1211,7 @@ final class FMInterface {
             queue += ui.children(of: element)
         }
     }
+    #endif
 
     private func release(_ handle: inout IL2CPP.Handle?) {
         if let value = handle { IL2CPP.shared?.unpin(value) }

@@ -1,10 +1,12 @@
 # Security
 
-FM Starship loads a small agent into Football Manager and reads the game's memory, so it matters that it does only what it says it does.
+FM Starship loads a small agent into Football Manager and reads the game's memory, and its plugin runs inside FM and adds screens to
+the game's interface. So it matters that both do only what they say they do.
 
 ## Supported versions
 
-Only the [latest release](https://github.com/FMStarship/FMStarship/releases/latest) gets fixes.
+Only the [latest release](https://github.com/FMStarship/FMStarship/releases/latest) gets fixes. The plugin is built from the source, so
+for the plugin that means the current `main`.
 
 ## Reporting a problem
 
@@ -18,7 +20,10 @@ This is a free project run in spare time, so there's no bounty and no promised r
 - A way for another process or user to reach the agent or its socket
 - The agent reading or returning anything beyond what the app asks for, or doing anything other than reading
 - Code running in the interpreter that gets out of its sandbox, or that changes the real game
-- A file the app opens, such as a shortlist, snapshot or theme, that can crash it or run code
+- The plugin writing a save, patching FM's code, or acting in the game other than through FM's own actions that the player chooses
+- The plugin starting in a process other than FM, or the launcher's `DYLD_INSERT_LIBRARIES` reaching other programs
+- A plugin installed without `--developer` taking commands from anywhere
+- A file the app or the plugin opens, such as a shortlist, snapshot or theme, that can crash it or run code
 - A release that isn't what the source says it should be
 
 Crashes and wrong numbers after an FM patch are ordinary bugs, so [open a bug report](https://github.com/FMStarship/FMStarship/issues/new?template=bug_report.yml)
