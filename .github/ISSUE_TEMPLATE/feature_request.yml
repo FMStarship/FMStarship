@@ -37,4 +37,4 @@ body:
     id: more
     attributes:
       label: Anything else?
-      description: Screenshots, sketches, or how FM Moleman does it on Windows.
+      description: Screenshots, sketches, or how FM or another tool shows it.
