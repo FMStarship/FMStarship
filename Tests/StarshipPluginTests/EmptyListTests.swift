@@ -22,11 +22,13 @@ final class EmptyListTests: XCTestCase {
     }
 
     /// With Hidden attributes off, and youngsters at another club who'd be picked with it on.
-    private var hiddenOff: AnalysisSession {
+    private var hiddenOff: AnalysisSession { hiddenOff(insideGame: false) }
+
+    private func hiddenOff(insideGame: Bool) -> AnalysisSession {
         let db = Database()
         db.players = (1...12).map { player(UInt32($0), age: 26, at: Self.club) } + (21...26).map { player(UInt32($0), age: 18, at: "Rivals FC") }
         db.gameDate = GameDate.checked(year: 2026, dayOfYear: 270)
-        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: Self.club), display: DisplayOptions(reveal: .hidden))
+        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: Self.club), display: DisplayOptions(reveal: .hidden, insideGame: insideGame))
     }
 
     private func section(_ table: AnalysisTable, notes: [String] = []) -> TableSection {
@@ -43,6 +45,17 @@ final class EmptyListTests: XCTestCase {
             XCTAssertTrue(table.head.contains("is off. \(session.display.abilityHint) to see them."), table.head)
             XCTAssertEqual(list.inPlaceOfTable, table.head)
             XCTAssertEqual(list.headingNote, "", "Said once, where the table would be")
+        }
+    }
+
+    func testInsideFMTheyPointAtTheSwitchInFMStarshipsTab() throws {
+        let session = hiddenOff(insideGame: true)
+        let young = try XCTUnwrap(SigningRecommender(session: session).find(RecommendOptions(mode: .young)))
+        let wonderkids = try XCTUnwrap(BargainFinder(session: session).find(BargainOptions(kind: .wonderkid)))
+        for table in [young, wonderkids] {
+            let line = try XCTUnwrap(section(table).inPlaceOfTable)
+            XCTAssertTrue(line.hasSuffix("is off. Switch on Hidden attributes at the top right of FM Starship's tab to see them."), line)
+            XCTAssertFalse(line.contains("toolbar"), line)
         }
     }
 

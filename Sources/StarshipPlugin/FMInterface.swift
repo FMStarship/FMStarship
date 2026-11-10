@@ -43,6 +43,9 @@ final class FMInterface {
     /// Our subtab row, in place of FM's while our screen is up.
     private var subtabs: IL2CPP.Handle?
     private var subtabButtons: [Pointer] = []
+    /// The Hidden attributes switch at the right of the row, and what it was last set to.
+    private var hiddenSwitch: IL2CPP.Handle?
+    private var hiddenSwitchShows = false
 
     /// The FM table last made for a screen of ours, for the developer's `table` commands.
     private var lastTable: IL2CPP.Handle?
@@ -220,6 +223,7 @@ final class FMInterface {
                 waitToComeBack(ui)
                 if screen != nil { followFM(ui) }
                 if screen != nil { watchFMTab(ui) }
+                if screen != nil { followHiddenSwitch(ui) }
                 lastProblem = ""
             } catch {
                 report(error)
@@ -532,6 +536,7 @@ final class FMInterface {
         }
         release(&screen)
         release(&subtabs)
+        release(&hiddenSwitch)
         release(&menuBody)
         release(&screenHost)
         release(&reportBody)
@@ -1188,6 +1193,79 @@ final class FMInterface {
             subtabButtons.append(button)
         }
         try ui.add(tabs, to: bar)
+
+        // The row stretches to FM's bookmarks, so the switch goes at its end, just before them.
+        let gap = try ui.box()
+        try ui.style(gap) { try $0.number("flexGrow", 1) }
+        try ui.add(gap, to: bar)
+        try ui.add(try hiddenAttributesSwitch(ui), to: bar)
+    }
+
+    /// Hidden attributes, the same setting as the eye in FM Starship's window, with FM's own switch as on its Edit
+    /// Search, which FM draws on or off from its value, and its name beside it.
+    private func hiddenAttributesSwitch(_ ui: FMElements) throws -> Pointer {
+        let on = model?.hiddenAttributes ?? false
+        let box = try ui.box(["row-direction-normal", "align-items-center"], name: "FMStarshipHiddenAttributes")
+        try ui.style(box) { style in
+            try style.number("flexShrink", 0)
+            try style.length("marginLeft", 16)
+            try style.length("marginRight", 16)
+        }
+        let label = try ui.text("Hidden attributes", ["body-md", "content-no-wrap"])
+        try ui.style(label) { try $0.length("marginRight", 8) }
+        try ui.add(label, to: box)
+        let toggle = try ui.toggle(on, enabled: true, ["sicheckbox", "inputs-switch-toggle-large-default-switch-true--type-default",
+                                                        "align-items-stretch", "justify-content-start"])
+        try ui.add(toggle, to: box)
+        try ui.onClick(toggle) { FMInterface.shared.hiddenSwitchClicked() }
+        subtabButtons.append(toggle)
+        release(&hiddenSwitch)
+        hiddenSwitch = ui.il2cpp.pin(toggle)
+        hiddenSwitchShows = on
+        return box
+    }
+
+    /// What the Hidden attributes switch and the setting both hold from now on, given what the switch was last set
+    /// to. Either can have moved since: FM's switch changes itself when clicked, and the eye in FM Starship's window
+    /// changes the setting. Whichever moved is followed. A switch that can't be read changes nothing.
+    nonisolated static func hiddenAttributes(switch value: Bool?, setting: Bool, shown: Bool) -> Bool {
+        setting != shown ? setting : value ?? shown
+    }
+
+    /// Twice a second, and when the model changes: the switch and the setting kept in step. Changing the setting
+    /// makes FM Starship's screens again, as the eye does, and until then they say they're working.
+    private func followHiddenSwitch(_ ui: FMElements) {
+        guard let model, let toggle = hiddenSwitch.flatMap(ui.il2cpp.target) else { return }
+        let value = ui.toggleValue(toggle)
+        let on = Self.hiddenAttributes(switch: value, setting: model.hiddenAttributes, shown: hiddenSwitchShows)
+        setHiddenAttributes(on, toggle: toggle, showing: value ?? hiddenSwitchShows, ui)
+    }
+
+    /// The click on the switch, if FM passes it on as well as changing the switch, or in its place: either way it asks
+    /// for the other of what the switch showed. Once FM has finished with the click, whichever it did, so the switch
+    /// isn't changed twice.
+    private func hiddenSwitchClicked() {
+        let wanted = !hiddenSwitchShows
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let interface = FMInterface.shared
+                guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
+                il2cpp.withoutCollection {
+                    guard let toggle = interface.hiddenSwitch.flatMap(il2cpp.target) else { return }
+                    interface.setHiddenAttributes(wanted, toggle: toggle, showing: ui.toggleValue(toggle) ?? interface.hiddenSwitchShows, ui)
+                }
+            }
+        }
+    }
+
+    private func setHiddenAttributes(_ on: Bool, toggle: Pointer, showing: Bool, _ ui: FMElements) {
+        hiddenSwitchShows = on
+        if showing != on {
+            do { try ui.setToggle(toggle, on) } catch { report(error) }
+        }
+        guard let model, model.hiddenAttributes != on else { return }
+        PluginLog.write("Hidden attributes switched \(on ? "on" : "off") in FM Starship's tab")
+        model.hiddenAttributes = on
     }
 
     /// The open shortlist, by its file. The newest until one is chosen.
@@ -1245,6 +1323,10 @@ final class FMInterface {
     private func modelChanged() {
         startWork()
         refresh()
+        // The eye in FM Starship's window changed Hidden attributes: the switch shows it without waiting for the tick.
+        if hiddenSwitch != nil, model?.hiddenAttributes != hiddenSwitchShows, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) {
+            il2cpp.withoutCollection { followHiddenSwitch(ui) }
+        }
     }
 
     /// Works out the chosen screen in the background, once per analysis, as the app's screens do.

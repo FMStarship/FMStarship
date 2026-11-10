@@ -548,7 +548,7 @@ package final class AppModel: ObservableObject {
         }
         let units = MoneyUnits(symbol: Units.money.symbol, perPound: Units.money.perPound, wagePeriod: wages,
                                feetAndInches: Units.height == .feetInches)
-        return DisplayOptions(reveal: reveal, showHidden: showHidden, units: units)
+        return DisplayOptions(reveal: reveal, showHidden: showHidden, units: units, insideGame: Self.isInsideGame)
     }
 
     private func tellFilters() {

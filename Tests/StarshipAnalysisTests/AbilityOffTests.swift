@@ -189,4 +189,18 @@ final class AbilityOffTests: XCTestCase {
         XCTAssertTrue(DisplayOptions(reveal: .hidden, showHidden: false).abilityHint.contains("Hidden attributes"))
         XCTAssertTrue(DisplayOptions(reveal: .hidden, showHidden: true).abilityHint.contains("Set Ability"))
     }
+
+    func testInsideFMTheHintPointsAtFMStarshipsTabNotTheToolbar() {
+        let hiddenOff = DisplayOptions(reveal: .hidden, showHidden: false, insideGame: true).abilityHint
+        XCTAssertEqual(hiddenOff, "Switch on Hidden attributes at the top right of FM Starship's tab")
+        XCTAssertFalse(hiddenOff.contains("eye"), "FM's tab has no toolbar and no eye")
+        // FM's tab has no Ability setting, so that one is still in FM Starship's own window.
+        let abilityOff = DisplayOptions(reveal: .hidden, showHidden: true, insideGame: true).abilityHint
+        XCTAssertEqual(abilityOff, "Set Ability to Exact or Stars in FM Starship's window (Control-Option-S)")
+    }
+
+    func testTheAppsOwnHintIsAsItWas() {
+        XCTAssertEqual(DisplayOptions(reveal: .hidden, showHidden: false).abilityHint, "Switch on Hidden attributes (the eye in the toolbar)")
+        XCTAssertEqual(DisplayOptions(reveal: .hidden, showHidden: true).abilityHint, "Set Ability in the toolbar to Exact or Stars")
+    }
 }
