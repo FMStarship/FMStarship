@@ -103,8 +103,9 @@ folder. The other way round, Steam can't start FM until the launch option is cle
   it never shows people from a save FM no longer has. It says it's reading until it's done.
 - Players and Staff put the first 500 people a search finds in FM's table, and say how many were found.
 - Shortlists only reads the files. Make and change shortlists in the app. Staff shortlists aren't there yet.
-- The Staff list needs FM's staff table, which the plugin takes from an FM screen that has one, such as Club. Until you've opened
-  one, the Staff list uses a simpler table and says so. After that, it's remembered.
+- The lists need FM's own player and staff tables, which the plugin takes from an FM screen that has one, such as your Squad or
+  Club > Staff. Until you've opened one, they're plain lists, without sorting or right-click, and say so. After that, they're
+  remembered until FM's next patch.
 - The plugin never goes online, and it doesn't update itself.
 - It writes what it does to `~/Library/Logs/FM Starship/plugin.log`. Please attach that file to a bug report about the plugin.
 
