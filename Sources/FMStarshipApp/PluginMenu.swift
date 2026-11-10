@@ -84,12 +84,23 @@ final class PluginInstaller: ObservableObject {
             guard let sheet else { return }
             if let parent = sheet.sheetParent { parent.endSheet(sheet) } else { sheet.close() }
         }
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            window.beginSheet(sheet)
-        } else {
-            sheet.center()
-            sheet.makeKeyAndOrderFront(nil)
+        // Sized before it's shown: a sheet begun at zero size dims its window and can't be seen or closed.
+        host.view.layoutSubtreeIfNeeded()
+        sheet.setContentSize(host.view.fittingSize)
+        // After the alert that may have led here has gone, so the sheet lands on the app's window, not on the closing alert.
+        DispatchQueue.main.async { [weak self] in
+            if let window = self?.appWindow {
+                window.beginSheet(sheet)
+            } else {
+                sheet.center()
+                sheet.makeKeyAndOrderFront(nil)
+            }
         }
+    }
+
+    /// The app's own window. While an alert sheet is up, it's the key window, so take the window it's attached to.
+    private var appWindow: NSWindow? {
+        (NSApp.mainWindow ?? NSApp.keyWindow).map { $0.sheetParent ?? $0 }
     }
 
     /// Steam can't start FM while its launch option names a launcher that's gone, so that's cleared first, and the
@@ -139,7 +150,7 @@ final class PluginInstaller: ObservableObject {
 
     /// As a sheet on whichever window is in front, as the app's other alerts are.
     private func present(_ alert: NSAlert, then: @escaping (NSApplication.ModalResponse) -> Void) {
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+        if let window = appWindow {
             alert.beginSheetModal(for: window, completionHandler: then)
         } else {
             then(alert.runModal())
