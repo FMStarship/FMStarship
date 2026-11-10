@@ -34,6 +34,30 @@ final class InsideGameTests: XCTestCase {
         XCTAssertNil(game.withBytes(0x20000, count: 8) { _ in true })
     }
 
+    /// Inside FM, the plugin notices FM loading another save by the club's name no longer being where the read found it.
+    func testClubNameIsReadWhereTheReadFoundTheTeam() throws {
+        let game = try game()
+        let name = Array("Molde FK".utf8)
+        let text = UnsafeMutableRawPointer.allocate(byteCount: 4 + name.count, alignment: 8)
+        let club = UnsafeMutableRawPointer.allocate(byteCount: 256, alignment: 8)
+        let team = UnsafeMutableRawPointer.allocate(byteCount: 64, alignment: 8)
+        defer { [text, club, team].forEach { $0.deallocate() } }
+        text.storeBytes(of: Int32(name.count), as: Int32.self)
+        name.withUnsafeBytes { (text + 4).copyMemory(from: $0.baseAddress!, byteCount: name.count) }
+        club.initializeMemory(as: UInt8.self, repeating: 0, count: 256)
+        team.initializeMemory(as: UInt8.self, repeating: 0, count: 64)
+        club.storeBytes(of: Int64(Int(bitPattern: text)), toByteOffset: MacLayout.Club.fullName, as: Int64.self)
+        team.storeBytes(of: Int64(Int(bitPattern: club)), toByteOffset: MacLayout.Team.club, as: Int64.self)
+        let address = Int64(Int(bitPattern: team))
+
+        XCTAssertEqual(GameReader.clubName(team: address, in: game), "Molde FK")
+        // FM has let go of the team, and something else is there now.
+        team.storeBytes(of: Int64(0), toByteOffset: MacLayout.Team.club, as: Int64.self)
+        XCTAssertEqual(GameReader.clubName(team: address, in: game), "")
+        XCTAssertEqual(GameReader.clubName(team: 0, in: game), "")
+        XCTAssertEqual(GameReader.clubName(team: 0x20000, in: game), "", "Unmapped")
+    }
+
     /// The reader's own locals would otherwise be found there as records.
     func testLeavesOutThreadStacks() throws {
         let game = try game()

@@ -69,7 +69,7 @@ final class Plugin: NSObject, NSWindowDelegate {
             windows.values.forEach { $0.orderOut(nil) }
         } else {
             show(.main)
-            model?.loadSaveIfEmpty()
+            FMInterface.shared.loadSaveIfNeeded()
         }
     }
 

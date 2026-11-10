@@ -49,8 +49,12 @@ final class FMInterface {
 
     private var current: StarshipScreen = .dashboard
     /// Each screen's content, and the analysis it was made from.
-    private var contents: [StarshipScreen: (revision: Int, content: ScreenContent)] = [:]
+    private var contents: [StarshipScreen: MadeScreen<ScreenContent>] = [:]
     private var running: Set<StarshipScreen> = []
+    /// Which of the model's reads the screens may be made from: none from before FM loaded another save.
+    private var saveWatch = SaveWatch()
+    /// FM's memory, for the clubs' names in `saveNow`.
+    private lazy var game: GameProcess? = try? GameProcess.insideGame()
     /// The Recommended signings and Bargains searches, as last applied, set up again for each read of the save.
     private var signingSearch: SigningSearch?
     private var bargainSearch: BargainSearch?
@@ -170,6 +174,7 @@ final class FMInterface {
         il2cpp.withoutCollection {
             do {
                 try keepTab(ui)
+                watchSave(ui)
                 #if STARSHIP_DEVELOPER
                 runCommand(ui)
                 #endif
@@ -197,6 +202,64 @@ final class FMInterface {
         lastProblem = problem
     }
 
+    // MARK: The save
+
+    /// The model's analysis, unless it was read before FM loaded another save, or may have.
+    private var analysis: AnalysisSession? {
+        guard let session = model?.analysis, saveWatch.usable(session.db) else { return nil }
+        return session
+    }
+
+    /// Notices FM's save no longer being the one read: another date in FM's bar, or the clubs gone from where the read
+    /// found them in FM's memory, as after Load Save.
+    private func watchSave(_ ui: FMElements) {
+        guard let model else { return }
+        let session = model.analysis
+        switch saveWatch.follow(read: session?.db, loading: model.readingSave, now: { self.saveNow(ui, session) }) {
+        case .none:
+            break
+        case .saveChanged:
+            saveChanged("FM's date or club isn't what it was when your save was read", ui)
+        case .readWasStale:
+            PluginLog.write("The read going on when FM's save changed is done, and is stale too")
+            if screen != nil { model.loadSaveAgain() }
+        }
+    }
+
+    /// The save as FM shows it now. A snapshot's clubs were found in another run of FM, so they can't be looked for.
+    private func saveNow(_ ui: FMElements, _ session: AnalysisSession?) -> SaveIdentity {
+        guard let session, !session.db.source.hasPrefix("snapshot") else { return SaveIdentity() }
+        let widget = (try? ui.mainRoot()).flatMap { ui.query($0, "CurrentDayWidget") }
+        let date = widget.flatMap { ui.query($0, "Month") }.flatMap(ui.shownText)
+        let clubs = game.flatMap { game in
+            session.db.humanClubs.isEmpty ? nil : session.db.humanClubs.map { GameReader.clubName(team: $0.team, in: game) }.joined(separator: ", ")
+        }
+        return SaveIdentity(date: date, clubs: clubs)
+    }
+
+    /// FM has loaded another save, or may have. Nothing made from what was read before is shown again: the save is read
+    /// again when FM Starship's screen next opens, which says it's reading until then.
+    private func saveChanged(_ why: String, _ ui: FMElements) {
+        PluginLog.write("\(why), so your save is read again when FM Starship's screen opens")
+        saveWatch.saveChanged(read: model?.analysis?.db, loading: model?.readingSave ?? false)
+        if screen != nil { leave(ui) }
+        contents = [:]
+        stopTables()
+        signingSearch = nil
+        bargainSearch = nil
+        searchSession = nil
+        searchRevision = -1
+        editing = nil
+        shown = ""
+    }
+
+    /// Reads the save if there's none to show: the first time, or once FM may have loaded another.
+    func loadSaveIfNeeded() {
+        guard let model else { return }
+        if let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) { il2cpp.withoutCollection { watchSave(ui) } }
+        if saveWatch.needsReading(model.analysis?.db, loading: model.readingSave) { model.loadSaveAgain() }
+    }
+
     // MARK: The tab
 
     private func keepTab(_ ui: FMElements) throws {
@@ -204,6 +267,8 @@ final class FMInterface {
         if let element = tab.flatMap(ui.il2cpp.target), ui.parent(of: element) == group { return }
         // FM built its bar again, or this is the first time we've seen it with a career loaded.
         if screen != nil { leave(ui) }
+        // FM builds it again on loading a save, and after a match.
+        if tab != nil { saveChanged("FM built its bar again", ui) }
         release(&tab)
         release(&tabButton)
         let (element, button) = try makeTab(ui)
@@ -320,6 +385,8 @@ final class FMInterface {
 
     private func putUp(_ ui: FMElements) throws {
         guard let root = try ui.mainRoot(), let body = ui.query(root, "MenuBody") else { throw IL2CPP.Failure("No screen area in FM") }
+        // Before ours is up, so that FM's save having changed only means reading it again.
+        loadSaveIfNeeded()
         let fmScreens = ui.children(of: body)
         if look == nil { look = TileLook.copied(from: fmScreens, ui) }
         if !FMTable.ready(.players) || !FMTable.ready(.staff) {
@@ -371,7 +438,6 @@ final class FMInterface {
         setTabActive(true, ui)
         try darkenFMTab(ui)
         shown = ""
-        model?.loadSaveIfEmpty()
         startWork()
         if let staff = current.listsStaff { model?.showListInsideGame(staff: staff) }
         try fillOrSay(ui)
@@ -478,12 +544,12 @@ final class FMInterface {
     /// The subtabs and the chosen screen's content: what it found, or what's happening until then.
     private func fill(_ ui: FMElements) throws {
         guard let element = screen.flatMap(ui.il2cpp.target) else { return }
-        let content = contents[current]
+        let content = shownContent
         let status = statusLine
         // The app's Players and Staff searches: drawn again when one finishes, and while one runs, as it goes.
         let list = current.listsStaff.flatMap { model?.listInsideGame(staff: $0) }
         let listState = list.map { $0.searching ? "searching \(model?.statusLine ?? "")" : "\($0.version) \($0.filter)" } ?? ""
-        if let session = model?.analysis, let revision = model?.analysisRevision { updateSearches(session, revision: revision) }
+        if let session = analysis, let revision = model?.analysisRevision { updateSearches(session, revision: revision) }
         let searchState = editing.map { $0.screen == current ? "editing \($0.draft.key)" : "" } ?? search(for: current)?.key ?? ""
         let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState) \(searchState)"
         guard key != shown else { return }
@@ -496,12 +562,12 @@ final class FMInterface {
         try fillSubtabs(ui)
         for child in ui.children(of: element) { try ui.remove(child) }
         let page = NativePage(ui: ui, look: look ?? .fallback)
-        if let editing, editing.screen == current, model?.analysis != nil {
+        if let editing, editing.screen == current, analysis != nil {
             try fillEditSearch(editing.draft, in: element, page: page, ui)
             shown = key
             return
         }
-        if let staff = current.listsStaff, model?.analysis != nil {
+        if let staff = current.listsStaff, analysis != nil {
             try fillList(staff: staff, list, in: element, page: page, ui)
             shown = key
             return
@@ -555,7 +621,7 @@ final class FMInterface {
     /// The app's Players or Staff search, in FM's own table, with a button for the app's filters.
     private func fillList(staff: Bool, _ list: (people: [Person], searching: Bool, filter: String, version: Int)?, in element: Pointer,
                           page: NativePage, _ ui: FMElements) throws {
-        guard let model, let session = model.analysis else { return }
+        guard let model, let session = analysis else { return }
         guard let list else {
             try page.message("FM Starship's own window is on another screen. Choose \(current.title) here again to search.",
                              title: current.title, in: try page.body(in: element))
@@ -852,13 +918,16 @@ final class FMInterface {
         let handle: IL2CPP.Handle
         let extras: [FMTable.Extra]
         let people: [Person]
+        /// Whether its values were made with Hidden attributes on: with it on, they can be CA and PA.
+        let showsAbility: Bool
         let shown = FMTable.Shown()
         var sort: FMTable.Sort?
 
-        init(handle: IL2CPP.Handle, extras: [FMTable.Extra], people: [Person]) {
+        init(handle: IL2CPP.Handle, extras: [FMTable.Extra], people: [Person], showsAbility: Bool) {
             self.handle = handle
             self.extras = extras
             self.people = people
+            self.showsAbility = showsAbility
         }
     }
 
@@ -867,7 +936,7 @@ final class FMInterface {
 
     private func keepRows(_ table: Pointer, _ extras: [FMTable.Extra], people: [Person]) {
         guard let handle = IL2CPP.shared?.pin(table) else { return }
-        liveTables.append(LiveTable(handle: handle, extras: extras, people: people))
+        liveTables.append(LiveTable(handle: handle, extras: extras, people: people, showsAbility: analysis?.display.showsAbility ?? false))
         guard rowsTimer == nil else { return }
         // Often enough that a row FM reuses while scrolling or sorting shows its new person's values at once.
         let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
@@ -881,6 +950,13 @@ final class FMInterface {
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
             guard screen != nil else { return stopTables() }
+            // Values made with Hidden attributes on aren't written again once it's off: the screen is made again.
+            let showsAbility = analysis?.display.showsAbility
+            if liveTables.contains(where: { !MadeScreen<Void>.fits(madeWith: $0.showsAbility, now: showsAbility) }) {
+                stopTables()
+                shown = ""
+                return refreshLater()
+            }
             let fmTable = FMTable(ui: ui)
             for live in liveTables {
                 guard let table = il2cpp.target(of: live.handle), ui.parent(of: table) != nil else { continue }
@@ -948,8 +1024,14 @@ final class FMInterface {
     /// What's happening while the chosen screen has nothing to show yet.
     private var statusLine: String {
         guard let model else { return "" }
-        if model.analysis == nil { return model.statusLine.isEmpty ? "Reading your save..." : model.statusLine }
-        return contents[current] == nil && current.listsStaff == nil ? current.working : ""
+        if analysis == nil { return model.statusLine.isEmpty ? "Reading your save..." : model.statusLine }
+        return shownContent == nil && current.listsStaff == nil ? current.working : ""
+    }
+
+    /// The chosen screen as last made, if it was made with Hidden attributes as it is now. Until it's made again, the
+    /// screen says it's working.
+    private var shownContent: MadeScreen<ScreenContent>? {
+        contents[current].flatMap { $0.fits(showsAbility: analysis?.display.showsAbility) ? $0 : nil }
     }
 
     // MARK: The subtabs
@@ -1043,8 +1125,9 @@ final class FMInterface {
     /// Works out the chosen screen in the background, once per analysis, as the app's screens do.
     private func startWork() {
         // The app runs its own searches for the Players and Staff screens.
-        guard screen != nil, current.listsStaff == nil, let model, let session = model.analysis else { return }
+        guard screen != nil, current.listsStaff == nil, let model, let session = analysis else { return }
         let revision = model.analysisRevision
+        let showsAbility = session.display.showsAbility
         let chosen = current
         guard contents[chosen]?.revision != revision, !running.contains(chosen) else { return }
         updateSearches(session, revision: revision)
@@ -1062,7 +1145,10 @@ final class FMInterface {
                     PluginLog.write("\(chosen.title) \(content == nil ? "came back empty" : "ready") in \(seconds) s")
                     interface.running.remove(chosen)
                     // A search changed since this started is made again, below.
-                    if let content, version == interface.searchVersions[chosen, default: 0] { interface.contents[chosen] = (revision, content) }
+                    // Nor is what was made from a read FM's save has changed under.
+                    if let content, version == interface.searchVersions[chosen, default: 0], session === interface.analysis {
+                        interface.contents[chosen] = MadeScreen(revision: revision, showsAbility: showsAbility, content: content)
+                    }
                     interface.refresh()
                     // In case the save was read again while this was being made.
                     interface.startWork()

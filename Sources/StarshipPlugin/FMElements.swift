@@ -92,6 +92,13 @@ struct FMElements {
         try il2cpp.call(element, "set_text", [il2cpp.managedString(value)])
     }
 
+    /// What one of FM's text elements shows. Nil for any other element, or no text.
+    func shownText(_ element: Pointer) -> String? {
+        guard il2cpp.isSubclass(il2cpp.classOf(element), of: il2cpp.findClass(Self.toolkit, "TextElement")),
+              let text = il2cpp.text(try? il2cpp.call(element, "get_text")), !text.isEmpty else { return nil }
+        return text
+    }
+
     private func configure(_ element: Pointer, classes: [String], name: String?) throws {
         if let name { try il2cpp.call(element, "set_name", [il2cpp.managedString(name)]) }
         for name in classes { try addClass(element, name) }

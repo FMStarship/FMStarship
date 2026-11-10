@@ -49,6 +49,12 @@ extension AppModel {
         if database == nil, !loading { loadSave() }
     }
 
+    /// Reads the save again, as Load Save does, for FM Starship's screens inside FM once FM may have loaded another.
+    package func loadSaveAgain() { loadSave() }
+
+    /// Whether the save is being read now.
+    package var readingSave: Bool { loading }
+
     /// The loaded save's analysis, for FM Starship's screens inside FM's own interface.
     package var analysis: AnalysisSession? { session }
 
