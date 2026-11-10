@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds "FM Starship.app": the release binary, Info.plist and the agent that FM loads at launch.
+# Builds "FM Starship.app": the release binary, Info.plist, the agent that FM loads at launch, and the plugin with
+# its launcher, which the app can put where Steam starts FM with them.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # It deletes the app before rebuilding it, so it stops while FM or FM Starship is open.
@@ -9,14 +10,20 @@ if pgrep -x "Football Manager 27" >/dev/null || pgrep -x FMStarship >/dev/null; 
 fi
 Scripts/build-agent.sh
 swift build -c release --product FMStarship
+# Without -DSTARSHIP_DEVELOPER, so the developer tools stay out.
+swift build -c release --product StarshipPlugin
 BIN="$(swift build -c release --show-bin-path)"
 APP="build/FM Starship.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks" "$APP/Contents/Helpers"
 cp "$BIN/FMStarship" "$APP/Contents/MacOS/FMStarship"
 cp build/libStarshipAgent.dylib Assets/AppIcon.icns "$APP/Contents/Resources/"
 # ditto keeps the framework's symlinks, which its signature depends on.
 ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
+# Where Apple wants a dylib and a helper app, so the app's signature and notarization cover them.
+cp "$BIN/libStarshipPlugin.dylib" "$APP/Contents/Frameworks/"
+LAUNCHER="$APP/Contents/Helpers/FM Starship Launcher.app"
+Scripts/build-launcher.sh "$LAUNCHER"
 # Only releases get a feed, so a build of your own never looks for updates.
 UPDATE_KEYS=""
 if [ -n "${UPDATE_PUBLIC_KEY:-}" ]; then
@@ -52,6 +59,11 @@ else
     SIGN=(-f -s -)
 fi
 codesign "${SIGN[@]}" "$APP/Contents/Resources/libStarshipAgent.dylib"
+codesign "${SIGN[@]}" "$APP/Contents/Frameworks/libStarshipPlugin.dylib"
+# Under the hardened runtime, dyld strips DYLD_ variables from the launcher's environment unless it claims this
+# entitlement, so FM would lose a library Steam inserts, such as its overlay. Library validation still keeps such a
+# library out of the launcher itself.
+codesign "${SIGN[@]}" --entitlements plugin/launcher.entitlements "$LAUNCHER"
 # Sparkle's helpers first, innermost out, or the framework's signature won't cover them.
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 codesign "${SIGN[@]}" "$SPARKLE/Versions/B/XPCServices/Installer.xpc"

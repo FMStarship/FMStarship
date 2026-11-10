@@ -38,21 +38,7 @@ APP="$DEST/FM Starship Launcher.app"
 BUILD="$(mktemp -d "$DEST/.launcher.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 NEW="$BUILD/FM Starship Launcher.app"
-mkdir -p "$NEW/Contents/MacOS"
-clang -O2 -Wall -arch arm64 -mmacosx-version-min=14.0 -o "$NEW/Contents/MacOS/FM Starship Launcher" plugin/launcher.c \
-    -framework CoreFoundation
-cat > "$NEW/Contents/Info.plist" <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>FM Starship Launcher</string>
-<key>CFBundleIdentifier</key><string>com.fmstarship.launcher</string>
-<key>CFBundleName</key><string>FM Starship Launcher</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>LSMinimumSystemVersion</key><string>14.0</string>
-<key>LSUIElement</key><true/>
-</dict></plist>
-EOF
+Scripts/build-launcher.sh "$NEW"
 codesign -f -s - "$NEW"
 rm -rf "$APP" "$DEST/start-fm.sh"
 mv "$NEW" "$APP"
