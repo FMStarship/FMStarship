@@ -158,7 +158,7 @@ func clampedInt32(_ value: Double) -> Int {
 }
 
 /// `Units`: the currency, wage period and height unit that money and heights are shown in.
-public struct MoneyUnits {
+public struct MoneyUnits: Equatable {
     public enum WagePeriod: Int, CaseIterable {
         case week, month, year
     }

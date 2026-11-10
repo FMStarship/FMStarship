@@ -1,7 +1,8 @@
 @testable import StarshipPlugin
+import StarshipAnalysis
 import XCTest
 
-/// FM Starship's screens inside FM never show a save other than the one FM has loaded, nor CA and PA once Hidden
+/// FM Starship's screens inside FM never show a save other than the one FM has loaded, nor anything hidden once Hidden
 /// attributes is off. Which reads and screens may be shown doesn't need FM.
 final class SaveWatchTests: XCTestCase {
     /// Stands in for one of the model's reads of the save.
@@ -125,22 +126,60 @@ final class SaveWatchTests: XCTestCase {
 
     // MARK: Hidden attributes
 
+    /// The settings as the model gives them: with Hidden attributes off, Ability is off too.
+    private func shown(_ reveal: AbilityReveal = .numbers, hidden: Bool = true, units: MoneyUnits = MoneyUnits()) -> ShownAs {
+        ShownAs(DisplayOptions(reveal: hidden ? reveal : .hidden, showHidden: hidden, units: units, insideGame: true))
+    }
+
     func testAScreenMadeWithHiddenAttributesOnIsntShownOnceItsOff() {
-        let withAbility = MadeScreen(revision: 3, showsAbility: true, content: "CA 153, PA 160")
-        XCTAssertTrue(withAbility.fits(showsAbility: true))
-        XCTAssertFalse(withAbility.fits(showsAbility: false), "Not even until it's made again")
-        XCTAssertFalse(withAbility.fits(showsAbility: nil), "No read to show it with")
+        let withAbility = MadeScreen(revision: 3, shownAs: shown(), content: "CA 153, PA 160")
+        XCTAssertTrue(withAbility.fits(shown()))
+        XCTAssertFalse(withAbility.fits(shown(hidden: false)), "Not even until it's made again")
+        XCTAssertFalse(withAbility.fits(nil), "No read to show it with")
     }
 
     func testAScreenMadeWithHiddenAttributesOffIsMadeAgainOnceItsOn() {
-        let without = MadeScreen(revision: 3, showsAbility: false, content: "Would join on: Transfer")
-        XCTAssertTrue(without.fits(showsAbility: false))
-        XCTAssertFalse(without.fits(showsAbility: true))
+        let without = MadeScreen(revision: 3, shownAs: shown(hidden: false), content: "Would join on: Transfer")
+        XCTAssertTrue(without.fits(shown(hidden: false)))
+        XCTAssertFalse(without.fits(shown()))
+    }
+
+    /// With Ability off, CA and PA were never shown, but Bargains' Drive, the Dashboard's injury proneness and the
+    /// planner's notes are hidden attributes all the same.
+    func testWithAbilityOffAScreenStillGoesWhenHiddenAttributesGoesOff() {
+        let on = DisplayOptions(reveal: .hidden, showHidden: true, insideGame: true)
+        let off = DisplayOptions(reveal: .hidden, showHidden: false, insideGame: true)
+        XCTAssertEqual(on.showsAbility, off.showsAbility, "CA and PA are off both ways")
+        let made = MadeScreen(revision: 3, shownAs: ShownAs(on), content: "Drive (hidden): 17")
+        XCTAssertTrue(made.fits(ShownAs(on)))
+        XCTAssertFalse(made.fits(ShownAs(off)), "Not even until it's made again")
+
+        let madeOff = MadeScreen(revision: 3, shownAs: ShownAs(off), content: "No Drive column")
+        XCTAssertFalse(madeOff.fits(ShownAs(on)), "Made again with the hidden attributes")
+    }
+
+    func testAnotherAbilityOrOtherUnitsMakeTheScreenAgain() {
+        let made = MadeScreen(revision: 3, shownAs: shown(), content: "CA 153, £2.5M, £20K p/w, 183 cm")
+        XCTAssertFalse(made.fits(shown(.stars)), "Stars mustn't give away the exact CA")
+        XCTAssertFalse(made.fits(shown(.hidden)), "Ability off")
+        XCTAssertFalse(made.fits(shown(units: MoneyUnits(symbol: "€", perPound: 1.17))))
+        XCTAssertFalse(made.fits(shown(units: MoneyUnits(symbol: "£", perPound: 1, wagePeriod: .month))))
+        XCTAssertFalse(made.fits(shown(units: MoneyUnits(feetAndInches: true))))
+        XCTAssertTrue(made.fits(shown(units: MoneyUnits(symbol: "£", perPound: 1))), "The same settings made again")
+    }
+
+    /// A display setting added later has to decide what's shown too, or be said here not to.
+    func testTheKeyHoldsEveryDisplaySetting() {
+        let settings = Set(Mirror(reflecting: DisplayOptions()).children.compactMap(\.label))
+        let key = Set(Mirror(reflecting: shown()).children.compactMap(\.label))
+        XCTAssertEqual(settings.subtracting(key), ["insideGame"], "Always true inside FM")
     }
 
     func testTablesFollowTheSameRule() {
-        XCTAssertTrue(MadeScreen<Void>.fits(madeWith: true, now: true))
-        XCTAssertFalse(MadeScreen<Void>.fits(madeWith: true, now: false), "Its old CA and PA aren't written again")
-        XCTAssertFalse(MadeScreen<Void>.fits(madeWith: false, now: nil))
+        XCTAssertTrue(MadeScreen<Void>.fits(madeWith: shown(), now: shown()))
+        XCTAssertFalse(MadeScreen<Void>.fits(madeWith: shown(), now: shown(hidden: false)), "Its old CA and PA aren't written again")
+        XCTAssertFalse(MadeScreen<Void>.fits(madeWith: shown(.hidden), now: shown(.hidden, hidden: false)), "Nor its hidden attributes")
+        XCTAssertFalse(MadeScreen<Void>.fits(madeWith: shown(hidden: false), now: nil))
+        XCTAssertFalse(MadeScreen<Void>.fits(madeWith: nil, now: nil), "One made with no read is made again")
     }
 }

@@ -1023,16 +1023,16 @@ final class FMInterface {
         let handle: IL2CPP.Handle
         let extras: [FMTable.Extra]
         let people: [Person]
-        /// Whether its values were made with Hidden attributes on: with it on, they can be CA and PA.
-        let showsAbility: Bool
+        /// The settings its values were made with: with Hidden attributes on, they can be CA and PA, or hidden attributes.
+        let shownAs: ShownAs?
         let shown = FMTable.Shown()
         var sort: FMTable.Sort?
 
-        init(handle: IL2CPP.Handle, extras: [FMTable.Extra], people: [Person], showsAbility: Bool) {
+        init(handle: IL2CPP.Handle, extras: [FMTable.Extra], people: [Person], shownAs: ShownAs?) {
             self.handle = handle
             self.extras = extras
             self.people = people
-            self.showsAbility = showsAbility
+            self.shownAs = shownAs
         }
     }
 
@@ -1041,7 +1041,7 @@ final class FMInterface {
 
     private func keepRows(_ table: Pointer, _ extras: [FMTable.Extra], people: [Person]) {
         guard let handle = IL2CPP.shared?.pin(table) else { return }
-        liveTables.append(LiveTable(handle: handle, extras: extras, people: people, showsAbility: analysis?.display.showsAbility ?? false))
+        liveTables.append(LiveTable(handle: handle, extras: extras, people: people, shownAs: analysis.map { ShownAs($0.display) }))
         guard rowsTimer == nil else { return }
         // Often enough that a row FM reuses while scrolling or sorting shows its new person's values at once.
         let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
@@ -1055,9 +1055,10 @@ final class FMInterface {
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
             guard screen != nil else { return stopTables() }
-            // Values made with Hidden attributes on aren't written again once it's off: the screen is made again.
-            let showsAbility = analysis?.display.showsAbility
-            if liveTables.contains(where: { !MadeScreen<Void>.fits(madeWith: $0.showsAbility, now: showsAbility) }) {
+            // Values made with Hidden attributes on aren't written again once it's off, nor any made with other settings
+            // than now: the screen is made again.
+            let shownAs = analysis.map { ShownAs($0.display) }
+            if liveTables.contains(where: { !MadeScreen<Void>.fits(madeWith: $0.shownAs, now: shownAs) }) {
                 stopTables()
                 shown = ""
                 return refreshLater()
@@ -1141,10 +1142,10 @@ final class FMInterface {
         return shownContent == nil && current.listsStaff == nil ? current.working : ""
     }
 
-    /// The chosen screen as last made, if it was made with Hidden attributes as it is now. Until it's made again, the
-    /// screen says it's working.
+    /// The chosen screen as last made, if it was made with Hidden attributes, Ability and the units as they are now.
+    /// Until it's made again, the screen says it's working.
     private var shownContent: MadeScreen<ScreenContent>? {
-        contents[current].flatMap { $0.fits(showsAbility: analysis?.display.showsAbility) ? $0 : nil }
+        contents[current].flatMap { $0.fits(analysis.map { ShownAs($0.display) }) ? $0 : nil }
     }
 
     // MARK: The subtabs
@@ -1334,7 +1335,7 @@ final class FMInterface {
         // The app runs its own searches for the Players and Staff screens.
         guard screen != nil, current.listsStaff == nil, let model, let session = analysis else { return }
         let revision = model.analysisRevision
-        let showsAbility = session.display.showsAbility
+        let shownAs = ShownAs(session.display)
         let chosen = current
         let version = searchVersions[chosen, default: 0]
         guard Self.needsWork(made: contents[chosen]?.revision, empty: cameBackEmpty[chosen], running: running.contains(chosen),
@@ -1354,8 +1355,11 @@ final class FMInterface {
                     interface.running.remove(chosen)
                     // A search changed since this started is made again, below.
                     // Nor is what was made from a read FM's save has changed under.
-                    if let content, version == interface.searchVersions[chosen, default: 0], session === interface.analysis {
-                        interface.contents[chosen] = MadeScreen(revision: revision, showsAbility: showsAbility, content: content)
+                    // Nor what was made while the settings changed, even if they're back as they were: the work reads them
+                    // as it goes, so it may hold some of each. Only they move the revision of the same read.
+                    if let content, version == interface.searchVersions[chosen, default: 0], session === interface.analysis,
+                       revision == interface.model?.analysisRevision {
+                        interface.contents[chosen] = MadeScreen(revision: revision, shownAs: shownAs, content: content)
                     }
                     if content == nil { interface.cameBackEmpty[chosen] = WorkFor(revision: revision, version: version) }
                     interface.refresh()
