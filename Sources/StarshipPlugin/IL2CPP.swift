@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 
 /// FM's C# side, through the IL2CPP API that GameAssembly exports. Everything here runs on the main thread, where Unity
 /// runs FM's scripts. Nothing in FM's code is changed: these are the calls IL2CPP offers anything that hosts it.
@@ -34,11 +35,14 @@ final class IL2CPP {
     private static var attached: IL2CPP?
     /// Why it last couldn't attach, logged once rather than on every try.
     private static var lastFailure = ""
-    /// Set as FM quits, when Unity may shut the runtime down before anything of ours runs again.
-    private(set) static var stopped = false
+    /// Set as FM quits, when Unity may shut the runtime down before anything of ours runs again. FM's exit can come on
+    /// any thread.
+    private nonisolated static let quit = Latch()
+    nonisolated static var stopped: Bool { quit.isSet }
 
-    /// Nothing calls into FM's runtime after this: `shared` is nil from now on.
-    static func stop() { stopped = true }
+    /// Nothing calls into FM's runtime after this: `shared` is nil from now on. True only for the call that stopped it.
+    @discardableResult
+    nonisolated static func stop() -> Bool { quit.set() }
 
     private typealias P = UnsafeMutableRawPointer?
     private typealias Text = UnsafePointer<CChar>?
@@ -568,6 +572,19 @@ final class IL2CPP {
         }
     }
 
+    /// Has Unity call `callback` on the main thread as FM quits, through UnityEngine.Application.quitting, before it shuts
+    /// IL2CPP down. The event adds ours to FM's own listeners. Called with the collector paused, since the handler's
+    /// target is held only by us until the event has it.
+    func onQuitting(_ callback: @convention(c) (UnsafeMutableRawPointer?, UnsafeRawPointer?) -> Void) throws {
+        guard let application = findClass("UnityEngine", "Application"), let action = findClass("System", "Action"),
+              let add = method(application, "add_quitting", parameters: 1, firstParameter: "System.Action") else {
+            throw Failure("No UnityEngine.Application.quitting")
+        }
+        // Any object will do as the target: it's only handed back to `callback`, which doesn't look at it.
+        guard let target = managedString("FM Starship") else { throw Failure("Couldn't make the quit handler's target") }
+        try call(add, nil, [try delegate(action, target: target, callback: callback)])
+    }
+
     private func nativeMethod(_ function: Pointer) throws -> Pointer {
         if let made = nativeMethods[function] { return made }
         guard let element = findClass("UnityEngine.UIElements", "VisualElement") else { throw Failure("No VisualElement") }
@@ -729,5 +746,20 @@ final class IL2CPP {
     private func holdsValues(_ array: Pointer) -> Bool {
         guard let element = api.classElement(classOf(array)) else { return true }
         return api.classIsValueType(element)
+    }
+}
+
+/// A flag that's set once and stays set, from any thread. Only the call that sets it is told so.
+final class Latch: Sendable {
+    private let state = OSAllocatedUnfairLock(initialState: false)
+
+    var isSet: Bool { state.withLock { $0 } }
+
+    /// True only for the call that set it.
+    func set() -> Bool {
+        state.withLock { isSet in
+            defer { isSet = true }
+            return !isSet
+        }
     }
 }
