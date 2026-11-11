@@ -181,7 +181,9 @@ struct PluginFolder: Sendable {
             var code: SecStaticCode?
             var status = SecStaticCodeCreateWithPath(copy as CFURL, [], &code)
             if status == errSecSuccess, let code {
-                let flags = SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode)
+                // Offline: updates are all the app goes online for, and Gatekeeper makes its own online checks when
+                // Steam opens the launcher.
+                let flags = SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode).union(.noNetworkAccess)
                 status = SecStaticCodeCheckValidity(code, flags, nil)
             }
             guard status == errSecSuccess else { throw PluginInstallError.notSigned(name, status) }

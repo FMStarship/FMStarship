@@ -61,17 +61,23 @@ final class PluginInstaller: ObservableObject {
         }
     }
 
+    /// The copy and its check off the main thread, as at start, and what follows back on it.
     private func copyIn() {
-        defer { look() }
-        do {
-            try folder.add(from: bundled, marker: marker, check: PluginFolder.signedLike(app: Bundle.main.bundleURL))
-            AppLog.write("Plugin: added build \(marker.build), \(marker.version), to \(folder.url.path)")
-        } catch {
-            AppLog.write("Plugin: couldn't add it to \(folder.url.path): \(error)")
-            inform("FM Starship couldn't be added to FM", Self.say(error))
-            return
+        let (folder, bundled, marker) = (folder, bundled, marker)
+        Task {
+            defer { look() }
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try folder.add(from: bundled, marker: marker, check: PluginFolder.signedLike(app: Bundle.main.bundleURL))
+                }.value
+                AppLog.write("Plugin: added build \(marker.build), \(marker.version), to \(folder.url.path)")
+            } catch {
+                AppLog.write("Plugin: couldn't add it to \(folder.url.path): \(error)")
+                inform("FM Starship couldn't be added to FM", Self.say(error))
+                return
+            }
+            showLaunchOption()
         }
-        showLaunchOption()
     }
 
     /// Steam doesn't let other apps set a game's launch options, so the player pastes this in once.
