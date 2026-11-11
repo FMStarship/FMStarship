@@ -208,7 +208,7 @@ public final class ClubReport {
 
     public func loans() -> AnalysisTable {
         var table = AnalysisTable(columns: [
-            TableColumn("Player", 15), TableColumn("Age", 5), TableColumn("Position", 9), TableColumn("CA", 5), TableColumn("PA", 5),
+            TableColumn("Player", 15), TableColumn("Age", 5), TableColumn("Position", 9, order: .playerPosition), TableColumn("CA", 5), TableColumn("PA", 5),
             TableColumn("This season", 10), TableColumn("Why", 25), TableColumn("Clubs where he'd likely start", 36),
         ])
         let young = Array(squad.filter {
@@ -355,7 +355,7 @@ public final class ClubReport {
     /// Everyone at the club still growing, sorted by what they're likely to become rather than by their PA.
     public func talent() -> AnalysisTable {
         var table = AnalysisTable(columns: [
-            TableColumn("Player", 17), TableColumn("Age", 4), TableColumn("Position", 9), TableColumn("Team", 9), TableColumn("CA", 5), TableColumn("PA", 5),
+            TableColumn("Player", 17), TableColumn("Age", 4), TableColumn("Position", 9, order: .playerPosition), TableColumn("Team", 9), TableColumn("CA", 5), TableColumn("PA", 5),
             TableColumn("Likely peak", 6), TableColumn("Outlook", 15), TableColumn("Odds", 6), TableColumn("Pro", 4), TableColumn("Det", 4), TableColumn("Amb", 4),
             TableColumn("Injury prone", 5), TableColumn("Personality", 13),
         ])

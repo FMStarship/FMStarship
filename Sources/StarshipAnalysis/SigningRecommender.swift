@@ -57,7 +57,7 @@ public struct RecommendOptions {
 /// The ten best players who would actually join: `RecommendForm`.
 public struct SigningRecommender {
     public static let columns = [
-        TableColumn("#", 4), TableColumn("Name", 18), TableColumn("Age", 5), TableColumn("Position", 11),
+        TableColumn("#", 4), TableColumn("Name", 18), TableColumn("Age", 5), TableColumn("Position", 11, order: .playerPosition),
         TableColumn("Club", 16), TableColumn("CA", 6), TableColumn("PA", 6), TableColumn("Value", 9),
         TableColumn("Wage", 9), TableColumn("Would join on", 10), TableColumn("vs your best", 9),
     ]
@@ -85,7 +85,7 @@ public struct SigningRecommender {
 
     /// Youngsters are ranked on what they'll likely become, not on a PA most never reach.
     public static let youngColumns = [
-        TableColumn("#", 4), TableColumn("Name", 17), TableColumn("Age", 4), TableColumn("Position", 10), TableColumn("Club", 14),
+        TableColumn("#", 4), TableColumn("Name", 17), TableColumn("Age", 4), TableColumn("Position", 10, order: .playerPosition), TableColumn("Club", 14),
         TableColumn("CA", 5), TableColumn("PA", 5), TableColumn("Likely peak", 6), TableColumn("Odds", 13), TableColumn("Value", 8),
         TableColumn("Wage", 8), TableColumn("Would join on", 9), TableColumn("vs your best", 8),
     ]

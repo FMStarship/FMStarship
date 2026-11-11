@@ -81,6 +81,32 @@ final class FMTableTests: XCTestCase {
         XCTAssertEqual(names(FMTable.sorted(signings().people, by: extra("Interest"), descending: false)), [3, 1, 4, 2])
     }
 
+    func testATacticsPlacesSortFromTheGoalkeeperUpNotAlphabetically() {
+        // The squad planner's first team, as it is inside FM.
+        let people = (1...5).map { person(UInt32($0)) }
+        let columns = [TableColumn("Position", 5, order: .place), TableColumn("Player", 5)]
+        let rows = zip(["ST", "DC (L)", "GK", "DC (R)", "AMR"], people).map { TableRow(cells: [$0, "Abel"], person: $1) }
+        let position = FMTable.extras(from: AnalysisTable(columns: columns, rows: rows), titles: ["Position"])[0]
+        XCTAssertEqual(position.order, .place)
+        XCTAssertEqual(names(FMTable.sorted(people, by: position, descending: false)), [3, 4, 2, 5, 1])
+        XCTAssertEqual(names(FMTable.sorted(people, by: position, descending: true)), [1, 5, 2, 4, 3])
+    }
+
+    func testPlayersSortByThePositionTheyreRatedBestAt() {
+        func player(_ index: UInt32, _ ratings: [String: UInt8]) -> Player {
+            let player = Player()
+            player.index = index
+            for (name, rating) in ratings { player.pos[Names.positions.firstIndex(of: name)!] = rating }
+            return player
+        }
+        // A striker who can play in midfield, and a full-back as good on either side, whom FM puts on the right.
+        let people: [Person] = [player(1, ["ST": 20, "MC": 18]), player(2, ["DL": 20, "DR": 20]), player(3, ["GK": 20]), person(4)]
+        let columns = [TableColumn("Position", 5, order: .playerPosition)]
+        let rows = zip(["MC, ST", "DL, DR", "GK", "DC"], people).map { TableRow(cells: [$0], person: $1) }
+        let position = FMTable.extras(from: AnalysisTable(columns: columns, rows: rows), titles: ["Position"])[0]
+        XCTAssertEqual(names(FMTable.sorted(people, by: position, descending: false)), [3, 2, 4, 1])
+    }
+
     func testOurColumnsAreWideEnoughForTheirLongestValue() {
         XCTAssertGreaterThan(extra("Interest").width, extra("vs your best").width)
         XCTAssertLessThanOrEqual(extra("Interest").width, 220)

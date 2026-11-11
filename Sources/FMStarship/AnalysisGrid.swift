@@ -248,15 +248,11 @@ struct AnalysisGrid: NSViewRepresentable {
         }
 
         private func sortRows() {
-            let rows = table.rows
-            order = Array(rows.indices)
-            guard let column = sortColumn else { return }
-            let descending = sortDescending
-            order.sort { a, b in
-                let x = rows[a].sortKey(column: column), y = rows[b].sortKey(column: column)
-                if x == y { return a < b }
-                return descending ? y < x : x < y
+            guard let column = sortColumn else {
+                order = Array(table.rows.indices)
+                return
             }
+            order = table.sortedIndices(byColumn: column, descending: sortDescending)
         }
 
         func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {

@@ -262,12 +262,12 @@ public enum SquadPlanner {
     }
 
     public static let squadColumns = [
-        TableColumn("Position", 14), TableColumn("Have / want", 15), TableColumn("Best", 18), TableColumn("CA", 5),
+        TableColumn("Position", 14, order: .place), TableColumn("Have / want", 15), TableColumn("Best", 18), TableColumn("CA", 5),
         TableColumn("What's missing", 40),
     ]
 
     public static let slotColumns = [
-        TableColumn("Position", 7), TableColumn("With the ball", 17), TableColumn("Without the ball", 17), TableColumn("Player", 16),
+        TableColumn("Position", 7, order: .place), TableColumn("With the ball", 17), TableColumn("Without the ball", 17), TableColumn("Player", 16),
         TableColumn("Stars", 6), TableColumn("CA", 4), TableColumn("Best fit", 26), TableColumn("Cover", 19),
         TableColumn("Have / want", 8), TableColumn("Status", 6), TableColumn("What's missing", 28),
     ]
