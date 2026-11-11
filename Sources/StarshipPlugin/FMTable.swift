@@ -302,7 +302,21 @@ struct FMTable {
     }
 
     /// The width FM gives its own Ability and Potential columns before it fits a table, which its stars fill.
-    static var starsWidth: Float { defaultWidths[.players]?["scout-opinion-current-ability"] ?? 90 }
+    static var starsWidth: Float { (defaultWidths[.players]?["scout-opinion-current-ability"] ?? 90) * starsWiden }
+
+    /// How much wider than FM's own star columns ours are asked to be. FM shares a table's width out in proportion to its
+    /// columns' widths, so on a table with many columns the stars' cell comes out narrower than asked, and the fifth star
+    /// is cut off. Once a cell is seen too narrow, this grows so the next table has the room.
+    static var starsWiden: Float = 1
+    /// Set when the stars' columns are to be wider, so the screen's tables are made again with it.
+    static var starsRemake = false
+
+    /// How much more to ask for, given the room the stars need and the cell they got. Nil if they fit, or if asking
+    /// for more has gone as far as it should.
+    nonisolated static func widen(by current: Float, need: Float, got: Float) -> Float? {
+        guard need.isFinite, got.isFinite, got > 0, need > got, current < 2.5 else { return nil }
+        return min(2.5, current * need / got * 1.02)
+    }
 
     /// How our columns' widths are given to FM. With only a minimum, FM still fits the table to the screen, with
     /// none of ours narrower than its heading or longest value. The developer command `table widths` changes it.
@@ -788,6 +802,17 @@ struct FMTable {
         }
         Self.starsChecked = true
         let width = ui.layout(cell).map { FMElements.whole($0.width) } ?? "?"
+        // Five stars, and the 4 points of room our cells start with, and a little to spare.
+        if size.width > 0, size.height > 0, let got = ui.layout(cell)?.width,
+           let wider = Self.widen(by: Self.starsWiden, need: row.width + 8, got: got) {
+            Self.starsWiden = wider
+            Self.starsChecked = false
+            Self.firstStars = nil
+            Self.starsRemake = true
+            PluginLog.write("FM's stars need \(FMElements.whole(row.width + 8)) in a cell \(width) wide, so their columns are asked for "
+                + "\(FMElements.whole(Self.starsWidth)) and the tables made again")
+            return
+        }
         if size.width > 0, size.height > 0 {
             PluginLog.write("FM's stars are up in our CA and PA columns: each star \(FMElements.whole(size.width))x\(FMElements.whole(size.height)), "
                 + "the five \(FMElements.whole(row.width)) wide in a cell \(width) wide")

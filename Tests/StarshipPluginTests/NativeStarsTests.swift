@@ -111,4 +111,17 @@ final class NativeStarsTests: XCTestCase {
         // FM lays five of its stars out 73 wide, and its cells keep 4 to the left of them.
         XCTAssertGreaterThanOrEqual(FMTable.starsWidth, 77)
     }
+
+    func testStarsTooNarrowAskForMoreRoomOnceAndNoMoreThanTwoAndAHalfTimes() {
+        // 81 needed in a 68 cell: about 1.21 times as wide.
+        let wider = FMTable.widen(by: 1, need: 81, got: 68)
+        XCTAssertNotNil(wider)
+        XCTAssertGreaterThan(wider ?? 0, 1.19)
+        XCTAssertLessThan(wider ?? 9, 1.25)
+        XCTAssertNil(FMTable.widen(by: 1, need: 81, got: 90), "They fit")
+        XCTAssertEqual(FMTable.widen(by: 2.4, need: 81, got: 20), 2.5)
+        XCTAssertNil(FMTable.widen(by: 2.5, need: 81, got: 20), "As far as it goes")
+        XCTAssertNil(FMTable.widen(by: 1, need: 81, got: 0))
+        XCTAssertNil(FMTable.widen(by: 1, need: .nan, got: 68))
+    }
 }

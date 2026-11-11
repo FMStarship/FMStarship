@@ -1462,6 +1462,13 @@ final class FMInterface {
                     }
                 }
             }
+            // FM's stars were seen cut off, so the tables are made again with wider columns for them.
+            if FMTable.starsRemake {
+                FMTable.starsRemake = false
+                stopTables()
+                shown = ""
+                return refreshLater()
+            }
         }
     }
 
@@ -1977,6 +1984,7 @@ final class FMInterface {
                 return PluginLog.write("Stars commands: native, text. CA and PA in Stars mode show as \(FMTable.nativeStars ? "FM's stars" : "text") now")
             }
             FMTable.nativeStars = value == "native"
+            FMTable.starsWiden = 1
             FMTable.starsFailed = false
             FMTable.starsChecked = false
             FMTable.firstStars = nil
