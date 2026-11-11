@@ -26,6 +26,7 @@ struct PluginMarker: Codable, Equatable, Sendable {
 
 /// What's in the plugin's folder.
 enum InstalledPlugin: Equatable, Sendable {
+    /// No plugin. A launcher on its own, as Remove leaves it, only starts FM without FM Starship.
     case nothing
     /// Copies the app put there, from this build. Nil if the marker can't be read.
     case fromApp(build: String?)
@@ -64,6 +65,8 @@ struct PluginFolder: Sendable {
     static let pluginName = "libStarshipPlugin.dylib"
     static let launcherName = "FM Starship Launcher.app"
     static let markerName = "installed-by-app.json"
+    /// FM's table asset files, which the plugin keeps between starts, as `FMTable.Kind.assetFile` names them.
+    static let tableFileNames = ["fm-table-assets.json", "fm-staff-table-assets.json"]
     /// How each add's own staging folder is named. Scripts/install-plugin.sh names its staging otherwise, so the sweep
     /// leaves that alone.
     static let stagingPrefix = ".adding."
@@ -101,7 +104,7 @@ struct PluginFolder: Sendable {
 
     func installed() -> InstalledPlugin {
         let files = FileManager.default
-        guard files.fileExists(atPath: plugin.path) || files.fileExists(atPath: launcher.path) else { return .nothing }
+        guard files.fileExists(atPath: plugin.path) else { return .nothing }
         guard files.fileExists(atPath: marker.path) else { return .fromScript }
         let read = (try? Data(contentsOf: marker)).flatMap { try? JSONDecoder().decode(PluginMarker.self, from: $0) }
         return .fromApp(build: read?.build)
@@ -171,10 +174,15 @@ struct PluginFolder: Sendable {
         try encoder.encode(marker).write(to: self.marker, options: .atomic)
     }
 
-    /// Takes the whole folder away, as `Scripts/install-plugin.sh --uninstall` does. The logs stay.
+    /// Takes the plugin, the marker and FM's table files away, and leaves the launcher, so Steam still starts FM, without
+    /// the plugin, while its launch option names it. `Scripts/install-plugin.sh --uninstall` takes the whole folder. The
+    /// plugin goes first, so a removal that stops partway never leaves the app's plugin without its marker, which would
+    /// read as a developer's own build. The logs stay.
     func remove() throws {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        try FileManager.default.removeItem(at: url)
+        let files = FileManager.default
+        for item in [plugin, marker] + Self.tableFileNames.map({ url.appendingPathComponent($0) }) where files.fileExists(atPath: item.path) {
+            try files.removeItem(at: item)
+        }
     }
 
     static func removeQuarantine(_ item: URL) throws {

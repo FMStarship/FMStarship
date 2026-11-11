@@ -250,13 +250,63 @@ final class PluginInstallTests: XCTestCase {
         XCTAssertNoThrow(try check(copy, "true"), "a copy signed as the app is passes")
     }
 
-    func testRemovingTakesTheWholeFolder() throws {
+    // MARK: Removing
+
+    func testRemovingKeepsTheLauncher() throws {
+        XCTAssertNoThrow(try folder.remove(), "nothing there is fine")
         try makeApp()
         try makeOldInstall()
         try folder.add(from: bundled, marker: marker)
         try folder.remove()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.url.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.plugin.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.marker.path))
+        for name in PluginFolder.tableFileNames {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: folder.url.appendingPathComponent(name).path), name)
+        }
+        XCTAssertEqual(try read(folder.launcher.appendingPathComponent("Contents/MacOS/FM Starship Launcher")), "new launcher",
+                       "Steam still starts FM through it if the launch option is left in")
+        XCTAssertEqual(try read(folder.launcher.appendingPathComponent("Contents/Info.plist")), "<plist/>")
         XCTAssertEqual(folder.installed(), .nothing)
-        XCTAssertNoThrow(try folder.remove(), "nothing there is fine")
+        XCTAssertEqual(PluginFolder.stepAtStart(folder.installed(), appBuild: "9", carried: true), .leave,
+                       "a newer app's next start doesn't put it back")
+        XCTAssertNoThrow(try folder.remove(), "removing again is fine")
+    }
+
+    func testAFolderWithOnlyTheLauncherIsNothing() throws {
+        try write("old launcher", to: folder.launcher.appendingPathComponent("Contents/MacOS/FM Starship Launcher"))
+        XCTAssertEqual(folder.installed(), .nothing)
+        try JSONEncoder().encode(PluginMarker(version: "27.0.6", build: "7")).write(to: folder.marker)
+        XCTAssertEqual(folder.installed(), .nothing, "nor with a marker a removal left, so the next start doesn't add it back")
+        XCTAssertEqual(PluginFolder.stepAtStart(folder.installed(), appBuild: "8", carried: true), .leave)
+        XCTAssertEqual(PluginFolder.stepToAdd(folder.installed()), .copy)
+    }
+
+    func testAddingOverALauncherOnItsOwnCopiesWithoutAsking() throws {
+        try makeApp()
+        try makeOldInstall()
+        XCTAssertEqual(PluginFolder.stepToAdd(folder.installed()), .ask, "a developer's own build")
+        try folder.remove()
+        XCTAssertEqual(PluginFolder.stepToAdd(folder.installed()), .copy, "its launcher on its own has nothing to lose")
+        try folder.add(from: bundled, marker: marker)
+        XCTAssertEqual(try read(folder.plugin), "new plugin")
+        XCTAssertEqual(try read(folder.launcher.appendingPathComponent("Contents/MacOS/FM Starship Launcher")), "new launcher")
+        XCTAssertFalse(isQuarantined(folder.launcher), "the old launcher's flag doesn't come back with the new one")
+        XCTAssertEqual(folder.installed(), .fromApp(build: "8"))
+    }
+
+    /// A file that can't be deleted stops the removal there. Neither stop leaves the app's plugin without its marker,
+    /// which would read as a developer's own build.
+    func testARemovalThatStopsPartwayIsNeverADevelopersBuild() throws {
+        try makeApp()
+        try folder.add(from: bundled, marker: marker)
+        XCTAssertEqual(chflags(folder.plugin.path, UInt32(UF_IMMUTABLE)), 0)
+        XCTAssertThrowsError(try folder.remove())
+        chflags(folder.plugin.path, 0)
+        XCTAssertEqual(folder.installed(), .fromApp(build: "8"), "the marker stays while the plugin does")
+        XCTAssertEqual(chflags(folder.marker.path, UInt32(UF_IMMUTABLE)), 0)
+        XCTAssertThrowsError(try folder.remove())
+        chflags(folder.marker.path, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.plugin.path))
+        XCTAssertEqual(folder.installed(), .nothing, "with the plugin gone, the marker left behind doesn't count")
     }
 }
