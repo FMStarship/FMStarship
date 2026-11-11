@@ -172,6 +172,10 @@ All writes go to a private overlay that is thrown away after each call, so this 
   `DYLD_INSERT_LIBRARIES`, through the same entitlement the agent uses, and waits for FM to quit, so Steam still sees the game
   running. The plugin clears that variable as it loads, so nothing FM starts inherits it, and it does nothing in any process but
   FM's (`Sources/StarshipPluginStart`).
+- **The launcher stops a crash loop.** If FM closes on a signal or with an error within three minutes of starting with the
+  plugin, twice in a row with the same copy of it, the launcher starts FM without it from then on. It says why in the plugin's
+  log and in `status.json` beside the plugin, for the app to show. A new copy of the plugin, from the app's update or Add FM
+  Starship to FM, goes back in.
 - **It reads the save from inside FM**, with the same reader, in about 2 seconds instead of about 100 through the agent. The
   rules run in the same sandbox. It carries the agent too, so the app and `fmprobe` can read a game started this way.
 - **It builds its screens through the IL2CPP API** that FM's `GameAssembly` exports (`IL2CPP.swift`), on Unity's main thread.
