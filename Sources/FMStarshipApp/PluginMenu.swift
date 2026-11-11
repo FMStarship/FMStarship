@@ -108,33 +108,27 @@ final class PluginInstaller: ObservableObject {
         (NSApp.mainWindow ?? NSApp.keyWindow).map { $0.sheetParent ?? $0 }
     }
 
-    /// Steam can't start FM while its launch option names a launcher that's gone, so that's cleared first, and the
-    /// folder only goes once the player says they've done it.
+    /// The launcher stays, so FM still starts from Steam with the launch option left in, and the player can clear it
+    /// after. Clearing it is still best: Steam then starts FM itself, and doesn't need FM Starship's folder to.
     func remove() {
         let alert = NSAlert()
-        alert.messageText = "Clear FM's launch option in Steam first"
+        alert.messageText = "Remove FM Starship from FM?"
         alert.informativeText = """
-            In Steam, open Football Manager 27 > Properties > General > Launch Options, and delete what's there. Until you \
-            do, Steam can't start FM, because the option names the launcher this removes.
+            The next time FM starts, it starts without FM Starship. Clear FM's launch option as well: in Steam, open \
+            Football Manager 27 > Properties > General > Launch Options, and delete what's there. Until you do, Steam \
+            starts FM through FM Starship's launcher, which stays in place so that FM still starts.
 
             A game that's open now keeps FM Starship until you quit it.
             """
         let removeButton = alert.addButton(withTitle: "Remove")
         removeButton.hasDestructiveAction = true
-        removeButton.isEnabled = false
         alert.addButton(withTitle: "Cancel")
-        alert.showsSuppressionButton = true
-        let confirm = Confirmation(enabling: removeButton)
-        alert.suppressionButton?.title = "I've cleared FM's launch option"
-        alert.suppressionButton?.target = confirm
-        alert.suppressionButton?.action = #selector(Confirmation.toggled(_:))
         present(alert) { [weak self] response in
-            withExtendedLifetime(confirm) {}
             guard response == .alertFirstButtonReturn, let self else { return }
             defer { self.look() }
             do {
                 try self.folder.remove()
-                AppLog.write("Plugin: removed \(self.folder.url.path)")
+                AppLog.write("Plugin: removed the plugin from \(self.folder.url.path), and left the launcher")
             } catch {
                 AppLog.write("Plugin: couldn't remove \(self.folder.url.path): \(error)")
                 self.inform("FM Starship couldn't be removed from FM", Self.say(error))
@@ -169,15 +163,6 @@ private actor PluginCopier {
     func add(to folder: PluginFolder, from bundled: BundledPlugin, marker: PluginMarker) throws {
         try folder.add(from: bundled, marker: marker, check: PluginFolder.signedLike(app: Bundle.main.bundleURL))
     }
-}
-
-/// Remove stays off until the player ticks that they've cleared the launch option.
-private final class Confirmation: NSObject {
-    private weak var button: NSButton?
-
-    init(enabling button: NSButton) { self.button = button }
-
-    @objc func toggled(_ sender: NSButton) { button?.isEnabled = sender.state == .on }
 }
 
 /// In the app menu, after Check for Updates, where a Mac app keeps what it installs for other apps.

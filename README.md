@@ -89,8 +89,8 @@ Manager button doesn't load the plugin. The app can still read a game started fr
 
 Adding it is safe while FM is running: a game that's open keeps what it has, and the next start of FM from Steam gets the new copy.
 When the app updates, it updates its copy of the plugin the next time it opens, and the launch option stays the same. To remove it,
-choose **FM Starship > Remove FM Starship from FM**. It asks you to clear the launch option first, because Steam can't start FM
-while the option names a launcher that's gone.
+choose **FM Starship > Remove FM Starship from FM**, then clear the launch option in Steam. Remove leaves the launcher in place, so
+until you do, Steam still starts FM, without FM Starship.
 
 **To build the plugin yourself**, run `Scripts/install-plugin.sh` in a copy of the source. You need Xcode and Homebrew's `zstd`, as
 [CONTRIBUTING.md](CONTRIBUTING.md#getting-set-up) explains. It puts your own build in the same folder and prints the same launch
