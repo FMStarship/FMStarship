@@ -112,6 +112,11 @@ final class InterfaceDump {
             text += " border \(width) \(hex(colour))"
         }
         if let radius = ui.resolvedNumber(element, "borderTopLeftRadius"), radius > 0 { text += " radius \(radius)" }
+        // How FM fades a layer, as it may under an open menu.
+        if let opacity = ui.resolvedNumber(element, "opacity"), opacity.isFinite, opacity < 0.999 { text += " opacity \(opacity)" }
+        if let tint = ui.resolvedColor(element, "unityBackgroundImageTintColor"), tint.0 < 0.999 || tint.1 < 0.999 || tint.2 < 0.999 || tint.3 < 0.999 {
+            text += " tint \(hex(tint))"
+        }
         if ui.il2cpp.isSubclass(ui.il2cpp.classOf(element), of: ui.il2cpp.findClass(toolkit, "TextElement")),
            let colour = ui.resolvedColor(element, "color"), let size = ui.resolvedNumber(element, "fontSize") {
             text += " text \(hex(colour)) \(size)"
