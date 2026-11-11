@@ -7,10 +7,21 @@ import XCTest
 /// five stars, and which of our columns get it. Drawing it needs FM; none of this does.
 @MainActor
 final class NativeStarsTests: XCTestCase {
-    override func tearDown() {
+    // Each test says which it wants, from text, and the default is put back after.
+    override func setUp() {
+        super.setUp()
         FMTable.nativeStars = false
+    }
+
+    override func tearDown() {
+        FMTable.nativeStars = true
         FMTable.starsFailed = false
         super.tearDown()
+    }
+
+    func testFMsStarsAreOnUnlessSaidOtherwise() {
+        tearDown()
+        XCTAssertTrue(FMTable.nativeStars)
     }
 
     private func players() -> [Person] {

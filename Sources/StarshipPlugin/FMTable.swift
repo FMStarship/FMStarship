@@ -363,9 +363,9 @@ struct FMTable {
     static var abilitySortable = false
     /// CA and PA in Stars mode as FM's own star graphic, the yellow stars of its Ability and Potential columns, in
     /// place of text such as 3.5★, and the stars FM gives a player in a role, in place of ★★★½. CA and PA are still
-    /// ours, on our scale, where CA 200 is five stars, and all of them sort by our columns' headings as before. Off
-    /// until it's been seen in FM: the developer command `stars native` turns it on.
-    static var nativeStars = false
+    /// ours, on our scale, where CA 200 is five stars, and all of them sort by our columns' headings as before. Seen
+    /// right in FM on 27.0.1 (11 November), so on; the developer command `stars text` shows the text, to compare.
+    static var nativeStars = true
     /// Set once FM's stars couldn't be made, or FM's style didn't reach them, after which they're text again.
     static var starsFailed = false
     /// When the first of FM's stars went into one of our tables, to check them once they're laid out.

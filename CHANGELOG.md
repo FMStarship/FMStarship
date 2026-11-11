@@ -15,6 +15,8 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 - **Role, not Stars.** In the Squad planner's first team, Best eleven and Optimized tactic and roles, the column of FM's stars for
   each player in the role at their place is now called Role, in the app and inside FM. Inside FM, in Stars mode, CA and PA are
   called Ability and Potential, as FM's own star columns are, so the two kinds of stars no longer look like the same column twice.
+- **FM's own stars inside FM.** In Stars mode, Ability, Potential and Role are drawn as FM's yellow stars, with room for all five,
+  and they sort by stars. They're FM Starship's values, on its own scale, where CA 200 is five stars.
 
 ## 27.0.6
 
