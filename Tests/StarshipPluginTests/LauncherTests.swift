@@ -11,9 +11,10 @@ final class LauncherTests: XCTestCase {
     private var seen: URL { folder.appendingPathComponent("seen.txt") }
     private var count: URL { plugin.deletingLastPathComponent().appendingPathComponent("launcher-starts") }
     private var status: URL { plugin.deletingLastPathComponent().appendingPathComponent("status.json") }
+    private var mark: URL { plugin.deletingLastPathComponent().appendingPathComponent("started-well") }
 
-    /// The stand-in writes down its arguments and the environment that matters, waits FAKE_SLEEP seconds, and exits with
-    /// FAKE_EXIT, or ends on the signal FAKE_SIGNAL.
+    /// The stand-in writes down its arguments and the environment that matters, writes FAKE_TEXT to the file FAKE_WRITE as
+    /// the plugin would, waits FAKE_SLEEP seconds, and exits with FAKE_EXIT, or ends on the signal FAKE_SIGNAL.
     private static let fakeFM = """
         #include <signal.h>
         #include <stdio.h>
@@ -26,6 +27,12 @@ final class LauncherTests: XCTestCase {
             const char *names[] = {"DYLD_INSERT_LIBRARIES", "SteamAppId", "SteamGameId", "FAKE_PLUGIN", "FAKE_OVERLAY"};
             for (int i = 0; i < 5; i++) if (getenv(names[i])) fprintf(out, "%s=%s\\n", names[i], getenv(names[i]));
             fclose(out);
+            if (getenv("FAKE_WRITE")) {
+                FILE *file = fopen(getenv("FAKE_WRITE"), "w");
+                if (!file) return 98;
+                fputs(getenv("FAKE_TEXT") ? getenv("FAKE_TEXT") : "", file);
+                fclose(file);
+            }
             if (getenv("FAKE_SLEEP")) sleep((unsigned)atoi(getenv("FAKE_SLEEP")));
             if (getenv("FAKE_SIGNAL")) kill(getpid(), atoi(getenv("FAKE_SIGNAL")));
             return getenv("FAKE_EXIT") ? atoi(getenv("FAKE_EXIT")) : 0;
@@ -50,9 +57,10 @@ final class LauncherTests: XCTestCase {
         // The same flags as Scripts/install-plugin.sh.
         try clang(["-O2", "-Wall", "-arch", "arm64", "-mmacosx-version-min=14.0", "-o", out.appendingPathComponent("launcher").path,
                    root.appendingPathComponent("plugin/launcher.c").path, "-framework", "CoreFoundation"])
-        // The crash-loop breaker's tests can't wait three minutes, so they get a launcher whose window is two seconds.
-        try clang(["-O2", "-Wall", "-arch", "arm64", "-mmacosx-version-min=14.0", "-DCRASH_WINDOW_SECONDS=2",
-                   "-o", out.appendingPathComponent("launcher-2s").path,
+        // The crash-loop breaker's tests can't wait half an hour, so they get a launcher whose window is five seconds,
+        // which leaves seconds to spare for a quick start on a busy machine.
+        try clang(["-O2", "-Wall", "-arch", "arm64", "-mmacosx-version-min=14.0", "-DCRASH_WINDOW_SECONDS=5",
+                   "-o", out.appendingPathComponent("launcher-5s").path,
                    root.appendingPathComponent("plugin/launcher.c").path, "-framework", "CoreFoundation"])
         try clang(["-o", out.appendingPathComponent("fakefm").path, out.appendingPathComponent("fakefm.c").path])
         try clang(["-dynamiclib", "-DMARKER=\"FAKE_PLUGIN\"", "-o", out.appendingPathComponent("plugin.dylib").path,
@@ -214,13 +222,13 @@ final class LauncherTests: XCTestCase {
         XCTAssertTrue(run.stderr.contains("needs %command%"), run.stderr)
     }
 
-    // The crash-loop breaker, through the launcher whose window is two seconds.
+    // The crash-loop breaker, through the launcher whose window is five seconds.
 
     /// Starts the stand-in through the breaker's launcher, ending as `ending` says, and says whether the plugin went in.
     @discardableResult
     private func start(_ ending: [String: String] = [:]) throws -> (plugin: Bool, stderr: String) {
         let run = try launch([bundle.path], ending.merging(["HOME": home.path, "DYLD_INSERT_LIBRARIES": try overlay.path]) { $1 },
-                             launcher: "launcher-2s")
+                             launcher: "launcher-5s")
         let fm = try XCTUnwrap(seenByFM(), "FM always starts")
         XCTAssertEqual(fm.environment["FAKE_OVERLAY"], "1", "Steam's overlay stays in")
         return (fm.environment["FAKE_PLUGIN"] == "1", run.stderr)
@@ -228,7 +236,17 @@ final class LauncherTests: XCTestCase {
 
     private let crash = ["FAKE_SIGNAL": "15"]
     private let failure = ["FAKE_EXIT": "3"]
-    private let pastTheWindow = ["FAKE_SLEEP": "3"]
+    private let pastTheWindow = ["FAKE_SLEEP": "6"]
+    /// As the plugin does once its tab has been in FM's bar for a few seconds.
+    private var wentWell: [String: String] { ["FAKE_WRITE": mark.path] }
+    /// As the plugin does when it keeps itself out of a build of FM nobody has checked.
+    private var keptOut: [String: String] {
+        ["FAKE_WRITE": status.path, "FAKE_TEXT": #"{"at":"","detail":"","fm":"","plugin":"off","reason":"unchecked-build"}"#]
+    }
+
+    private func countNow() throws -> String? {
+        try String(contentsOf: count, encoding: .utf8).split(separator: " ").last.map(String.init)
+    }
 
     private func statusFile() throws -> [String: String] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: status)) as? [String: String])
@@ -241,7 +259,8 @@ final class LauncherTests: XCTestCase {
         XCTAssertTrue(try start(failure).plugin, "one quick crash isn't enough")
         let third = try start()
         XCTAssertFalse(third.plugin)
-        XCTAssertTrue(third.stderr.contains("Starting FM without FM Starship, because FM closed within"), third.stderr)
+        XCTAssertTrue(third.stderr.contains("Starting FM without FM Starship, because FM closed before FM Starship's tab had "
+                                            + "settled into FM's bar"), third.stderr)
         XCTAssertTrue(third.stderr.contains("2 times in a row"), third.stderr)
         let log = try String(contentsOf: log, encoding: .utf8)
         XCTAssertTrue(log.contains("FM closed on signal 15"), log)
@@ -257,18 +276,97 @@ final class LauncherTests: XCTestCase {
         XCTAssertFalse(leftovers.contains { $0.hasPrefix(".") }, "written atomically, with nothing left over: \(leftovers)")
 
         // A start without the plugin says nothing about it, so it stays out, however that start ends.
-        XCTAssertFalse(try start(pastTheWindow).plugin)
+        XCTAssertFalse(try start(crash).plugin)
         XCTAssertFalse(try start().plugin)
     }
 
-    func testARunPastTheWindowResetsTheCount() throws {
+    func testAStartThatWentWellResetsTheCountHoweverItEnds() throws {
         try makeFM(name: "Football Manager 27")
         try installPlugin()
         try start(crash)
-        XCTAssertTrue(try start(pastTheWindow.merging(crash) { $1 }).plugin, "a crash past the window isn't the plugin's start")
+        XCTAssertTrue(try start(wentWell.merging(crash) { $1 }).plugin, "a crash after the tab settled in isn't the plugin's start")
+        XCTAssertEqual(try countNow(), "0\n")
         try start(crash)
         XCTAssertTrue(try start().plugin)
         XCTAssertFalse(FileManager.default.fileExists(atPath: status.path))
+    }
+
+    func testTheMarkIsClearedBeforeEachStartWithThePlugin() throws {
+        try makeFM(name: "Football Manager 27")
+        try installPlugin()
+        try start(wentWell)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mark.path))
+        // Two crashes after a start that went well: the last start's mark doesn't vouch for these.
+        try start(crash)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: mark.path))
+        try start(crash)
+        XCTAssertFalse(try start().plugin)
+    }
+
+    func testAMarkFromAStartTheLauncherDidntSeeEndResetsTheCountAtTheNextStart() throws {
+        try makeFM(name: "Football Manager 27")
+        try installPlugin()
+        try start(crash)
+        // The next start's tab went in, then the Mac lost power, so the launcher never saw FM close.
+        try Data("pid 1\n".utf8).write(to: mark)
+        try start(crash)
+        XCTAssertEqual(try countNow(), "1\n", "the lost start went well, so this crash is the first in a row")
+        XCTAssertTrue(try start().plugin)
+    }
+
+    func testACrashPastTheWindowWithoutTheMarkChangesNothing() throws {
+        try makeFM(name: "Football Manager 27")
+        try installPlugin()
+        try start(crash)
+        try start(pastTheWindow.merging(crash) { $1 })
+        XCTAssertEqual(try countNow(), "1\n", "neither the plugin's start nor proof it went well")
+        try start(crash)
+        XCTAssertFalse(try start().plugin)
+    }
+
+    func testAStartThePluginKeptItselfOutOfDoesntCount() throws {
+        try makeFM(name: "Football Manager 27")
+        try installPlugin()
+        for _ in 0..<3 {
+            XCTAssertTrue(try start(keptOut.merging(crash) { $1 }).plugin, "FM's own crash, on a build the plugin stayed out of")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: count.path))
+        XCTAssertEqual(try statusFile()["reason"], "unchecked-build", "the plugin's reason stays for the app")
+        // An old status for another reason, from before this start, doesn't excuse a crash.
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: status.path)
+        try start(crash)
+        try start(crash)
+        XCTAssertFalse(try start().plugin)
+    }
+
+    func testATrippedBreakerWritesItsStatusOnce() throws {
+        try makeFM(name: "Football Manager 27")
+        try installPlugin()
+        try start(crash)
+        try start(crash)
+        XCTAssertFalse(try start().plugin)
+        // As if it tripped a while ago: a later start mustn't move its time, or the app would tell the player again.
+        var written = try statusFile()
+        written["at"] = "2026-11-01T12:00:00Z"
+        let tripped = try JSONSerialization.data(withJSONObject: written)
+        try tripped.write(to: status)
+        XCTAssertFalse(try start().plugin)
+        XCTAssertFalse(try start().plugin)
+        XCTAssertEqual(try Data(contentsOf: status), tripped)
+    }
+
+    func testAMarkThatCantBeClearedLeavesTheStartUncounted() throws {
+        try makeFM(name: "Football Manager 27")
+        try installPlugin()
+        try Data().write(to: mark)
+        let pluginFolder = plugin.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: pluginFolder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: pluginFolder.path) }
+        for _ in 0..<3 {
+            let run = try start(crash)
+            XCTAssertTrue(run.plugin)
+            XCTAssertTrue(run.stderr.contains("Couldn't clear \(mark.path)"), run.stderr)
+        }
     }
 
     func testAQuickQuitOfThePlayersOwnChangesNothing() throws {

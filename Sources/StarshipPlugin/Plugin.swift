@@ -181,6 +181,59 @@ enum PluginBuild {
     #endif
 }
 
+/// Tells the launcher this start of FM went well: a mark in the folder the plugin was loaded from, which is the
+/// launcher's, once FM Starship's tab has been in FM's bar for `after` seconds. The launcher removes it before each start
+/// with the plugin, and FM closing on a signal or an error without it counts towards starting FM without the plugin
+/// (`plugin/launcher.c`).
+enum StartMark {
+    static let name = "started-well"
+    /// Adding the tab is the riskiest thing the plugin does at start. Ten seconds also covers FM laying out and drawing
+    /// it, and building its bar again as it finishes loading a career.
+    static let after: TimeInterval = 10
+
+    /// The folder this library was loaded from, found through its own image, so it's the one the launcher used.
+    static func folder() -> URL? {
+        var info = Dl_info()
+        guard dladdr(#dsohandle, &info) != 0, let path = info.dli_fname else { return nil }
+        return URL(fileURLWithPath: String(cString: path)).deletingLastPathComponent()
+    }
+
+    /// Off FM's main thread, so a slow disk can't hold FM up.
+    static func writeSoon() {
+        DispatchQueue.global(qos: .utility).async { write(in: folder()) }
+    }
+
+    /// A failure is logged and nothing more: the launcher then counts a crash in this session, as it did before the tab.
+    static func write(in folder: URL?, pid: Int32 = getpid(), log: (String) -> Void = { PluginLog.write($0) }) {
+        guard let folder else {
+            log("Couldn't find the folder FM Starship was loaded from, so the launcher isn't told this start went well")
+            return
+        }
+        do {
+            try Data("pid \(pid)\n".utf8).write(to: folder.appendingPathComponent(name), options: .atomic)
+            log("FM Starship's tab has been in FM's bar for \(Int(after)) seconds, so the launcher is told this start went well")
+        } catch {
+            log("Couldn't tell the launcher this start went well, in \(folder.path): \(error.localizedDescription)")
+        }
+    }
+}
+
+/// When to write the start mark: once, when the tab has stayed in FM's bar for `StartMark.after` seconds since it last
+/// went in.
+struct StartMarkDue {
+    private var since: Date?
+    private(set) var written = false
+
+    mutating func tabAdded(at now: Date = Date()) { since = now }
+
+    /// True the one time the mark is due.
+    mutating func tabStillIn(at now: Date = Date()) -> Bool {
+        guard !written, let since, now.timeIntervalSince(since) >= StartMark.after else { return false }
+        written = true
+        return true
+    }
+}
+
 /// What the plugin did, for finding out why when something doesn't show up inside FM.
 enum PluginLog {
     private static let queue = DispatchQueue(label: "FMStarship.PluginLog")

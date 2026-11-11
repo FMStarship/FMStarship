@@ -19,11 +19,14 @@
 
 extern char **environ;
 
-// A start with the plugin counts against it when FM closes on a signal or with an error within this many seconds. FM
-// loads the plugin at once, and adds its tab 30 to 70 seconds later on an M-series Mac; a slower Mac or the first start
-// after an FM update takes longer, so three minutes. A crash later than that is past the plugin's start.
+// The plugin leaves this mark in its folder once its tab has been in FM's bar for a few seconds, which is when a career
+// is loaded, at the player's own pace. A start with the plugin that ends on a signal or with an error and no mark counts
+// against it, if it ends within this many seconds. Half an hour is four times the slowest of 59 starts to the tab measured
+// (446 seconds), so a slow Mac, a big save or a player who waits at FM's main menu is still caught. Past it, the
+// tab still not in means the player isn't in a career, and FM's own crash there shouldn't count.
+#define START_MARK "started-well"
 #ifndef CRASH_WINDOW_SECONDS
-#define CRASH_WINDOW_SECONDS 180
+#define CRASH_WINDOW_SECONDS 1800
 #endif
 // After this many such starts in a row with the same plugin, FM starts without it until the plugin is replaced.
 #define CRASHES_TO_STOP 2
@@ -136,17 +139,50 @@ static void write_status(const char *folder, const char *detail, const char *ver
         say("Couldn't write %s/status.json, so the app can't say why (%s).", folder, strerror(errno));
 }
 
-// Takes away the status file the breaker wrote, once the plugin goes back in. One for another reason stays.
-static void clear_status(const char *folder) {
+// What status.json says: nothing (it's missing, empty or can't be read), the breaker's reason, or another.
+enum status { NO_STATUS, CRASH_LOOP_STATUS, OTHER_STATUS };
+static enum status read_status(const char *folder) {
     char path[PATH_MAX], text[4096];
-    if (snprintf(path, sizeof path, "%s/status.json", folder) >= (int)sizeof path) return;
+    if (snprintf(path, sizeof path, "%s/status.json", folder) >= (int)sizeof path) return NO_STATUS;
     int file = open(path, O_RDONLY | O_NONBLOCK);
-    if (file < 0) return;
+    if (file < 0) return NO_STATUS;
     ssize_t length = read(file, text, sizeof text - 1);
     close(file);
-    if (length <= 0) return;
+    if (length <= 0) return NO_STATUS;
     text[length] = '\0';
-    if (strstr(text, "\"crash-loop\"")) unlink(path);
+    return strstr(text, "\"crash-loop\"") ? CRASH_LOOP_STATUS : OTHER_STATUS;
+}
+
+// Takes away the status file the breaker wrote, once the plugin goes back in. One for another reason stays.
+static void clear_status(const char *folder) {
+    char path[PATH_MAX];
+    if (snprintf(path, sizeof path, "%s/status.json", folder) >= (int)sizeof path) return;
+    if (read_status(folder) == CRASH_LOOP_STATUS) unlink(path);
+}
+
+// Whether the plugin kept itself out of this start, on a build of FM nobody has checked, and wrote status.json to say
+// so after `since`. It added nothing to FM then, so FM closing isn't the plugin's doing.
+static bool kept_itself_out(const char *folder, time_t since) {
+    char path[PATH_MAX];
+    struct stat info;
+    if (snprintf(path, sizeof path, "%s/status.json", folder) >= (int)sizeof path || lstat(path, &info) != 0
+        || !S_ISREG(info.st_mode) || info.st_mtimespec.tv_sec < since) return false;
+    return read_status(folder) == OTHER_STATUS;
+}
+
+// Whether the plugin's mark is there: the last start with it went well.
+static bool marked(const char *folder) {
+    char path[PATH_MAX];
+    struct stat info;
+    return snprintf(path, sizeof path, "%s/" START_MARK, folder) < (int)sizeof path && lstat(path, &info) == 0
+        && S_ISREG(info.st_mode);
+}
+
+// Takes the mark away before a start with the plugin, so only this start's own can be there when FM closes.
+static bool unmark(const char *folder) {
+    char path[PATH_MAX];
+    if (snprintf(path, sizeof path, "%s/" START_MARK, folder) >= (int)sizeof path) { errno = ENAMETOOLONG; return false; }
+    return unlink(path) == 0 || errno == ENOENT;
 }
 
 // Which plugin build is there. A new copy, from the app's update, a new add or Scripts/install-plugin.sh, is a new file.
@@ -158,7 +194,7 @@ static bool plugin_build(const char *plugin, char *build, size_t size) {
                     (long)info.st_mtimespec.tv_nsec) < (int)size;
 }
 
-// The breaker's count: the plugin build and how many starts with it in a row ended soon after starting. A count that's
+// The breaker's count: the plugin build and how many starts with it in a row crashed before its mark. A count that's
 // missing or can't be read is no count. Its files are opened so that one that isn't a plain file can't hold FM's start up.
 static int read_count(const char *folder, const char *build) {
     char path[PATH_MAX], text[256], seen[128];
@@ -179,6 +215,17 @@ static void write_count(const char *folder, const char *build, int crashes) {
     snprintf(text, sizeof text, "%s %d\n", build, crashes);
     if (write_atomically(folder, "launcher-starts", text) != 0)
         say("Couldn't note how FM's start went in %s/launcher-starts (%s).", folder, strerror(errno));
+}
+
+// The count before this start. The last start's mark sets it back to 0, so one whose end the launcher never saw (the
+// Mac lost power, the player logged out) still counts as having gone well.
+static int count_before_start(const char *folder, const char *build) {
+    int crashes = read_count(folder, build);
+    if (crashes > 0 && marked(folder)) {
+        write_count(folder, build, 0);
+        return 0;
+    }
+    return crashes;
 }
 
 int main(int argc, char **argv) {
@@ -216,13 +263,15 @@ int main(int argc, char **argv) {
         say("Starting FM without FM Starship, because %s can't be read (%s). Open the FM Starship app and choose "
             "FM Starship > Add FM Starship to FM, or clear FM's launch option in Steam.", plugin, strerror(errno));
     else if ((counted = plugin_build(plugin, build, sizeof build))
-             && (crashes = read_count(folder, build)) >= CRASHES_TO_STOP) {
+             && (crashes = count_before_start(folder, build)) >= CRASHES_TO_STOP) {
         counted = false;
-        say("Starting FM without FM Starship, because FM closed within %d minutes of starting with this build of it %d "
-            "times in a row. It goes back in when FM Starship updates, or when you choose FM Starship > Add FM Starship "
-            "to FM in the app.", CRASH_WINDOW_SECONDS / 60, crashes);
-        write_status(folder, "FM closed soon after starting with FM Starship twice in a row, so FM now starts without it "
-                     "until FM Starship updates or you choose Add FM Starship to FM again.", version);
+        say("Starting FM without FM Starship, because FM closed before FM Starship's tab had settled into FM's bar, with "
+            "this build of it, %d times in a row. It goes back in when FM Starship updates, or when you choose FM Starship "
+            "> Add FM Starship to FM in the app.", crashes);
+        // Written once, when it trips, so its time stays when that was and the app tells the player once.
+        if (read_status(folder) != CRASH_LOOP_STATUS)
+            write_status(folder, "FM closed before FM Starship had finished starting, twice in a row, so FM now starts "
+                         "without it until FM Starship updates or you choose Add FM Starship to FM again.", version);
     } else if ((existing && *existing ? asprintf(&libraries, "%s:%s", plugin, existing) : asprintf(&libraries, "%s", plugin)) < 0)
         say("Starting FM without FM Starship, because there wasn't the memory to add it.");
     else {
@@ -230,6 +279,10 @@ int main(int argc, char **argv) {
         free(libraries);
         inserted = true;
         clear_status(folder);
+        if (counted && !unmark(folder)) {
+            counted = false;
+            say("Couldn't clear %s/" START_MARK " (%s), so how this start goes isn't counted.", folder, strerror(errno));
+        }
     }
     counted = counted && inserted;
     // Without these the Steam API restarts FM through Steam, which would lose the plugin.
@@ -239,6 +292,7 @@ int main(int argc, char **argv) {
     argv[1] = game;
     pid_t pid;
     struct timespec started, ended;
+    time_t launched = time(NULL);
     clock_gettime(CLOCK_MONOTONIC, &started);
     int error = posix_spawn(&pid, game, NULL, NULL, argv + 1, environ);
     if (error != 0) {
@@ -250,20 +304,22 @@ int main(int argc, char **argv) {
     while ((waited = waitpid(pid, &status, 0)) < 0 && errno == EINTR) {}
     clock_gettime(CLOCK_MONOTONIC, &ended);
 
-    // How the start with the plugin ended. A quick quit of the player's own changes nothing.
+    // How the start with the plugin ended. The plugin's mark says it went well. Without it, FM closing on a signal or with
+    // an error counts, and a quit of the player's own, or a start the plugin kept itself out of, changes nothing.
     if (counted && waited == pid) {
-        long seconds = (long)(ended.tv_sec - started.tv_sec);
+        long seconds = (long)(ended.tv_sec - started.tv_sec) - (ended.tv_nsec < started.tv_nsec ? 1 : 0);
         bool failed = WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0);
-        if (failed && seconds < CRASH_WINDOW_SECONDS) {
+        if (marked(folder)) {
+            if (crashes > 0) write_count(folder, build, 0);
+        } else if (failed && seconds < CRASH_WINDOW_SECONDS && !kept_itself_out(folder, launched)) {
             crashes++;
             char how[128];
             if (WIFSIGNALED(status)) snprintf(how, sizeof how, "on signal %d (%s)", WTERMSIG(status), strsignal(WTERMSIG(status)));
             else snprintf(how, sizeof how, "with status %d", WEXITSTATUS(status));
-            say("FM closed %s %ld seconds after it started with FM Starship, %d of %d such starts in a row before FM "
-                "starts without it.", how, seconds, crashes, CRASHES_TO_STOP);
+            say("FM closed %s %ld seconds after it started with FM Starship, before its tab had settled into FM's bar, %d "
+                "of %d such starts in a row before FM starts without it.", how, seconds, crashes, CRASHES_TO_STOP);
             write_count(folder, build, crashes);
-        } else if (seconds >= CRASH_WINDOW_SECONDS && crashes > 0)
-            write_count(folder, build, 0);
+        }
     }
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
