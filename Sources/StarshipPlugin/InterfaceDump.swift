@@ -112,6 +112,18 @@ final class InterfaceDump {
             text += " border \(width) \(hex(colour))"
         }
         if let radius = ui.resolvedNumber(element, "borderTopLeftRadius"), radius > 0 { text += " radius \(radius)" }
+        // How FM fades a layer, as it may under an open menu.
+        if let opacity = ui.resolvedNumber(element, "opacity"), opacity.isFinite, opacity < 0.999 { text += " opacity \(opacity)" }
+        if let tint = ui.resolvedColor(element, "unityBackgroundImageTintColor"), tint.0 < 0.999 || tint.1 < 0.999 || tint.2 < 0.999 || tint.3 < 0.999 {
+            text += " tint \(hex(tint))"
+        }
+        // UI Toolkit's filters (Unity 6.3), such as a darkening or a blur over a whole layer, with what each holds.
+        if let resolved = try? ui.il2cpp.call(element, "get_resolvedStyle"),
+           let getter = ui.il2cpp.method(ui.il2cpp.findClass(toolkit, "IResolvedStyle"), "get_filter", parameters: 0),
+           let filters = try? ui.il2cpp.call(getter, resolved),
+           let count = ui.il2cpp.unbox(try? ui.il2cpp.call(filters, "get_Count"), as: Int32.self), count > 0 {
+            text += " filter \(count): " + ui.il2cpp.describe(object: filters).replacingOccurrences(of: "\n", with: " | ")
+        }
         if ui.il2cpp.isSubclass(ui.il2cpp.classOf(element), of: ui.il2cpp.findClass(toolkit, "TextElement")),
            let colour = ui.resolvedColor(element, "color"), let size = ui.resolvedNumber(element, "fontSize") {
             text += " text \(hex(colour)) \(size)"
@@ -190,6 +202,22 @@ final class InterfaceDump {
         } catch {
             PluginLog.write("Method map failed: \(error)")
         }
+    }
+
+    /// Every method in every image whose name holds `word`, with its class and image, to the log: for finding where in
+    /// FM or Unity something is done.
+    func find(_ word: String) {
+        guard let il2cpp = IL2CPP.shared, !word.isEmpty else { return }
+        var found: [String] = []
+        for image in il2cpp.imageNames {
+            for klass in il2cpp.classes(inImage: image) {
+                let className = il2cpp.name(of: klass)
+                for method in il2cpp.codeOffsets(klass) where method.name.localizedCaseInsensitiveContains(word) {
+                    found.append("\(image): \(className)::\(method.name)")
+                }
+            }
+        }
+        PluginLog.write("Methods with '\(word)': \(found.isEmpty ? "none" : found.prefix(40).joined(separator: "; "))")
     }
 
     private func write(_ lines: [String], to name: String) throws {

@@ -10,6 +10,8 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
   While Hidden attributes is off, it says Off and can't be changed, as in the app.
 - **Both settings moved to each screen's title row** inside FM, at its right. In the row of screen names they squeezed the names
   until they wrapped.
+- **A menu on the FM STARSHIP tab.** Like FM's own tabs, it has an arrow beside its name that opens a menu of its seven screens,
+  from any of FM's screens. Choosing one opens the tab on that screen. A click elsewhere, Escape or FM's Back closes it.
 
 ## 27.0.6
 
