@@ -228,9 +228,43 @@ The rule functions are found by address, which only holds for one build. `RulesE
 answers. To bring them back, find the new values for the `Mac27` constants in
 `Sources/StarshipCore/Emu/RulesEngine.swift`.
 
-The binary is stripped, so the method is to **run every function through the sandbox and keep the ones that reproduce
-an answer the game has already stored**. Crashes and wild jumps only stop one emulated call. `tools/scan_a64.py`
-extracts the function list, and `fmprobe hunt` / `fmprobe huntmore` do the search.
+**Match the new build to the old one by code, then check each value.** Keep a copy of `game_plugin` from the build
+`Mac27` was made for, because Steam replaces it when it patches FM, and run:
+
+```bash
+python3 -I tools/match_builds.py OLD_GAME_PLUGIN NEW_GAME_PLUGIN
+```
+
+It takes the old values from `Mac27`, only reads the two files, and takes about half a minute. A patch adds and removes
+functions, so they can't be paired by their place in the list. They're paired by their code instead, with addresses
+blanked out, so a function that only moved still matches. Then each value is checked by what it is:
+
+- **A function** is proven when its code is the same and so are the constants it loads. Callers whose own code didn't
+  change must call the new address too, which also finds a function that was recompiled.
+- **A global** is what the same instruction uses in every unchanged function that used the old one.
+- **A vtable slot** is read from RTTI: the slot must hold the same function, with the same code.
+- **The staff slots** are counted from FM's own calls through `staffNumbersGlobal`, which must be the same in both builds.
+
+Each value ends **FOUND**, proven by code that didn't change, **CHECK**, found but its code changed, or **MISSING**.
+FOUND values can go straight into `Mac27`. Check each CHECK by hand first:
+
+- Compare the two functions' code, for example with `xcrun llvm-objdump -d --start-address=… --stop-address=…`.
+  "The same instructions in another order" means the compiler moved blocks around, so check that each branch still
+  leads to the same result, such as every case of a switch.
+- Recompiled code can't be compared line by line. Run both versions on the same inputs, or check the feature in FM:
+  role stars on a player's profile, or `fmprobe shapenames` for formation names.
+- Find a MISSING value the old way, below.
+
+On 27.0.1.2494769, 21 of the 24 values were FOUND. `statusFunction` (a switch's blocks reordered),
+`roleListInPossession` and `shapeName` (both recompiled) needed checking by hand. A note that a value calls a function
+whose code changed doesn't count against it, because the rules engine runs FM's new code as it is. The tool also checks
+the reader's classes, their base-class offsets and the code that builds their vtables. That's a good sign, but only
+Load Save's self-check proves the reader.
+
+When a value can't be matched: the binary is stripped, so the method is to **run every function through the sandbox
+and keep the ones that reproduce an answer the game has already stored**. Crashes and wild jumps only stop one emulated
+call. `tools/scan_a64.py` extracts the function list, and `fmprobe hunt` / `fmprobe huntmore` do the search. This is
+how each value was first found:
 
 | Value | How it was found |
 | --- | --- |
@@ -275,8 +309,9 @@ FM Starship's own parts, and how to check them after a patch:
   age have reached, across the world, and projects each young player along their own line. `fmprobe agecurve` prints those lines.
   It also measures the odds of getting close to PA by Determination + Professionalism + Ambition, and by Injury Proneness, from
   everyone aged 25-29. `fmprobe hiddencsv` dumps the numbers behind that. Nothing about this is a formula from the game: the growth
-  routine wasn't found. What the code does show: player creation at `game_plugin+0x112c0e4` gives high-PA players a floor for those
-  three stats (PA 125+ 8, 150+ 10, 175+ 12) unless a roll skips it, and `+0xd34458` is a one-off jump of 10-20% of CA, capped by PA.
+  routine wasn't found. What the code does show, on 27.0.0.2493426: player creation at `game_plugin+0x112c0e4` gives high-PA
+  players a floor for those three stats (PA 125+ 8, 150+ 10, 175+ 12) unless a roll skips it, and `+0xd34458` is a one-off jump
+  of 10-20% of CA, capped by PA.
 - **Formation names** are FM's, and nothing here works them out. `RulesEngine.shapeName` runs FM's own routine, which answers in the
   language the game is set to, so a custom shape gets its name too. `fmprobe shapenames` tries it on FM's built-in formation table.
   When the rules are off, `TacticLibrary` falls back on the presets in the player's own install, whose file names carry the names
@@ -288,7 +323,8 @@ FM Starship's own parts, and how to check them after a patch:
   wraps sentences, then scrolls sideways, and `PeopleTable` fits columns to a sample of the rows once per list. `PitchPlan` places cards on a
   pitch without any UI, so `swift test` can hold every shape FM ships to having no overlaps.
 - **Currency** comes from `selected_currency` in FM's preferences. It counts a 66-entry list of FM's own, held at
-  `game_plugin+0x56c0860` as 32-byte entries of (double rate, ...), which is how `Units.fmCurrencies` was named.
+  `game_plugin+0x56c0860` on 27.0.0.2493426 as 32-byte entries of (double rate, ...), which is how `Units.fmCurrencies`
+  was named.
 
 `tools/run-emutest.sh` proves the interpreter still matches the real CPU, so run it after any change there.
 `swift test` covers the shortlist and export file formats and the tactic logic.
