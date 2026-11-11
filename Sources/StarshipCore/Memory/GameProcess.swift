@@ -50,10 +50,32 @@ public final class GameProcess: @unchecked Sendable {
         return low < smallHeap.count && smallHeap[low].base <= address
     }
 
-    private static let gameExecutable = "/fm.app/Contents/MacOS/Football Manager 27"
+    /// FM is known by its bundle identifier, not its path, so a patch that renames fm.app or its executable still finds it.
+    static let gameIdentifier = "com.SportsInteractive.FootballManager27"
+
+    /// True when `path` is FM itself: BUNDLE/Contents/MacOS/NAME, where BUNDLE's Info.plist has FM's identifier and names
+    /// that file as its executable. The plugin's start, `Sources/StarshipPluginStart/start.c`, follows the same rule.
+    static func isGameExecutable(_ path: String) -> Bool {
+        guard let resolved = realpath(path, nil) else { return false }
+        let path = String(cString: resolved)
+        free(resolved)
+        let macOS = URL(fileURLWithPath: path, isDirectory: false).deletingLastPathComponent()
+        let contents = macOS.deletingLastPathComponent()
+        guard macOS.lastPathComponent == "MacOS", contents.lastPathComponent == "Contents",
+              let data = try? Data(contentsOf: contents.appendingPathComponent("Info.plist")),
+              let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              info["CFBundleIdentifier"] as? String == gameIdentifier,
+              let name = info["CFBundleExecutable"] as? String, !name.isEmpty else { return false }
+        // Compared as files, so a name's case or Unicode form in Info.plist doesn't matter.
+        var running = stat(), named = stat()
+        return stat(path, &running) == 0 && stat(macOS.appendingPathComponent(name).path, &named) == 0
+            && running.st_dev == named.st_dev && running.st_ino == named.st_ino
+    }
 
     private static let lastGameLock = NSLock()
     private static var lastGame: Int32?
+    /// What `isGame` found for each pid and its executable, so the walk reads only new processes' Info.plists.
+    private static var checked: [Int32: (path: String, game: Bool)] = [:]
 
     /// FM's pid. The app asks every two seconds, and the plugin does too, on FM's main thread, so this doesn't walk
     /// every process each time: inside FM the game is this process, and otherwise the pid found last time is checked
@@ -62,7 +84,11 @@ public final class GameProcess: @unchecked Sendable {
         if runsInsideGame { return getpid() }
         lastGameLock.lock()
         defer { lastGameLock.unlock() }
-        lastGame = gamePID(remembered: lastGame, isGame: isGame, all: allPIDs)
+        lastGame = gamePID(remembered: lastGame, isGame: isGame, all: {
+            let pids = allPIDs(), running = Set(pids)
+            checked = checked.filter { running.contains($0.key) }
+            return pids
+        })
         return lastGame
     }
 
@@ -74,7 +100,12 @@ public final class GameProcess: @unchecked Sendable {
 
     private static func isGame(_ pid: Int32) -> Bool {
         withUnsafeTemporaryAllocation(of: CChar.self, capacity: 4096) { buffer in
-            proc_pidpath(pid, buffer.baseAddress, UInt32(buffer.count)) > 0 && String(cString: buffer.baseAddress!).hasSuffix(gameExecutable)
+            guard proc_pidpath(pid, buffer.baseAddress, UInt32(buffer.count)) > 0 else { return false }
+            let path = String(cString: buffer.baseAddress!)
+            if let known = checked[pid], known.path == path { return known.game }
+            let game = isGameExecutable(path)
+            checked[pid] = (path, game)
+            return game
         }
     }
 
@@ -86,11 +117,11 @@ public final class GameProcess: @unchecked Sendable {
         return pids.prefix(Int(bytes) / MemoryLayout<pid_t>.size).filter { $0 > 0 }
     }
 
-    /// True when this code is running inside FM itself, as the plugin.
-    public static var runsInsideGame: Bool {
+    /// True when this code is running inside FM itself, as the plugin. Worked out once, as FM's Info.plist is read for it.
+    public static let runsInsideGame: Bool = {
         var buffer = [CChar](repeating: 0, count: 4096)
-        return proc_pidpath(getpid(), &buffer, UInt32(buffer.count)) > 0 && String(cString: buffer).hasSuffix(gameExecutable)
-    }
+        return proc_pidpath(getpid(), &buffer, UInt32(buffer.count)) > 0 && isGameExecutable(String(cString: buffer))
+    }()
 
     public convenience init() throws {
         guard let pid = GameProcess.runningPID() else { throw AgentError.notRunning }
