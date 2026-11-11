@@ -6,6 +6,8 @@ import StarshipCore
 // Developer probe: checks what the game looks like in memory on this build.
 func hex(_ v: Int64) -> String { "0x" + String(v, radix: 16) }
 let MacStaffSize = 0x228
+/// The rules engine's addresses for this build, so a patch only changes them there.
+typealias Mac27 = RulesEngine.Mac27
 
 setvbuf(stdout, nil, _IONBF, 0)
 let args = CommandLine.arguments
@@ -270,7 +272,7 @@ case "interest":
         return 0
     }
     let manager = object("GAME_ACTUAL_PLAYER")
-    let function = rtti.word(rtti.vtables("GAME_ACTUAL_PLAYER")[0].addressPoint + 30 * 8)
+    let function = rtti.word(rtti.vtables("GAME_ACTUAL_PLAYER")[0].addressPoint + Mac27.interestSlot * 8)
     let team = db.humanClubs[0].team
     let club = game.readPointer(team + 48)
     print("manager", hex(manager), "fn", hex(function - game.pluginBase), "team", hex(team), "club", hex(club), db.humanClubs[0].name)
@@ -289,9 +291,9 @@ case "interestall":
     let rtti = Rtti(game)
     let sandbox = try Sandbox(game: game)
     let db = try GameReader(game: game) { _ in }.readAll()
-    let manager = game.readPointer(game.pluginBase + 0x56d2d08)
-    let function = rtti.word(rtti.vtables("GAME_ACTUAL_PLAYER")[0].addressPoint + 30 * 8)
-    let status = game.pluginBase + 0xd4f9cc
+    let manager = game.readPointer(game.pluginBase + Mac27.interestManagerGlobal)
+    let function = rtti.word(rtti.vtables("GAME_ACTUAL_PLAYER")[0].addressPoint + Mac27.interestSlot * 8)
+    let status = game.pluginBase + Mac27.statusFunction
     let team = db.humanClubs[0].team
     let club = game.readPointer(team + 48)
     print("manager", hex(manager), "vptr", hex(game.readPointer(manager) - game.pluginBase))
@@ -397,7 +399,7 @@ case "statobj":
     let rtti = Rtti(game)
     let sandbox = try Sandbox(game: game)
     let db = try GameReader(game: game) { _ in }.readAll()
-    let manager = game.readPointer(game.pluginBase + 0x56d2d08)
+    let manager = game.readPointer(game.pluginBase + Mac27.interestManagerGlobal)
     let table = rtti.vtables("GAME_ACTUAL_PLAYER")[0].addressPoint
     let fn = rtti.word(table + 64 * 8)
     print("manager", hex(manager), "fn", hex(fn - game.pluginBase))
@@ -546,7 +548,7 @@ case "dupes":
         print(copies.map { "\($0.name) \(hex($0.block)) ca\($0.ca) idx\($0.index) \($0.club) \($0.wage)" })
     }
     print("Breivik:", db.players.filter { $0.name == "Emil Breivik" }.map { "\(hex($0.block)) \($0.club) ca\($0.ca)" })
-    print("manager global", hex(game.readPointer(game.pluginBase + 0x56d2d08)))
+    print("manager global", hex(game.readPointer(game.pluginBase + Mac27.interestManagerGlobal)))
     var ownerMatch: [String: [Int]] = ["7d": [0, 0], "70": [0, 0]]
     for p in db.players {
         let contract = game.readPointer(p.block + 0x278 + 0x78)
@@ -734,7 +736,7 @@ case "huntmore":
                 _ = try? sandbox.call(fn, [UInt64(p.injury!.record), UInt64(p.block), UInt64(team), bag], maxSteps: 1_000_000, prepare: { cpu in
                     a64_set_watch(cpu, 0, UInt64(game.pluginBase + 0x43f7050))
                     a64_set_watch_handler(cpu, { context, cpu, key, value in
-                        if key & 0xffff_ffff == 0x5050_4d69 { Unmanaged<Seen>.fromOpaque(context!).takeUnretainedValue().value = a64_read(cpu!, value + 8, 4) }
+                        if key & 0xffff_ffff == Mac27.injuryDaysKey { Unmanaged<Seen>.fromOpaque(context!).takeUnretainedValue().value = a64_read(cpu!, value + 8, 4) }
                     }, context)
                 }) { _ in () }
                 guard let v = seen.value else { break }
@@ -918,8 +920,8 @@ case "limits2":
     let sandbox = try Sandbox(game: game)
     let db = try GameReader(game: game) { _ in }.readAll()
     let team = db.humanClubs[0].team, club = game.readPointer(team + 48)
-    let object = game.readPointer(game.pluginBase + 0x56d2b80), vt = game.readPointer(object)
-    let flags = game.read(game.pluginBase + 0x56d4950, count: 2) ?? []
+    let object = game.readPointer(game.pluginBase + Mac27.staffNumbersGlobal), vt = game.readPointer(object)
+    let flags = game.read(game.pluginBase + Mac27.staffModeFlags, count: 2) ?? []
     print("flags", flags, "teams:", (0..<8).map { i -> String in
         let begin = game.readPointer(club + 24), end = game.readPointer(club + 32)
         guard begin + Int64(i * 8) < end else { return "" }
@@ -1016,7 +1018,7 @@ case "rolederive":
     for index in 0..<15 {
         let pos = Names.posToGame[index]
         let cell = UInt64(A64_SCRATCH) + 0x100
-        let real: UInt64 = (try? sandbox.call(game.pluginBase + 0x4918c5c, [UInt64(pos)]) { a64_get_x($0, 0) }) ?? 0
+        let real: UInt64 = (try? sandbox.call(game.pluginBase + Mac27.roleListInPossession, [UInt64(pos)]) { a64_get_x($0, 0) }) ?? 0
         let realSet = Set((0..<64).filter { real >> UInt64($0) & 1 == 1 })
         let counts = ip[pos] ?? [:]
         let sum = counts.values.reduce(0, +)
@@ -1043,7 +1045,7 @@ case "staffmap":
     // Which job each entry of the board's staff table counts: the table against who actually holds the job, club by club.
     let sandbox = try Sandbox(game: game)
     let db = try GameReader(game: game) { _ in }.readAll()
-    let object = game.readPointer(game.pluginBase + 0x56d2b80), vt = game.readPointer(object)
+    let object = game.readPointer(game.pluginBase + Mac27.staffNumbersGlobal), vt = game.readPointer(object)
     let slot = args.count > 2 ? Int(args[2])! : 8
     let fn = game.readPointer(vt + Int64(slot * 8))
     let out = UInt64(A64_SCRATCH) + 0x800
