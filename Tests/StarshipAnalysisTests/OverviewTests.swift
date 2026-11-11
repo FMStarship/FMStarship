@@ -32,9 +32,9 @@ final class OverviewTests: XCTestCase {
     }
 
     func testAbilityInSentencesFollowsTheSetting() {
-        XCTAssertEqual(DisplayOptions(reveal: .numbers).labelled("CA", 117), "CA 117")
-        XCTAssertEqual(DisplayOptions(reveal: .stars).labelled("CA", 117), "CA 3.0★")
-        XCTAssertNil(DisplayOptions(reveal: .hidden).labelled("CA", 117))
+        XCTAssertEqual(DisplayOptions(reveal: .numbers, showHidden: true).labelled("CA", 117), "CA 117")
+        XCTAssertEqual(DisplayOptions(reveal: .stars, showHidden: true).labelled("CA", 117), "CA 3.0★")
+        XCTAssertNil(DisplayOptions(reveal: .hidden, showHidden: false).labelled("CA", 117))
     }
 
     func testAWageShownInAnotherCurrencyComesBackToTheSamePounds() {
@@ -46,9 +46,9 @@ final class OverviewTests: XCTestCase {
     }
 
     func testABarGivesAwayNoMoreThanTheNumbersBesideIt() {
-        XCTAssertEqual(DisplayOptions(reveal: .numbers).shown(117), 117)
-        XCTAssertEqual(DisplayOptions(reveal: .stars).shown(117), 120)
-        XCTAssertEqual(DisplayOptions(reveal: .stars).shown(113), 120)
+        XCTAssertEqual(DisplayOptions(reveal: .numbers, showHidden: true).shown(117), 117)
+        XCTAssertEqual(DisplayOptions(reveal: .stars, showHidden: true).shown(117), 120)
+        XCTAssertEqual(DisplayOptions(reveal: .stars, showHidden: true).shown(113), 120)
     }
 
     func testARowNeedsWorkWhenItIsWeakOrSomethingIsAboutToGoWrong() {

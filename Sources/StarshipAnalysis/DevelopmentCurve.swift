@@ -117,7 +117,7 @@ public struct DevelopmentCurve {
         player.a("Determination") + player.p("Professionalism") + player.p("Ambition")
     }
 
-    public init(players: [Player], usesHidden: Bool = true) {
+    public init(players: [Player], usesHidden: Bool) {
         self.usesHidden = usesHidden
         var outcomes = [Outcome](repeating: Outcome(), count: Self.bands.count)
         var byMentality = [[Outcome]](repeating: [Outcome](repeating: Outcome(), count: Self.mentalityBands.count + 1), count: Self.bands.count)

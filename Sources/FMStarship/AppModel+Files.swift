@@ -59,17 +59,27 @@ extension AppModel {
         guard let database else { return }
         let isStaff = listIsStaff
         let shown = isStaff ? staffColumns : playerColumns
-        let all = (isStaff ? allStaffColumns : allPlayerColumns).filter { Columns.allowed($0, showHidden: showHidden, showAbility: showsAbility) }
+        let all = isStaff ? allStaffColumns : allPlayerColumns
+        let showHidden = showHidden
+        let showAbility = showsAbility
         let reveal = shownReveal
         let rows: [Person] = isStaff ? staff : players
         choose(baseName: Export.defaultFileName(isStaff: isStaff), offerEveryColumn: true) { [weak self] url, everyColumn in
             let columns = everyColumn ? all : shown
             let title = Export.title(rowCount: rows.count, isStaff: isStaff, build: database.build, gameDate: database.gameDate)
             self?.write(rows.count, to: url) {
-                Export.file(ExportFormat(pathExtension: url.pathExtension), columns: columns.map(Self.exportColumn),
-                            rows: rows.map { person in columns.map { Self.exportCell($0, person, reveal: reveal) } }, title: title)
+                Self.exportFile(ExportFormat(pathExtension: url.pathExtension), columns: columns, rows: rows,
+                                showHidden: showHidden, showAbility: showAbility, reveal: reveal, title: title)
             }
         }
+    }
+
+    /// The file `exportList` writes. Whatever columns it's given, those Hidden attributes and Ability don't allow are left out.
+    nonisolated static func exportFile(_ format: ExportFormat, columns: [Col], rows: [Person], showHidden: Bool, showAbility: Bool,
+                                       reveal: Reveal, title: String) -> Data {
+        let columns = columns.filter { Columns.allowed($0, showHidden: showHidden, showAbility: showAbility) }
+        return Export.file(format, columns: columns.map(exportColumn),
+                           rows: rows.map { person in columns.map { exportCell($0, person, reveal: reveal) } }, title: title)
     }
 
     /// The analysis screens: what the grid shows.

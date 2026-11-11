@@ -29,7 +29,7 @@ final class NaturalPositionTests: XCTestCase {
         let db = Database()
         db.players = players
         db.gameDate = GameDate.checked(year: 2026, dayOfYear: 270)
-        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: Self.club))
+        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: Self.club), display: DisplayOptions(reveal: .numbers, showHidden: false))
     }
 
     /// One of each: two naturals, and two who can only fill in.

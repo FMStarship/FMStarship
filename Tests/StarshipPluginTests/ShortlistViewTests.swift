@@ -21,7 +21,7 @@ final class ShortlistViewTests: XCTestCase {
         player(1, "Abel", club: "Brann"), player(2, "Berg", club: "Molde FK"), player(3, "Carr", club: "Viking", ca: 130, pa: 150),
     ].map { ($0.uid, $0) })
 
-    private func view(_ uids: [UInt32], display: DisplayOptions = DisplayOptions()) -> ShortlistView {
+    private func view(_ uids: [UInt32], display: DisplayOptions = DisplayOptions(reveal: .numbers, showHidden: false)) -> ShortlistView {
         ShortlistView(url: URL(fileURLWithPath: "/tmp/Targets.fmf"), name: "Targets", modified: .distantPast, uids: uids,
                       players: players, club: "Molde FK", display: display)
     }
@@ -42,7 +42,7 @@ final class ShortlistViewTests: XCTestCase {
     }
 
     func testWithCAAndPAOffTheirColumnsAreGone() {
-        let list = view([1, 3], display: DisplayOptions(reveal: .hidden))
+        let list = view([1, 3], display: DisplayOptions(reveal: .hidden, showHidden: false))
         XCTAssertEqual(list.table.columns.map(\.title), ["Name"])
         XCTAssertTrue(FMTable.extras(from: list.table, titles: ["CA", "PA"]).isEmpty)
     }

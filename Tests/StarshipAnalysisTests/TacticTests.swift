@@ -164,7 +164,7 @@ final class TacticTests: XCTestCase {
         let db = Database()
         db.players = players
         db.gameDate = GameDate.checked(year: 2026, dayOfYear: 270)
-        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: "Molde FK"))
+        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: "Molde FK"), display: DisplayOptions(reveal: .numbers, showHidden: false))
     }
 
     /// Rivals and the league are read off the first player, and a loan in carries the parent club's.

@@ -35,13 +35,17 @@ public struct StaffFilter: SearchFilter, Equatable {
     public var reserves = false
     public var youthTeam = false
 
-    public var showHidden = true {
+    /// No default, so every caller says what Hidden attributes is set to.
+    public var showHidden: Bool {
         didSet { dropHiddenRules() }
     }
 
     public var defaults: [String: String] = [:]
 
-    public init() { markDefaults() }
+    public init(showHidden: Bool) {
+        self.showHidden = showHidden
+        markDefaults()
+    }
 
     public static var interestEnabled: Bool { RulesState.shared.staffInterestEnabled }
 

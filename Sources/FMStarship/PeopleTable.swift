@@ -107,7 +107,7 @@ struct PeopleTable: NSViewRepresentable {
         var rowsVersion = -1
         var layoutVersion = -1
         var cellsVersion = 0
-        var reveal: Reveal = .exact
+        var reveal: Reveal = .hidden
         var colors = AppColors()
         var colorsApplied = false
         private var rows: [Person] = []

@@ -157,7 +157,7 @@ final class AbilityOffTests: XCTestCase {
     }
 
     func testEveryTableWithAnAbilityColumnLosesIt() {
-        let off = DisplayOptions(reveal: .hidden)
+        let off = DisplayOptions(reveal: .hidden, showHidden: false)
         for columns in [BestEleven.columns, SquadPlanner.slotColumns, SquadPlanner.squadColumns, SquadPlanner.pickColumns,
                         SigningRecommender.columns, SigningRecommender.youngColumns] {
             assertGivesNothingAway(off.fit(AnalysisTable(columns: columns)))
@@ -169,18 +169,18 @@ final class AbilityOffTests: XCTestCase {
             TableRow(cells: ["A", "137", "Fine", "Small print"], sortKeys: [.text("A"), .number(137), .text("Fine"), .text("Small print")],
                      tone: .good, toneColumn: 2, quietColumn: 3),
         ])
-        let row = try? XCTUnwrap(DisplayOptions(reveal: .hidden).fit(table).rows.first)
+        let row = try? XCTUnwrap(DisplayOptions(reveal: .hidden, showHidden: false).fit(table).rows.first)
         XCTAssertEqual(row?.cells, ["A", "Fine", "Small print"])
         XCTAssertEqual(row?.sortKeys, [.text("A"), .text("Fine"), .text("Small print")])
         XCTAssertEqual(row?.toneColumn, 1)
         XCTAssertEqual(row?.quietColumn, 2)
-        XCTAssertEqual(DisplayOptions(reveal: .stars).fit(table).columns.count, 4)
+        XCTAssertEqual(DisplayOptions(reveal: .stars, showHidden: true).fit(table).columns.count, 4)
     }
 
     func testARowColouredByAColumnThatGoesLosesTheColour() {
         let table = AnalysisTable(columns: [TableColumn("Name", 1), TableColumn("Verdict", 1)],
                                   rows: [TableRow(cells: ["A", "improving fast"], tone: .good, toneColumn: 1)])
-        let row = DisplayOptions(reveal: .hidden).fit(table, also: ["Verdict"]).rows.first
+        let row = DisplayOptions(reveal: .hidden, showHidden: false).fit(table, also: ["Verdict"]).rows.first
         XCTAssertNil(row?.tone)
         XCTAssertNil(row?.toneColumn)
     }

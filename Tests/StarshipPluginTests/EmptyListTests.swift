@@ -28,7 +28,7 @@ final class EmptyListTests: XCTestCase {
         let db = Database()
         db.players = (1...12).map { player(UInt32($0), age: 26, at: Self.club) } + (21...26).map { player(UInt32($0), age: 18, at: "Rivals FC") }
         db.gameDate = GameDate.checked(year: 2026, dayOfYear: 270)
-        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: Self.club), display: DisplayOptions(reveal: .hidden, insideGame: insideGame))
+        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: Self.club), display: DisplayOptions(reveal: .hidden, showHidden: false, insideGame: insideGame))
     }
 
     private func section(_ table: AnalysisTable, notes: [String] = []) -> TableSection {

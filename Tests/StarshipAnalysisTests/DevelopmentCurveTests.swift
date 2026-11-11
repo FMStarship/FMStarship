@@ -29,26 +29,26 @@ final class DevelopmentCurveTests: XCTestCase {
     }()
 
     func testSomeoneOnTheMiddleLineStaysOnIt() {
-        let curve = DevelopmentCurve(players: world)
+        let curve = DevelopmentCurve(players: world, usesHidden: true)
         let teenager = player(age: 18, ca: 105, pa: 150)
         XCTAssertEqual(curve.expected(teenager, atAge: 20), 120)
         XCTAssertEqual(curve.peak(teenager), 142)
     }
 
     func testSomeoneAheadOfTheirAgeIsProjectedToStayAhead() {
-        let curve = DevelopmentCurve(players: world)
+        let curve = DevelopmentCurve(players: world, usesHidden: true)
         XCTAssertGreaterThan(curve.peak(player(age: 18, ca: 111, pa: 150)), curve.peak(player(age: 18, ca: 105, pa: 150)))
     }
 
     func testNoOneIsProjectedPastTheirPotentialOrBelowTheirAbility() {
-        let curve = DevelopmentCurve(players: world)
+        let curve = DevelopmentCurve(players: world, usesHidden: true)
         XCTAssertLessThanOrEqual(curve.peak(player(age: 18, ca: 140, pa: 150)), 150)
         XCTAssertEqual(curve.expected(player(age: 18, ca: 140, pa: 150), atAge: 19), 140)
         XCTAssertEqual(curve.peak(player(age: 30, ca: 120, pa: 150)), 120)
     }
 
     func testAProspectIsYoungWithRoomToGrow() {
-        let curve = DevelopmentCurve(players: world)
+        let curve = DevelopmentCurve(players: world, usesHidden: true)
         XCTAssertTrue(curve.isProspect(player(age: 18, ca: 105, pa: 150)))
         XCTAssertFalse(curve.isProspect(player(age: 25, ca: 105, pa: 150)))
         XCTAssertFalse(curve.isProspect(player(age: 20, ca: 148, pa: 150)))
@@ -74,20 +74,20 @@ final class DevelopmentCurveTests: XCTestCase {
     }
 
     func testTheOddsComeFromHowPlayersLikeThisTurnedOut() {
-        let curve = DevelopmentCurve(players: mixedWorld)
+        let curve = DevelopmentCurve(players: mixedWorld, usesHidden: true)
         XCTAssertEqual(curve.talent(young(mentality: 16))?.verdict, .likely)
         XCTAssertEqual(curve.talent(young(mentality: 8))?.verdict, .unlikely)
     }
 
     func testSomeoneAlreadyCloseHasLittleLeftToGoWrong() {
-        let curve = DevelopmentCurve(players: mixedWorld)
+        let curve = DevelopmentCurve(players: mixedWorld, usesHidden: true)
         let nearlyThere = young(mentality: 8)
         nearlyThere.ca = 135
         XCTAssertEqual(curve.talent(nearlyThere)?.verdict, .likely)
     }
 
     func testMentalityMovesTheLikelyPeak() {
-        let curve = DevelopmentCurve(players: mixedWorld)
+        let curve = DevelopmentCurve(players: mixedWorld, usesHidden: true)
         XCTAssertGreaterThan(curve.peak(young(mentality: 16)), curve.peak(young(mentality: 8)))
     }
 
@@ -105,7 +105,7 @@ final class DevelopmentCurveTests: XCTestCase {
     }
 
     func testAnEmptyWorldPromisesNothing() {
-        let curve = DevelopmentCurve(players: [])
+        let curve = DevelopmentCurve(players: [], usesHidden: true)
         XCTAssertEqual(curve.peak(player(age: 18, ca: 105, pa: 150)), 105)
         XCTAssertFalse(curve.isProspect(player(age: 18, ca: 105, pa: 150)))
     }

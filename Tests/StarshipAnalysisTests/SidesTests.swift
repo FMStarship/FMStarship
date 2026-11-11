@@ -36,7 +36,7 @@ final class SidesTests: XCTestCase {
         db.knowsSides = true
         db.gameDate = GameDate.checked(year: 2026, dayOfYear: 270)
         if womensClub { db.womensTeams = [1] }
-        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: home))
+        return AnalysisSession(db: db, club: ChosenClub(team: 1, name: home), display: DisplayOptions(reveal: .numbers, showHidden: false))
     }
 
     func testEachClubOnlySignsItsOwnSide() {
