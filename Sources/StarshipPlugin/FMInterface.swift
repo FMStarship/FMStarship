@@ -24,6 +24,8 @@ final class FMInterface {
     /// The arrow beside our tab's name, as FM's tabs have, and the menu of our screens it opens, while it's open.
     private var tabArrow: IL2CPP.Handle?
     private var tabMenu: IL2CPP.Handle?
+    /// FM's screen dimmed under the open menu.
+    private var tabMenuDim: IL2CPP.Handle?
     /// The menu's rows, which can be clicked, FM's screens it opened over, and whether the log has said where it's laid out.
     private var tabMenuRows: [Pointer] = []
     private var tabMenuOver: [String] = []
@@ -122,6 +124,10 @@ final class FMInterface {
             MainActor.assumeIsolated { FMInterface.shared.mouseMoved(event) }
             return event
         }
+        let pointerTimer = Timer(timeInterval: 0.05, repeats: true) { _ in
+            MainActor.assumeIsolated { FMInterface.shared.followPointer() }
+        }
+        RunLoop.main.add(pointerTimer, forMode: .common)
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             MainActor.assumeIsolated { FMInterface.shared.keyDown(event) } ? nil : event
         }
@@ -542,6 +548,9 @@ final class FMInterface {
     /// has been laid out, the space under the tab where it opens counts.
     nonisolated static func pointerKeepsMenu(_ places: HoverPlaces, x: Float, y: Float) -> Bool {
         if inside(places.tab, x: x, y: y, margin: 4) || inside(places.menu, x: x, y: y, margin: 4) { return true }
+        // Our tab is the last in FM's row and its arrow at its right end, so a pointer that overshoots the arrow a little
+        // keeps the menu; on the left, FM's own tab is right next to ours, so there it closes at once.
+        if let tab = places.tab, x > tab.x + tab.width, x <= tab.x + tab.width + 32, y >= tab.y - 4, y <= tab.y + tab.height + 4 { return true }
         guard let tab = places.tab else { return false }
         let below = (x: tab.x, y: tab.y + tab.height, width: max(tab.width, places.menu?.width ?? 210),
                      height: places.menu == nil ? 230 : max(0, (places.menu?.y ?? 0) - tab.y - tab.height))
@@ -556,18 +565,37 @@ final class FMInterface {
     private var placesTried = Date.distantPast
 
     private func mouseMoved(_ event: NSEvent) {
+        guard let window = event.window else { return }
+        pointerMoved(in: window, to: event.locationInWindow)
+    }
+
+    /// macOS sends pointer moves only to the active app, and FM follows the pointer over its tabs while it isn't, as
+    /// when the player has another app in front. So the pointer is also looked at twenty times a second, which costs
+    /// a few comparisons when it hasn't moved.
+    private var lastPointer: NSPoint?
+
+    private func followPointer() {
+        guard tab != nil, hoverPlaces.panel != nil else { return }
+        guard let window = NSApp.windows.first(where: { $0.isVisible && !Plugin.shared.owns($0) && $0.contentView != nil }) else { return }
+        let location = window.mouseLocationOutsideOfEventStream
+        guard location != lastPointer else { return }
+        pointerMoved(in: window, to: location)
+    }
+
+    private func pointerMoved(in window: NSWindow, to locationInWindow: NSPoint) {
+        lastPointer = locationInWindow
         // Until the tick has found the tab's arrow, look now, at most four times a second.
         if hoverPlaces.arrow == nil, tab != nil, Date().timeIntervalSince(placesTried) > 0.25, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) {
             placesTried = Date()
             il2cpp.withoutCollection { keepHoverPlaces(ui) }
         }
-        guard let panel = hoverPlaces.panel, panel.width > 0, panel.height > 0, let window = event.window,
+        guard let panel = hoverPlaces.panel, panel.width > 0, panel.height > 0,
               !Plugin.shared.owns(window), let view = window.contentView, view.bounds.width > 0, view.bounds.height > 0 else { return }
         if !hoverLogged {
             hoverLogged = true
-            PluginLog.write("FM passes on the pointer's moves, so FM Starship's tab menu opens on hover")
+            PluginLog.write("FM Starship's tab menu opens on hover")
         }
-        let point = view.convert(event.locationInWindow, from: nil)
+        let point = view.convert(locationInWindow, from: nil)
         let x = Float(point.x / view.bounds.width) * panel.width
         let y = Float((view.isFlipped ? point.y : view.bounds.height - point.y) / view.bounds.height) * panel.height
         let onArrow = Self.inside(hoverPlaces.arrow, x: x, y: y, margin: 2)
@@ -615,9 +643,11 @@ final class FMInterface {
                 guard let handle = il2cpp.pin(made.menu) else {
                     for row in made.rows { ClickActions.actions[row] = nil }
                     try? ui.remove(made.menu)
+                    try? ui.remove(made.dim)
                     return PluginLog.write("FM Starship's tab menu couldn't be held, so it's closed again")
                 }
                 tabMenu = handle
+                tabMenuDim = il2cpp.pin(made.dim)
                 tabMenuRows = made.rows
                 tabMenuOver = visibleState(ui)
                 tabMenuLogged = false
@@ -687,6 +717,11 @@ final class FMInterface {
         tabMenuOver = []
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
+            if let dim = tabMenuDim {
+                if let element = il2cpp.target(of: dim) { try? ui.remove(element) }
+                il2cpp.unpin(dim)
+                tabMenuDim = nil
+            }
             if let menu = il2cpp.target(of: handle) {
                 do {
                     try ui.remove(menu)

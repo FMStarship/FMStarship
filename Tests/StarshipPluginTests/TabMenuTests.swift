@@ -108,4 +108,15 @@ final class TabMenuTests: XCTestCase {
         XCTAssertFalse(FMInterface.inside(arrow, x: 727.5, y: 20))
         XCTAssertFalse(FMInterface.inside(nil, x: 730, y: 20))
     }
+
+    func testAPointerThatOvershootsTheArrowKeepsTheMenuButNotOneOnFMsTabToTheLeft() {
+        var places = FMInterface.HoverPlaces()
+        places.tab = (x: 644, y: 2, width: 109, height: 48)
+        places.menu = (x: 644, y: 53, width: 205, height: 212)
+        // Seen in FM: closes at 757 and 778 as the pointer went just past the arrow.
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 757, y: 16))
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 778, y: 18))
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 800, y: 18), "Well past it")
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 639, y: 18), "On CLUB, to the left: FM's menu opens there")
+    }
 }

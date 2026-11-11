@@ -40,9 +40,20 @@ struct NativeTabMenu {
     /// open, and takes it away again with it. Its look is that of FM's open menus, which FM's floating element draws, so
     /// it's set here. Returns the menu and its rows, which can be clicked, or nil if the tab isn't laid out.
     func menu(_ entries: [String], current: Int?, under tab: Pointer, in root: Pointer,
-              choose: @escaping @MainActor (Int) -> Void) throws -> (menu: Pointer, rows: [Pointer])? {
+              choose: @escaping @MainActor (Int) -> Void) throws -> (menu: Pointer, rows: [Pointer], dim: Pointer)? {
         guard let spot = ui.worldBound(tab), let area = ui.worldBound(root), spot.width > 0, spot.height > 0 else { return nil }
         let origin = Self.origin(under: spot, in: area)
+        // FM dims its screen under the tab bar while one of its tab menus is up. The pointer passes through it to FM.
+        let dim = try ui.box(name: "FMStarshipTabMenuDim")
+        try ui.style(dim) { style in
+            try style.keyword("position", 1)
+            try style.length("left", 0)
+            try style.length("top", max(0, spot.y + spot.height - area.y))
+            try style.percent("width", 100)
+            try style.length("bottom", 0)
+            try style.color("backgroundColor", Self.dimColour)
+        }
+        try ui.ignorePointer(dim)
         let menu = try ui.box(name: "FMStarshipTabMenu")
         try ui.style(menu) { style in
             try style.keyword("position", 1)
@@ -63,14 +74,19 @@ struct NativeTabMenu {
                 try ui.onClick(row) { choose(index) }
                 rows.append(row)
             }
+            try ui.add(dim, to: root)
             try ui.add(menu, to: root)
         } catch {
             // Nothing of it is in FM's interface, so its rows' clicks go with it.
             for row in rows { ClickActions.actions[row] = nil }
+            try? ui.remove(dim)
             throw error
         }
-        return (menu, rows)
+        return (menu, rows, dim)
     }
+
+    /// How much FM's screen darkens under an open tab menu.
+    static let dimColour: (Float, Float, Float, Float) = (0, 0, 0, 0.45)
 
     /// Where the menu goes in FM's main document: just under the tab, from its left edge.
     nonisolated static func origin(under tab: (x: Float, y: Float, width: Float, height: Float),
