@@ -16,6 +16,16 @@ body:
       placeholder: "27.0.6"
     validations:
       required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - "In the FM Starship app"
+        - "In the FM STARSHIP tab inside FM"
+        - "Both"
+    validations:
+      required: true
   - type: input
     id: fm-build
     attributes:
@@ -69,3 +79,10 @@ body:
     attributes:
       label: Screenshots
       description: Drag them in here. Cover anything you'd rather keep private.
+  - type: textarea
+    id: plugin-log
+    attributes:
+      label: The plugin's log, if it happened inside FM
+      description: |
+        Drag in `~/Library/Logs/FM Starship/plugin.log`. In Finder, choose Go > Go to Folder and paste `~/Library/Logs/FM Starship`.
+        It says what the plugin did in FM, and it holds no save data.
