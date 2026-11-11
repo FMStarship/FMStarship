@@ -24,8 +24,6 @@ final class FMInterface {
     /// The arrow beside our tab's name, as FM's tabs have, and the menu of our screens it opens, while it's open.
     private var tabArrow: IL2CPP.Handle?
     private var tabMenu: IL2CPP.Handle?
-    /// FM's screen dimmed under the open menu.
-    private var tabMenuDim: IL2CPP.Handle?
     /// The menu's rows, which can be clicked, FM's screens it opened over, and whether the log has said where it's laid out.
     private var tabMenuRows: [Pointer] = []
     private var tabMenuOver: [String] = []
@@ -717,11 +715,9 @@ final class FMInterface {
                 guard let handle = il2cpp.pin(made.menu) else {
                     for row in made.rows { ClickActions.actions[row] = nil }
                     try? ui.remove(made.menu)
-                    try? ui.remove(made.dim)
                     return PluginLog.write("FM Starship's tab menu couldn't be held, so it's closed again")
                 }
                 tabMenu = handle
-                tabMenuDim = il2cpp.pin(made.dim)
                 lightTab(true, ui)
                 highlight(made.menu, owner: tab, ui)
                 tabMenuRows = made.rows
@@ -795,11 +791,6 @@ final class FMInterface {
         il2cpp.withoutCollection {
             lightTab(false, ui)
             if let menu = il2cpp.target(of: handle) { unhighlight(menu, ui) }
-            if let dim = tabMenuDim {
-                if let element = il2cpp.target(of: dim) { try? ui.remove(element) }
-                il2cpp.unpin(dim)
-                tabMenuDim = nil
-            }
             if let menu = il2cpp.target(of: handle) {
                 do {
                     try ui.remove(menu)
@@ -1980,15 +1971,6 @@ final class FMInterface {
             InterfaceDump.shared.writeMethodMap()
         case "find":
             InterfaceDump.shared.find(words.dropFirst().first ?? "")
-        case "veil":
-            // The tab menu's veil over FM's screen, as red green blue opacity from 0 to 1, from the menu's next opening.
-            let parts = words.dropFirst().compactMap { Float($0) }.filter { $0.isFinite }
-            guard parts.count == 4, parts.allSatisfy({ (0...1).contains($0) }) else {
-                let now = NativeTabMenu.dimColour
-                return PluginLog.write("Veil: red green blue opacity, each 0 to 1. Now \(now.0) \(now.1) \(now.2) \(now.3)")
-            }
-            NativeTabMenu.dimColour = (parts[0], parts[1], parts[2], parts[3])
-            PluginLog.write("The tab menu's veil is \(parts.map { "\($0)" }.joined(separator: " ")) from its next opening")
         case "uids":
             // Who's in the screen's tables, by FM's unique IDs, for making test files such as a shortlist.
             for live in liveTables { PluginLog.write(live.people.map { "\($0.uid) \($0.name)" }.joined(separator: "; ")) }

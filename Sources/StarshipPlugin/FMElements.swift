@@ -112,12 +112,6 @@ struct FMElements {
 
     // MARK: The tree
 
-    /// The pointer goes through the element to what's under it, as UI Toolkit's PickingMode.Ignore.
-    func ignorePointer(_ element: Pointer) throws {
-        var ignore = Int32(1)
-        try withUnsafeMutablePointer(to: &ignore) { _ = try il2cpp.call(element, "set_pickingMode", [Pointer($0)]) }
-    }
-
     func addClass(_ element: Pointer, _ name: String) throws {
         try il2cpp.call(element, "AddToClassList", [il2cpp.managedString(name)])
     }
