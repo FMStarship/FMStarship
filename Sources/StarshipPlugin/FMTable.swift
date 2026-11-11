@@ -310,6 +310,8 @@ struct FMTable {
         var tones: [Int32: Tone] = [:]
         /// A note beside the main values, in FM's small print, as the engine shows it.
         var quiet = false
+        /// Positions sort in FM's order for them, as the engine's column says.
+        var order = TableColumn.Order.text
         /// Wide enough for the heading and the longest value. FM fits a table to the screen in proportion to its
         /// columns' own widths, so this is the column's share as much as its width.
         var width: Float {
@@ -346,7 +348,7 @@ struct FMTable {
             let heading = headings[title] ?? title
             let quiet = table.rows.contains { $0.quietColumn == column }
             if let host = abilityHosts[title] { return Extra(host: host, title: nil, values: values, tones: tones, quiet: quiet) }
-            return Extra(host: ownID(heading), title: heading, values: values, tones: tones, quiet: quiet)
+            return Extra(host: ownID(heading), title: heading, values: values, tones: tones, quiet: quiet, order: table.columns[column].order)
         }
     }
 
@@ -560,8 +562,8 @@ struct FMTable {
         }
     }
 
-    /// The list sorted by one of our columns: by the number a value starts with where it has one, such as CA's
-    /// 153 or +15 (GK), otherwise alphabetically, with what has no value last.
+    /// The list sorted by one of our columns: positions in FM's order for them, otherwise by the number a value starts
+    /// with where it has one, such as CA's 153 or +15 (GK), otherwise alphabetically, with what has no value last.
     static func sorted(_ people: [Person], by extra: Extra, descending: Bool) -> [Person] {
         func number(_ text: String) -> Double? {
             let start = text.prefix { "+-0123456789.".contains($0) }
@@ -570,6 +572,7 @@ struct FMTable {
         return people.enumerated().sorted { left, right in
             let a = extra.values[Int32(bitPattern: left.element.index)] ?? "", b = extra.values[Int32(bitPattern: right.element.index)] ?? ""
             if a.isEmpty != b.isEmpty { return b.isEmpty }
+            if let first = extra.order.precedes(a, left.element, b, right.element, descending: descending) { return first }
             if let x = number(a), let y = number(b), x != y { return descending ? x > y : x < y }
             if number(a) == nil, number(b) == nil, a != b { return descending ? a > b : a < b }
             // Ties keep the engine's order.

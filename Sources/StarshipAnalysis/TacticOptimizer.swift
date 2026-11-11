@@ -369,7 +369,7 @@ public enum TacticOptimizer {
     ]
 
     public static let detailColumns = [
-        TableColumn("Position", 8), TableColumn("With the ball", 22), TableColumn("Without the ball", 24),
+        TableColumn("Position", 8, order: .place), TableColumn("With the ball", 22), TableColumn("Without the ball", 24),
         TableColumn("Player", 20), TableColumn("Stars", 7),
     ]
 

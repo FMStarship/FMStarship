@@ -9,10 +9,44 @@ public enum Tone {
 public struct TableColumn: Equatable {
     public let title: String
     public let weight: Int
+    public let order: Order
 
-    public init(_ title: String, _ weight: Int) {
+    /// How a column of positions sorts: in FM's order for its own Position column, not by its text.
+    public enum Order: Equatable {
+        case text
+        /// Each row's player's positions: by the position they're rated best at, as FM sorts its Position column.
+        case playerPosition
+        /// A place, such as a tactic's DC (R), or the planner's Right-back: by the place the text names.
+        case place
+    }
+
+    public init(_ title: String, _ weight: Int, order: Order = .text) {
         self.title = title
         self.weight = weight
+        self.order = order
+    }
+}
+
+extension TableColumn.Order {
+    /// Where a row stands in FM's order of positions, or nil where the column sorts by its text or the row names no
+    /// position. A row without a player goes by its text.
+    public func rank(_ text: String, person: Person?) -> Int? {
+        switch self {
+        case .text: return nil
+        case .playerPosition: return (person as? Player).flatMap(PositionOrder.rank(of:)) ?? PositionOrder.rank(text)
+        case .place: return PositionOrder.rank(text)
+        }
+    }
+
+    /// Whether one row goes before another in FM's order of positions, or nil where that doesn't decide, and the
+    /// column's usual sort does. A row the order can't place goes after one it can, either way round.
+    public func precedes(_ a: String, _ first: Person?, _ b: String, _ second: Person?, descending: Bool) -> Bool? {
+        switch (rank(a, person: first), rank(b, person: second)) {
+        case let (x?, y?): return x == y ? nil : descending ? x > y : x < y
+        case (.some, nil): return true
+        case (nil, .some): return false
+        case (nil, nil): return nil
+        }
     }
 }
 
@@ -90,6 +124,21 @@ public struct AnalysisTable {
 
     /// The people listed, in row order: what "Save as FM shortlist" saves.
     public var people: [Person] { rows.compactMap(\.person) }
+
+    /// The rows' indices as a click on a column's heading sorts them: positions in FM's order for them, otherwise by
+    /// the column's sort keys, with ties in the engine's order.
+    public func sortedIndices(byColumn column: Int, descending: Bool) -> [Int] {
+        let order = column < columns.count ? columns[column].order : .text
+        func text(_ row: TableRow) -> String { column < row.cells.count ? row.cells[column] : "" }
+        return rows.indices.sorted { a, b in
+            if let first = order.precedes(text(rows[a]), rows[a].person, text(rows[b]), rows[b].person, descending: descending) {
+                return first
+            }
+            let x = rows[a].sortKey(column: column), y = rows[b].sortKey(column: column)
+            if x == y { return a < b }
+            return descending ? y < x : x < y
+        }
+    }
 
     /// Columns that are CA or PA, or say what they are by the difference between two of them.
     static let abilityColumns: Set<String> = ["CA", "PA", "Likely peak", "Room to grow", "vs best", "vs your best"]

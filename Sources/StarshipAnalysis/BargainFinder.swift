@@ -97,7 +97,7 @@ public struct BargainFinder {
         }
         let value = kind == .ending ? "Value now" : kind == .clause ? "Saving" : "Value"
         var columns = [
-            TableColumn("Name", 17), TableColumn("Age", 5), TableColumn("Position", 11), TableColumn("Club", 15),
+            TableColumn("Name", 17), TableColumn("Age", 5), TableColumn("Position", 11, order: .playerPosition), TableColumn("Club", 15),
             TableColumn("CA", 6), TableColumn("PA", 6), TableColumn(special, 11), TableColumn(value, 9),
             TableColumn("Wage", 9), TableColumn("Would join on", 10),
         ]

@@ -22,7 +22,7 @@ public struct BestEleven {
     private static let longTerm = 21
 
     public static let columns = [
-        TableColumn("Position", 8), TableColumn("With the ball", 20), TableColumn("Without the ball", 20), TableColumn("Player", 20),
+        TableColumn("Position", 8, order: .place), TableColumn("With the ball", 20), TableColumn("Without the ball", 20), TableColumn("Player", 20),
         TableColumn("Stars", 7), TableColumn("CA", 5), TableColumn("Your pick", 20), TableColumn("Change", 7),
     ]
 
