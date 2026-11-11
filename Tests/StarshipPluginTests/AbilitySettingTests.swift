@@ -120,7 +120,7 @@ final class AbilitySettingTests: XCTestCase {
     func testTheListOpensUnderTheDropdownButNotAboveTheScreen() {
         // A dropdown on an Edit Search page, in the screen.
         XCTAssertEqual(NativeEditSearch.listTop(under: 300, screenTop: 85), 217)
-        // The Ability dropdown, in FM's subtab row just above the screen.
+        // A dropdown outside the screen, just above it.
         XCTAssertEqual(NativeEditSearch.listTop(under: 81, screenTop: 85), 0)
     }
 }

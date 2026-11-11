@@ -277,8 +277,8 @@ struct NativeEditSearch {
         return ([backdrop, list], clickable)
     }
 
-    /// Where a dropdown's list starts, down from the top of the screen it opens over: just under the dropdown, but not
-    /// above the screen, as it would be under the Ability dropdown in the subtab row over the screen.
+    /// Where a dropdown's list starts, down from the top of the screen it opens over: just under the dropdown, but never
+    /// above the screen, as it would be under a dropdown outside it.
     nonisolated static func listTop(under dropdownBottom: Float, screenTop: Float) -> Float {
         max(0, dropdownBottom + 2 - screenTop)
     }

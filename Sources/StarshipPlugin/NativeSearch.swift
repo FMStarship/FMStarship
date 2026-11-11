@@ -62,7 +62,7 @@ struct NativeSearch {
     /// Returns the Filters button, which `editFilters` is called for when clicked, and while a search runs, the line
     /// that says how it's going.
     @discardableResult
-    func build(into body: Pointer, list: PeopleListView, searching: String?, table: AddTable,
+    func build(into body: Pointer, list: PeopleListView, searching: String?, settings: Pointer, table: AddTable,
                editFilters: @escaping @MainActor () -> Void) throws -> (filters: Pointer, progress: Pointer?) {
         let tile = try page.tile()
         try ui.style(tile) { try $0.number("flexGrow", 1) }
@@ -78,6 +78,7 @@ struct NativeSearch {
         let button = try filtersButton()
         try ui.add(button, to: top)
         try ui.onClick(button) { editFilters() }
+        try ui.add(settings, to: top)
         try ui.add(top, to: tile)
 
         var progress: Pointer?
