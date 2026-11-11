@@ -1971,6 +1971,19 @@ final class FMInterface {
             InterfaceDump.shared.writeMethodMap()
         case "find":
             InterfaceDump.shared.find(words.dropFirst().first ?? "")
+        case "stars":
+            // CA and PA in Stars mode as FM's own star graphic, or as text, as they are until this says otherwise.
+            guard let value = words.dropFirst().first, ["native", "text"].contains(value) else {
+                return PluginLog.write("Stars commands: native, text. CA and PA in Stars mode show as \(FMTable.nativeStars ? "FM's stars" : "text") now")
+            }
+            FMTable.nativeStars = value == "native"
+            FMTable.starsFailed = false
+            FMTable.starsChecked = false
+            FMTable.firstStars = nil
+            PluginLog.write("CA and PA in Stars mode show as \(FMTable.nativeStars ? "FM's stars" : "text") from now")
+            // Made again with the change, as choosing the subtab again would.
+            shown = ""
+            refresh()
         case "uids":
             // Who's in the screen's tables, by FM's unique IDs, for making test files such as a shortlist.
             for live in liveTables { PluginLog.write(live.people.map { "\($0.uid) \($0.name)" }.joined(separator: "; ")) }
@@ -1981,7 +1994,7 @@ final class FMInterface {
             PluginLog.write("Shortlists are read from FM's folders\(Self.testShortlistRoot.map { " and \($0.path)" } ?? "")")
             startWork()
         default:
-            PluginLog.write("Commands: open, close, screen <name>, dump, tables, methods, host panel|body, table ..., uids, shortlists <folder>")
+            PluginLog.write("Commands: open, close, screen <name>, dump, tables, methods, host panel|body, table ..., stars native|text, uids, shortlists <folder>")
         }
     }
 

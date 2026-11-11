@@ -223,7 +223,11 @@ struct FMTable {
             addOwnColumns(extras, to: factory)
             let (chosen, dropped) = Self.available(columns, known: Self.knownColumns[kind] ?? [])
             for id in dropped { PluginLog.write("FM's \(kind.name) table has no column \(id) on this build of FM, so it's left out") }
-            try il2cpp.call(table, "UpdateStreamedTableView", [try view(chosen, own: own)])
+            let starred = Set(extras.filter(Self.showsStars).map(\.host)).intersection(chosen)
+            if !starred.isEmpty {
+                PluginLog.write("FM's stars go in \(starred.sorted().joined(separator: " and ")), as wide as FM's own star columns, \(FMElements.whole(Self.starsWidth))")
+            }
+            try il2cpp.call(table, "UpdateStreamedTableView", [try view(chosen, own: own, starred: starred)])
         }
         try il2cpp.call(table, "SetList", [try rows(people)])
     }
@@ -236,8 +240,9 @@ struct FMTable {
     }
 
     /// A view of FM's, as FM keeps for each way of looking at a table, with these columns. Those holding FM
-    /// Starship's own, in `own`, are as wide as given and don't sort when their header is clicked.
-    private func view(_ columns: [String], own: [String: Float]) throws -> Pointer {
+    /// Starship's own, in `own`, are as wide as given and don't sort when their header is clicked. Those in `starred`
+    /// show FM's stars, and take the share of the table FM gives its own star columns.
+    private func view(_ columns: [String], own: [String: Float], starred: Set<String> = []) throws -> Pointer {
         guard let viewClass = il2cpp.findClass("SI.Bindable", "StreamedTableView"),
               let create = il2cpp.method(viewClass, "CreateFromTableConfig", parameters: 2),
               let listClass = il2cpp.klass(of: il2cpp.methodParameter(create, 0)),
@@ -250,7 +255,7 @@ struct FMTable {
         for id in columns {
             var unused = false
             let config: Pointer
-            if let width = own[id], let metadata = try? ownMetadata(configClass, width: width) {
+            if let width = own[id], let metadata = try? ownMetadata(configClass, width: width, stars: starred.contains(id)) {
                 config = try withUnsafeMutablePointer(to: &unused) {
                     try il2cpp.new(configClass, [il2cpp.managedString(id), metadata, Pointer($0)], firstParameter: "System.String")
                 }
@@ -268,7 +273,7 @@ struct FMTable {
 
     /// A column's settings, as FM's own views have them, for one holding FM Starship's values: its width, and no
     /// sorting by its header, which would sort by what FM keeps in it.
-    private func ownMetadata(_ configClass: Pointer, width: Float) throws -> Pointer {
+    private func ownMetadata(_ configClass: Pointer, width: Float, stars: Bool = false) throws -> Pointer {
         guard let withMetadata = il2cpp.method(configClass, ".ctor", parameters: 3, firstParameter: "System.String", inherited: false),
               let metadataClass = il2cpp.klass(of: il2cpp.methodParameter(withMetadata, 1)) else {
             throw IL2CPP.Failure("FM's column settings aren't as expected")
@@ -290,8 +295,14 @@ struct FMTable {
             try il2cpp.setField(metadata, "m_widthOverride", width)
             try il2cpp.setField(metadata, "m_minWidthOverride", min(width, 60))
         }
+        // FM's stars are wider than FM's hidden CA and PA columns. FM fits a table by its columns' widths, with this
+        // in place of the column's own, and holds no column to a minimum over 44, so this is how ours gets the room.
+        if stars { try il2cpp.setField(metadata, "m_widthOverride", Self.starsWidth) }
         return metadata
     }
+
+    /// The width FM gives its own Ability and Potential columns before it fits a table, which its stars fill.
+    static var starsWidth: Float { defaultWidths[.players]?["scout-opinion-current-ability"] ?? 90 }
 
     /// How our columns' widths are given to FM. With only a minimum, FM still fits the table to the screen, with
     /// none of ours narrower than its heading or longest value. The developer command `table widths` changes it.
@@ -327,6 +338,21 @@ struct FMTable {
     /// Whether FM's own CA and PA columns sort when their header is clicked, by FM's figures for them. FM has none
     /// for the players in our lists, so it doesn't sort; ours does instead. `table casort on` tries FM's again.
     static var abilitySortable = false
+    /// CA and PA in Stars mode as FM's own star graphic, the yellow stars of its Ability and Potential columns, in
+    /// place of text such as 3.5★. They're still ours, on our scale, where CA 200 is five stars, and sort by our
+    /// columns' headings as before. Off until it's been seen in FM: the developer command `stars native` turns it on.
+    static var nativeStars = false
+    /// Set once FM's stars couldn't be made, or FM's style didn't reach them, after which CA and PA are text again.
+    static var starsFailed = false
+    /// When the first of FM's stars went into one of our tables, to check them once they're laid out.
+    static var firstStars: Date?
+    static var starsChecked = false
+
+    /// Whether one of the engine's columns shows FM's stars: CA or PA, in FM's columns for them, in Stars mode.
+    static func showsStars(_ extra: Extra) -> Bool {
+        nativeStars && !starsFailed && extra.title == nil && extra.values.values.contains { FMElements.halfStars($0) != nil }
+    }
+
     /// The ID of our own column for one of the engine's, from its title.
     nonisolated static func ownID(_ title: String) -> String {
         "fmstarship-" + title.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
@@ -426,12 +452,15 @@ struct FMTable {
         var headers: [Pointer?] = []
         var headedSort: Sort?
         var headedAt: Date?
+        /// Whether any of its cells show FM's stars.
+        var stars = false
 
         /// Forgets the rows and headings, and lets go of them, when the table goes or FM builds its columns again.
         @MainActor
         func forget(_ il2cpp: IL2CPP?) {
             for handle in pinned.values { il2cpp?.unpin(handle) }
             for button in buttons { ClickActions.actions[button] = nil }
+            stars = false
             person = [:]
             cells = [:]
             fitted = []
@@ -485,6 +514,11 @@ struct FMTable {
             shown.columns = ids
         }
         let placed = extras.compactMap { extra in ids.firstIndex(of: extra.host).map { (extra, $0) } }
+        if Self.starsFailed, shown.stars {
+            // FM's stars are off since they went in, so every row is written again, as text.
+            shown.stars = false
+            shown.person = [:]
+        }
         for row in rows {
             guard let rowOffset, let root = row.load(fromByteOffset: rowOffset, as: IL2CPP.Pointer?.self) else { continue }
             shown.pin(root, il2cpp)
@@ -499,9 +533,18 @@ struct FMTable {
             if shown.cells[root] == nil { cells.forEach { shown.pin($0, il2cpp) } }
             shown.cells[root] = cells
             for (extra, column) in placed where column < cells.count {
-                setValue(extra.values[index] ?? "", tone: extra.tones[index], quiet: extra.quiet, in: cells[column])
+                let value = extra.values[index] ?? ""
+                if Self.nativeStars, !Self.starsFailed, extra.title == nil, let halves = FMElements.halfStars(value),
+                   setStars(halves, in: cells[column]) {
+                    shown.stars = true
+                    continue
+                }
+                setValue(value, tone: extra.tones[index], quiet: extra.quiet, in: cells[column])
             }
             shown.person[root] = index
+        }
+        if Self.nativeStars, !Self.starsChecked, let first = Self.firstStars, Date().timeIntervalSince(first) >= 1 {
+            checkStars(in: table, since: first)
         }
         guard let columns = il2cpp.fieldObject(table, "m_columns") else { return }
         let fmColumns = il2cpp.items(of: columns)
@@ -647,6 +690,11 @@ struct FMTable {
     /// Our value in one of FM's cells, in FM's text style, in the middle of the cell, in its tone's colour if it has
     /// one. A note is in small print, and wraps onto a second line where it needs one.
     private func setValue(_ value: String, tone: Tone? = nil, quiet: Bool = false, in cell: Pointer) {
+        // A cell that showed FM's stars before, or nearly did, shows the text instead.
+        if Self.firstStars != nil || Self.starsFailed {
+            if let stars = ui.query(cell, "FMStarshipStars") { try? ui.style(stars) { try $0.keyword("display", 1) } }
+            if let box = ui.query(cell, "FMStarshipValue") { try? ui.style(box) { try $0.keyword("display", 0) } }
+        }
         let label: Pointer
         if let existing = ui.query(cell, "FMStarshipValueText") {
             label = existing
@@ -681,6 +729,71 @@ struct FMTable {
         if il2cpp.text(try? il2cpp.call(label, "get_text")) != value { try? ui.setText(label, value) }
         try? ui.style(label) { style in
             if let colour = tone.flatMap(NativePage.colour(of:)) { try style.color("color", colour) } else { try style.clearColor("color") }
+        }
+    }
+
+    /// FM's stars for one of our values in one of FM's cells, in place of the text, at the left of the cell and in the
+    /// middle of its height, as in FM's own star cells. False if they couldn't go in, and from then on CA and PA go in
+    /// as text.
+    private func setStars(_ halves: Int, in cell: Pointer) -> Bool {
+        do {
+            if let rating = ui.query(cell, "FMStarshipStarRating") {
+                try ui.setStars(rating, halves)
+                if let box = ui.parent(of: rating) { try ui.style(box) { try $0.keyword("display", 0) } }
+                if let text = ui.query(cell, "FMStarshipValue") { try ui.style(text) { try $0.keyword("display", 1) } }
+                return true
+            }
+            let box = try ui.box(name: "FMStarshipStars")
+            try ui.style(box) { style in
+                try style.keyword("position", 1)
+                for side in ["left", "top", "right", "bottom"] { try style.length(side, 0) }
+                try style.length("paddingLeft", 4)
+                try style.keyword("flexDirection", 2)
+                try style.keyword("alignItems", 2)
+                try style.keyword("justifyContent", 0)
+            }
+            let rating = try ui.stars(halves, name: "FMStarshipStarRating")
+            // A row, whatever FM's style sheets say, so the stars never stack if they say nothing.
+            try ui.style(rating) { style in
+                try style.keyword("flexDirection", 2)
+                try style.number("flexShrink", 0)
+            }
+            try ui.add(rating, to: box)
+            // What FM itself shows in the column, and our text if the cell had it, make way for the stars.
+            for child in ui.children(of: cell) { try ui.style(child) { try $0.keyword("display", 1) } }
+            try ui.add(box, to: cell)
+            if Self.firstStars == nil { Self.firstStars = Date() }
+            return true
+        } catch {
+            Self.starsFailed = true
+            PluginLog.write("FM's stars couldn't go in our CA and PA columns, so they show as text: \(error)")
+            return false
+        }
+    }
+
+    /// Whether FM's style reached the stars in our cells, once one has been laid out: each star is then FM's size, or,
+    /// if FM's style sheets don't reach them, nothing at all, and CA and PA go back to text. Checked once, and given up
+    /// on if no stars have been seen laid out after a few seconds.
+    private func checkStars(in table: Pointer, since first: Date) {
+        guard let rating = ui.query(table, "FMStarshipStarRating"), let box = ui.parent(of: rating), let cell = ui.parent(of: box),
+              let star = ui.children(of: rating).first,
+              let room = ui.layout(box), room.width.isFinite, room.width > 0,
+              let size = ui.layout(star), size.width.isFinite, size.height.isFinite,
+              let row = ui.layout(rating), row.width.isFinite else {
+            if Date().timeIntervalSince(first) > 10 {
+                Self.starsChecked = true
+                PluginLog.write("FM's stars in our CA and PA columns weren't seen laid out, so they weren't checked")
+            }
+            return
+        }
+        Self.starsChecked = true
+        let width = ui.layout(cell).map { FMElements.whole($0.width) } ?? "?"
+        if size.width > 0, size.height > 0 {
+            PluginLog.write("FM's stars are up in our CA and PA columns: each star \(FMElements.whole(size.width))x\(FMElements.whole(size.height)), "
+                + "the five \(FMElements.whole(row.width)) wide in a cell \(width) wide")
+        } else {
+            Self.starsFailed = true
+            PluginLog.write("FM's style didn't reach the stars in our CA and PA columns (a star is \(FMElements.whole(size.width))x\(FMElements.whole(size.height))), so they show as text")
         }
     }
 
