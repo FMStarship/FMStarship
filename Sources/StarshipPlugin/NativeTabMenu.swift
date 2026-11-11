@@ -43,15 +43,13 @@ struct NativeTabMenu {
               choose: @escaping @MainActor (Int) -> Void) throws -> (menu: Pointer, rows: [Pointer], dim: Pointer)? {
         guard let spot = ui.worldBound(tab), let area = ui.worldBound(root), spot.width > 0, spot.height > 0 else { return nil }
         let origin = Self.origin(under: spot, in: area)
-        // FM dims its screen while one of its tab menus is up, below its title bar with the tabs and subtabs, which stay
-        // as they are. The pointer passes through it to FM.
-        let below = ui.query(root, "OverviewTitleBar").flatMap { ui.worldBound($0) }.flatMap { $0.height > 0 ? $0.y + $0.height : nil }
-            ?? spot.y + spot.height
+        // FM veils its whole screen while one of its tab menus is up, with only the menu as it was. The pointer passes
+        // through it to FM.
         let dim = try ui.box(name: "FMStarshipTabMenuDim")
         try ui.style(dim) { style in
             try style.keyword("position", 1)
             try style.length("left", 0)
-            try style.length("top", max(0, below - area.y))
+            try style.length("top", 0)
             try style.percent("width", 100)
             try style.length("bottom", 0)
             try style.color("backgroundColor", Self.dimColour)
@@ -88,8 +86,8 @@ struct NativeTabMenu {
         return (menu, rows, dim)
     }
 
-    /// How much FM's screen darkens under an open tab menu.
-    static let dimColour: (Float, Float, Float, Float) = (0, 0, 0, 0.2)
+    /// FM's veil over its screen under an open tab menu: a faint white, as seen in FM.
+    static let dimColour: (Float, Float, Float, Float) = (1, 1, 1, 0.07)
 
     /// Where the menu goes in FM's main document: just under the tab, from its left edge.
     nonisolated static func origin(under tab: (x: Float, y: Float, width: Float, height: Float),
