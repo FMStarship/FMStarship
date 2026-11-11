@@ -1,5 +1,6 @@
 import AppKit
 import FMStarshipUI
+import StarshipCore
 import SwiftUI
 
 /// Adds FM Starship to FM and takes it out again, from the app's menu, and keeps the app's copies as new as the app.
@@ -19,11 +20,25 @@ final class PluginInstaller: ObservableObject {
         look()
         // Someone may have run Scripts/install-plugin.sh, or removed the folder, while the app was in the background.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.look() }
+            MainActor.assumeIsolated {
+                self?.look()
+                self?.tellIfKeptOut()
+            }
         }
     }
 
     private func look() { installed = folder.installed() }
+
+    /// Once for each build of FM it's about: FM Starship isn't in FM, and why.
+    private func tellIfKeptOut() {
+        let status = PluginStatus.read(from: PluginStatus.file(home: PluginFolder.home))
+        let fm = GameLauncher.gameApp.flatMap(FMBuild.installed)
+        guard let notice = PluginNotice.notice(installed: installed, status: status, installedFM: fm),
+              PluginNotice.shouldShow(notice, defaults: .standard) else { return }
+        PluginNotice.markShown(notice, defaults: .standard)
+        AppLog.write("Plugin: told the player \"\(notice.title)\" (\(notice.key))")
+        inform(notice.title, notice.message)
+    }
 
     /// At start, and so after an update: refreshes the app's own copies if an older build put them there. Safe while FM
     /// runs, which keeps the copy it has and gets this one at its next start from Steam.
