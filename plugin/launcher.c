@@ -140,7 +140,7 @@ static void write_status(const char *folder, const char *detail, const char *ver
 }
 
 // What status.json says: nothing (it's missing, empty or can't be read), the breaker's reason, or another.
-enum status { NO_STATUS, CRASH_LOOP_STATUS, OTHER_STATUS };
+enum status { NO_STATUS, CRASH_LOOP_STATUS, KEPT_OUT_STATUS, OTHER_STATUS };
 static enum status read_status(const char *folder) {
     char path[PATH_MAX], text[4096];
     if (snprintf(path, sizeof path, "%s/status.json", folder) >= (int)sizeof path) return NO_STATUS;
@@ -150,7 +150,10 @@ static enum status read_status(const char *folder) {
     close(file);
     if (length <= 0) return NO_STATUS;
     text[length] = '\0';
-    return strstr(text, "\"crash-loop\"") ? CRASH_LOOP_STATUS : OTHER_STATUS;
+    if (strstr(text, "\"crash-loop\"")) return CRASH_LOOP_STATUS;
+    // The reasons the plugin's gate writes when it added nothing to FM. Any other status excuses nothing.
+    if (strstr(text, "\"unchecked-build\"") || strstr(text, "\"unreadable-build\"")) return KEPT_OUT_STATUS;
+    return OTHER_STATUS;
 }
 
 // Takes away the status file the breaker wrote, once the plugin goes back in. One for another reason stays.
@@ -167,7 +170,8 @@ static bool kept_itself_out(const char *folder, time_t since) {
     struct stat info;
     if (snprintf(path, sizeof path, "%s/status.json", folder) >= (int)sizeof path || lstat(path, &info) != 0
         || !S_ISREG(info.st_mode) || info.st_mtimespec.tv_sec < since) return false;
-    return read_status(folder) == OTHER_STATUS;
+    // Relies on the gate writing status.json at every start it keeps the plugin out of, so its time is this start's.
+    return read_status(folder) == KEPT_OUT_STATUS;
 }
 
 // Whether the plugin's mark is there: the last start with it went well.
