@@ -658,6 +658,47 @@ final class FMInterface {
         }
     }
 
+    /// FM's own dimming under an open menu: its highlighting subsystem keeps the menu bright and dims everything else,
+    /// as it does for FM's own tab menus, and fades in and out. Found once; if FM lacks it, the menu opens undimmed.
+    private var highlighter: IL2CPP.Handle?
+    private var highlighterMissing = false
+
+    private func highlightSubsystem(_ ui: FMElements) -> (object: Pointer, add: Pointer, remove: Pointer)? {
+        guard !highlighterMissing, let klass = ui.il2cpp.findClass("SI.UI", "UIHighlightingSubsystem"),
+              let add = ui.il2cpp.method(klass, "AddHighlight", parameters: 3, firstParameter: "UnityEngine.UIElements.VisualElement"),
+              let remove = ui.il2cpp.method(klass, "RemoveHighlight", parameters: 1, firstParameter: "UnityEngine.UIElements.VisualElement") else {
+            if !highlighterMissing { PluginLog.write("FM's highlighting isn't as expected, so FM Starship's tab menu opens without FM's dimming") }
+            highlighterMissing = true
+            return nil
+        }
+        if let kept = highlighter.flatMap(ui.il2cpp.target) { return (kept, add, remove) }
+        guard let object = (try? ui.findObjects(klass))?.first, let handle = ui.il2cpp.pin(object) else {
+            PluginLog.write("FM's highlighting wasn't found, so FM Starship's tab menu opens without FM's dimming")
+            highlighterMissing = true
+            return nil
+        }
+        highlighter = handle
+        return (object, add, remove)
+    }
+
+    private func highlight(_ menu: Pointer, owner: Pointer, _ ui: FMElements) {
+        guard let fm = highlightSubsystem(ui) else { return }
+        var frame = false
+        do {
+            _ = try withUnsafeMutablePointer(to: &frame) { try ui.il2cpp.call(fm.add, fm.object, [menu, Pointer($0), owner]) }
+        } catch {
+            PluginLog.write("FM's highlighting didn't take FM Starship's tab menu: \(error)")
+            highlighterMissing = true
+        }
+    }
+
+    private func unhighlight(_ menu: Pointer, _ ui: FMElements) {
+        guard let fm = highlightSubsystem(ui) else { return }
+        do { _ = try ui.il2cpp.call(fm.remove, fm.object, [menu]) } catch {
+            PluginLog.write("FM's highlighting didn't let go of FM Starship's tab menu: \(error)")
+        }
+    }
+
     private func openTabMenu() {
         guard tabMenu == nil, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
@@ -682,6 +723,7 @@ final class FMInterface {
                 tabMenu = handle
                 tabMenuDim = il2cpp.pin(made.dim)
                 lightTab(true, ui)
+                highlight(made.menu, owner: tab, ui)
                 tabMenuRows = made.rows
                 tabMenuOver = visibleState(ui)
                 tabMenuLogged = false
@@ -752,6 +794,7 @@ final class FMInterface {
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
             lightTab(false, ui)
+            if let menu = il2cpp.target(of: handle) { unhighlight(menu, ui) }
             if let dim = tabMenuDim {
                 if let element = il2cpp.target(of: dim) { try? ui.remove(element) }
                 il2cpp.unpin(dim)
