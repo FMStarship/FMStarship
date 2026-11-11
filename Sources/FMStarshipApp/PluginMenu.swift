@@ -33,7 +33,7 @@ final class PluginInstaller: ObservableObject {
     private func tellIfKeptOut() {
         let status = PluginStatus.read(from: PluginStatus.file(home: PluginFolder.home))
         let fm = GameLauncher.gameApp.flatMap(FMBuild.installed)
-        guard let notice = PluginNotice.notice(installed: installed, status: status, installedFM: fm),
+        guard let notice = PluginNotice.notice(installed: installed, status: status, installedFM: fm, appBuild: marker.build),
               PluginNotice.shouldShow(notice, defaults: .standard) else { return }
         PluginNotice.markShown(notice, defaults: .standard)
         AppLog.write("Plugin: told the player \"\(notice.title)\" (\(notice.key))")

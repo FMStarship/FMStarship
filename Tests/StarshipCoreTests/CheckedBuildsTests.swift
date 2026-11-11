@@ -135,22 +135,45 @@ final class CheckedBuildsTests: XCTestCase {
         XCTAssertEqual(file.path, home.path + "/Library/Application Support/FMStarship/Plugin/status.json")
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         XCTAssertNil(PluginStatus.read(from: file))
-        let status = PluginStatus.unchecked(fm: "27.0.2.2500000", at: Date(timeIntervalSince1970: 1_794_398_400))
+        let build = FMBuild(version: "27.0.2.2500000", gameAssembly: "0d1e2f3a-0000-0000-0000-000000000000")
+        let status = PluginStatus.keptOut(build, at: Date(timeIntervalSince1970: 1_794_398_400))
         try status.write(to: file)
         XCTAssertEqual(PluginStatus.read(from: file), status)
+        XCTAssertEqual(PluginStatus.read(from: file)?.build, build)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: String])
         XCTAssertEqual(json, ["plugin": "off", "reason": "unchecked-build",
                               "detail": "FM has updated to 27.0.2.2500000, and FM Starship's tab inside FM comes back with the next FM Starship update.",
-                              "at": "2026-11-11T12:00:00Z", "fm": "27.0.2.2500000"])
+                              "at": "2026-11-11T12:00:00Z", "fm": "27.0.2.2500000",
+                              "gameAssembly": "0D1E2F3A-0000-0000-0000-000000000000"])
         PluginStatus.remove(at: file)
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
         PluginStatus.remove(at: file)
     }
 
-    func testAStatusWithoutAVersionStillReads() {
-        XCTAssertEqual(PluginStatus.unchecked(fm: nil).detail,
-                       "FM has updated, and FM Starship's tab inside FM comes back with the next FM Starship update.")
-        XCTAssertEqual(PluginStatus.unchecked(fm: nil).fm, "")
+    func testABuildThatCouldntBeReadHasItsOwnReason() {
+        let status = PluginStatus.keptOut(nil)
+        XCTAssertEqual(status.reason, PluginStatus.unreadableBuild)
+        XCTAssertEqual(status.detail, PluginStatus.unreadableDetail)
+        XCTAssertEqual(status.fm, "")
+        XCTAssertNil(status.build)
+    }
+
+    /// The launcher's C writes the first five fields only, and may leave the version empty.
+    func testAStatusWithoutGameAssemblyStillReads() throws {
+        let json = #"{"plugin": "off", "reason": "crash-loop", "detail": "x", "at": "2026-11-11T12:00:00Z", "fm": "27.0.1.2494769"}"#
+        let status = try JSONDecoder().decode(PluginStatus.self, from: Data(json.utf8))
+        XCTAssertEqual(status.gameAssembly, "")
+        XCTAssertNil(status.build)
+        XCTAssertNil(PluginStatus(reason: PluginStatus.crashLoop, detail: "x", at: "", fm: "", gameAssembly: "94BE5439-0807-3A78-8C32-E1F12FE5E7BB").build)
+    }
+
+    /// As the launcher finds the plugin, so a run with another HOME never touches the real folder.
+    func testTheHomeFolderGoesByHOME() {
+        let real = getenv("HOME").map { String(cString: $0) }
+        defer { if let real { setenv("HOME", real, 1) } else { unsetenv("HOME") } }
+        setenv("HOME", root.path, 1)
+        XCTAssertEqual(PluginStatus.home.path, root.path)
+        XCTAssertNotEqual(PluginStatus.home.path, FileManager.default.homeDirectoryForCurrentUser.path)
     }
 
     // MARK: Stand-in Mach-O files

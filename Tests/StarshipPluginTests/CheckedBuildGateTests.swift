@@ -34,13 +34,18 @@ final class CheckedBuildGateTests: XCTestCase {
         XCTAssertEqual(written.plugin, "off")
         XCTAssertEqual(written.reason, PluginStatus.uncheckedBuild)
         XCTAssertEqual(written.fm, "27.0.2.2500000")
+        XCTAssertEqual(written.build, unchecked, "The whole key the gate went by")
         XCTAssertNotNil(ISO8601DateFormatter().date(from: written.at))
     }
 
-    func testABuildThatCouldntBeReadStaysOut() throws {
+    func testABuildThatCouldntBeReadStaysOutAndSaysSo() throws {
         XCTAssertFalse(allows(nil, developer: false))
         XCTAssertEqual(lines.count, 1)
-        XCTAssertEqual(try XCTUnwrap(PluginStatus.read(from: status)).reason, PluginStatus.uncheckedBuild)
+        XCTAssertTrue(lines[0].contains("couldn't be read"), lines[0])
+        XCTAssertFalse(lines[0].contains("nobody has checked"), lines[0])
+        let written = try XCTUnwrap(PluginStatus.read(from: status))
+        XCTAssertEqual(written.reason, PluginStatus.unreadableBuild)
+        XCTAssertNil(written.build)
     }
 
     func testACheckedBuildStartsAndClearsTheStatus() throws {
@@ -52,7 +57,7 @@ final class CheckedBuildGateTests: XCTestCase {
     }
 
     func testADeveloperBuildStartsOnAnUncheckedBuildAndSaysSo() throws {
-        try PluginStatus.unchecked(fm: unchecked.version).write(to: status)
+        try PluginStatus.keptOut(unchecked).write(to: status)
         XCTAssertTrue(allows(unchecked, developer: true))
         XCTAssertEqual(lines.count, 1)
         XCTAssertTrue(lines[0].contains("isn't checked"), lines[0])

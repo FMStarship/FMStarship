@@ -5,11 +5,12 @@ import SwiftUI
 
 /// FM Starship running inside Football Manager instead of beside it: the app's own windows and screens, over the game.
 /// Control-Option-S shows and hides it, and in windowed mode there's also an FM Starship menu in FM's menu bar.
+/// `gameApp` is fm.app's path, worked out by start.c, so nothing here asks CFBundle for FM's bundle before FM's main().
 @_cdecl("starship_plugin_start")
-public func starshipPluginStart() {
+public func starshipPluginStart(_ gameApp: UnsafePointer<CChar>?) {
     // Before anything of FM's is touched, so on a build nobody has checked there's no tab, menu, monitor or timer.
-    guard PluginStartGate.allows(FMBuild.installed(app: Bundle.main.bundleURL), developer: PluginBuild.developerTools,
-                                 home: FileManager.default.homeDirectoryForCurrentUser) else { return }
+    let build = gameApp.flatMap { FMBuild.installed(app: URL(fileURLWithPath: String(cString: $0), isDirectory: true)) }
+    guard PluginStartGate.allows(build, developer: PluginBuild.developerTools, home: PluginStatus.home) else { return }
     // The constructor runs before FM's main(), so nothing in AppKit is up yet.
     NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
         MainActor.assumeIsolated { Plugin.shared.install() }
@@ -193,11 +194,15 @@ enum PluginStartGate {
         case .off:
             var written = "the app is told"
             do {
-                try PluginStatus.unchecked(fm: build?.version).write(to: status)
+                try PluginStatus.keptOut(build).write(to: status)
             } catch {
                 written = "the app couldn't be told: \(error)"
             }
-            log("Loaded into FM, pid \(pid), on \(named), which nobody has checked, so FM Starship stays out of FM until an update lists it; \(written)")
+            if build == nil {
+                log("Loaded into FM, pid \(pid), on \(named), so FM Starship stays out of FM; \(written)")
+            } else {
+                log("Loaded into FM, pid \(pid), on \(named), which nobody has checked, so FM Starship stays out of FM until an update lists it; \(written)")
+            }
             return false
         }
     }

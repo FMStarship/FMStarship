@@ -82,6 +82,18 @@ bool starship_plugin_is_game(const char *executable) {
     return game;
 }
 
+// FM's bundle: BUNDLE in BUNDLE/Contents/MacOS/NAME, from the executable's real path, the shape starship_plugin_is_game
+// has already checked. The Swift side reads FM's build from it, so it never asks CFBundle before FM's main().
+static bool game_bundle(const char *executable, char bundle[PATH_MAX]) {
+    if (!realpath(executable, bundle)) return false;
+    static const char inside[] = "/Contents/MacOS";
+    size_t length = sizeof inside - 1;
+    char *name = strrchr(bundle, '/');
+    if (!name || (size_t)(name - bundle) < length || memcmp(name - length, inside, length) != 0) return false;
+    *(name - length) = '\0';
+    return true;
+}
+
 __attribute__((constructor)) static void plugin_load(void) {
     unsetenv("DYLD_INSERT_LIBRARIES");
 
@@ -89,5 +101,6 @@ __attribute__((constructor)) static void plugin_load(void) {
     uint32_t size = sizeof path;
     if (_NSGetExecutablePath(path, &size) != 0 || !starship_plugin_is_game(path)) return;
 
-    starship_plugin_start();
+    char bundle[PATH_MAX];
+    starship_plugin_start(game_bundle(path, bundle) ? bundle : NULL);
 }

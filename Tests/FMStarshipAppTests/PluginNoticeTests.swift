@@ -30,7 +30,7 @@ final class PluginNoticeTests: XCTestCase {
             {"plugin": "off", "reason": "crash-loop", "detail": "FM closed twice just after starting, so it starts without FM Starship for now.", \
             "at": "2026-11-11T20:15:03Z", "fm": "27.0.1.2494769"}
             """)
-        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "9"), status: status, installedFM: checked))
+        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "9"), status: status, installedFM: checked, appBuild: "9"))
         XCTAssertEqual(notice.title, "FM Starship stayed out of FM")
         XCTAssertEqual(notice.message, "FM closed twice just after starting, so it starts without FM Starship for now.")
         XCTAssertEqual(notice.key, "crash-loop 2026-11-11T20:15:03Z")
@@ -40,7 +40,7 @@ final class PluginNoticeTests: XCTestCase {
         let status = try written("""
             {"plugin":"off","reason":"unchecked-build","detail":"FM has updated.","at":"2026-11-11T20:15:03Z","fm":"27.0.2.2500000"}
             """)
-        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromScript, status: status, installedFM: unchecked))
+        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromScript, status: status, installedFM: unchecked, appBuild: "9"))
         XCTAssertEqual(notice.title, "FM has updated")
         XCTAssertTrue(notice.message.contains("27.0.2.2500000"), notice.message)
         XCTAssertTrue(notice.message.contains("comes back with the next FM Starship update"), notice.message)
@@ -49,26 +49,85 @@ final class PluginNoticeTests: XCTestCase {
 
     func testTheInstalledFMIsCheckedBeforeFMStarts() throws {
         XCTAssertNil(PluginStatus.read(from: file))
-        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: unchecked))
+        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: unchecked, appBuild: "9"))
         XCTAssertEqual(notice.title, "FM has updated")
         XCTAssertEqual(notice.key, "unchecked-build 27.0.2.2500000", "The same key as the plugin's file, so it's said once")
-        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: checked))
-        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: nil), "FM not found")
+        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: checked, appBuild: "9"))
+        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: nil, appBuild: "9"), "FM not found")
     }
 
     func testADevelopersOwnBuildIsOnlyToldByWhatItWrites() {
-        XCTAssertNil(PluginNotice.notice(installed: .fromScript, status: nil, installedFM: unchecked))
+        XCTAssertNil(PluginNotice.notice(installed: .fromScript, status: nil, installedFM: unchecked, appBuild: "9"))
     }
 
     func testWithoutThePluginThereIsNothingToSay() throws {
         let status = try written(#"{"plugin":"off","reason":"crash-loop","detail":"x","at":"2026-11-11T20:15:03Z","fm":"27.0.1.2494769"}"#)
-        XCTAssertNil(PluginNotice.notice(installed: .nothing, status: status, installedFM: unchecked))
+        XCTAssertNil(PluginNotice.notice(installed: .nothing, status: status, installedFM: unchecked, appBuild: "9"))
+    }
+
+    func testAnOldFileIsntToldOnceThisAppListsItsBuild() throws {
+        let status = try written("""
+            {"plugin":"off","reason":"unchecked-build","detail":"x","at":"2026-11-11T20:15:03Z","fm":"27.0.2.2500000",\
+            "gameAssembly":"0D1E2F3A-0000-0000-0000-000000000000"}
+            """)
+        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "10"), status: status, installedFM: unchecked, appBuild: "10",
+                                         checked: [checked, unchecked]))
     }
 
     func testAnOldFileIsntToldOnceFMIsOnACheckedBuildAgain() throws {
-        let status = try written(#"{"plugin":"off","reason":"unchecked-build","detail":"x","at":"2026-11-11T20:15:03Z","fm":"27.0.2.2500000"}"#)
-        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "10"), status: status, installedFM: checked,
+        let status = try written("""
+            {"plugin":"off","reason":"unchecked-build","detail":"x","at":"2026-11-11T20:15:03Z","fm":"27.0.2.2500000",\
+            "gameAssembly":"0D1E2F3A-0000-0000-0000-000000000000"}
+            """)
+        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "10"), status: status, installedFM: checked, appBuild: "10",
                                          checked: [checked]))
+    }
+
+    /// The review's case: the plugin couldn't read FM, while the app reads a checked build. Something must still be said.
+    func testAFileWithoutAWholeBuildIsToldEvenOnACheckedFM() throws {
+        let status = try written(#"{"plugin":"off","reason":"unchecked-build","detail":"x","at":"2026-11-11T20:15:03Z","fm":""}"#)
+        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "10"), status: status, installedFM: checked,
+                                                       appBuild: "10", checked: [checked]))
+        XCTAssertEqual(notice.title, "FM has updated")
+    }
+
+    func testABuildThePluginCouldntReadIsAlwaysTold() throws {
+        let status = try written("""
+            {"plugin":"off","reason":"unreadable-build","detail":"x","at":"2026-11-11T20:15:03Z","fm":"","gameAssembly":""}
+            """)
+        for fm in [checked, unchecked, nil] as [FMBuild?] {
+            let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "10"), status: status, installedFM: fm,
+                                                           appBuild: "10", checked: [checked]))
+            XCTAssertEqual(notice.title, "FM Starship stayed out of FM")
+            XCTAssertEqual(notice.message, PluginStatus.unreadableDetail)
+            XCTAssertFalse(notice.message.contains("updated"), "It isn't known that FM updated")
+            XCTAssertEqual(notice.key, "unreadable-build 2026-11-11T20:15:03Z")
+        }
+    }
+
+    /// FM patched twice before it was started: the file names the first, Steam has the second.
+    func testTheInstalledFMsVersionIsNamedFirst() throws {
+        let status = try written("""
+            {"plugin":"off","reason":"unchecked-build","detail":"x","at":"2026-11-11T20:15:03Z","fm":"27.0.2.2500000",\
+            "gameAssembly":"0D1E2F3A-0000-0000-0000-000000000000"}
+            """)
+        let newer = FMBuild(version: "27.0.3.2510000", gameAssembly: "1E2F3A4B-0000-0000-0000-000000000000")
+        let notice = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "10"), status: status, installedFM: newer,
+                                                       appBuild: "10", checked: [checked]))
+        XCTAssertTrue(notice.message.contains("27.0.3.2510000"), notice.message)
+        XCTAssertFalse(notice.message.contains("27.0.2"), notice.message)
+        XCTAssertEqual(notice.key, "unchecked-build 27.0.3.2510000", "The key the disk check gives too, so it's said once")
+        let unread = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "10"), status: status, installedFM: nil,
+                                                       appBuild: "10", checked: [checked]))
+        XCTAssertTrue(unread.message.contains("27.0.2.2500000"), "The file's version when the app can't read FM")
+    }
+
+    /// An older app beside a newer app's copies, which it leaves in place, doesn't know the builds the newer one lists.
+    func testOnlyThisAppsOwnCopyIsCheckedFromDisk() {
+        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "11"), status: nil, installedFM: unchecked, appBuild: "10"))
+        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: nil), status: nil, installedFM: unchecked, appBuild: "10"))
+        XCTAssertNil(PluginNotice.notice(installed: .fromApp(build: "10"), status: nil, installedFM: unchecked, appBuild: nil))
+        XCTAssertNotNil(PluginNotice.notice(installed: .fromApp(build: "10"), status: nil, installedFM: unchecked, appBuild: "10"))
     }
 
     func testABrokenFileIsLeftUnread() throws {
@@ -80,12 +139,13 @@ final class PluginNoticeTests: XCTestCase {
         let suite = "PluginNoticeTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let first = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: unchecked))
+        let first = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil, installedFM: unchecked, appBuild: "9"))
         XCTAssertTrue(PluginNotice.shouldShow(first, defaults: defaults))
         PluginNotice.markShown(first, defaults: defaults)
         XCTAssertFalse(PluginNotice.shouldShow(first, defaults: defaults))
         let next = try XCTUnwrap(PluginNotice.notice(installed: .fromApp(build: "9"), status: nil,
-                                                     installedFM: FMBuild(version: "27.0.3.2510000", gameAssembly: unchecked.gameAssembly)))
+                                                     installedFM: FMBuild(version: "27.0.3.2510000", gameAssembly: unchecked.gameAssembly),
+                                                     appBuild: "9"))
         XCTAssertTrue(PluginNotice.shouldShow(next, defaults: defaults), "The next build of FM is told again")
     }
 }
