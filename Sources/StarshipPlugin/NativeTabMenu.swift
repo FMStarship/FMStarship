@@ -78,8 +78,8 @@ struct NativeTabMenu {
         (max(0, tab.x - area.x), max(0, tab.y + tab.height + 2 - area.y))
     }
 
-    /// One of FM's menu rows: an indicator on each side, as FM's have, and the screen's name between them. The current
-    /// screen's name has the look of FM's lit subtab, with FM's navigation chip, on its side, at its left.
+    /// One of FM's menu rows: an indicator on each side, as FM's have, and the screen's name between them. Every row
+    /// looks the same, the current screen's too, as in FM's own menus.
     private func row(_ entry: String, current: Bool, first: Bool, last: Bool) throws -> Pointer {
         let row = try ui.box(["sub-dropdown-content-container", "streamed-list-view-item", "streamed-list-view__row--interactable",
                               "virtualised-list__item", "navigatable-no-cursor", "row-direction-normal", "align-items-center",
@@ -91,19 +91,8 @@ struct NativeTabMenu {
             try style.length("paddingRight", 4)
             try style.number("flexShrink", 0)
         }
-        let left = try indicator("LeftIconIndicator")
-        if current {
-            let chip = try ui.box()
-            try ui.style(chip) { style in
-                try style.length("width", 2)
-                try style.length("height", 12)
-                for corner in ["TopLeft", "TopRight", "BottomLeft", "BottomRight"] { try style.length("border\(corner)Radius", 1) }
-                try style.color("backgroundColor", (1, 1, 1, 1))
-            }
-            try ui.add(chip, to: left)
-        }
-        try ui.add(left, to: row)
-        let lit = try ui.box(["navigation-secondary-text-portal-default-active-\(current)", "flex-grow-class"])
+        try ui.add(try indicator("LeftIconIndicator"), to: row)
+        let lit = try ui.box(["flex-grow-class"])
         try ui.style(lit) { style in
             try style.number("flexGrow", 1)
             try style.length("marginLeft", 4)

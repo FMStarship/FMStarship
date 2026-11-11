@@ -548,7 +548,19 @@ final class FMInterface {
         return inside(below, x: x, y: y, margin: 4)
     }
 
+    nonisolated static func describe(_ rect: HoverPlaces.Rect?) -> String {
+        guard let rect else { return "not known" }
+        return "\(FMElements.whole(rect.x)),\(FMElements.whole(rect.y)) \(FMElements.whole(rect.width))x\(FMElements.whole(rect.height))"
+    }
+
+    private var placesTried = Date.distantPast
+
     private func mouseMoved(_ event: NSEvent) {
+        // Until the tick has found the tab's arrow, look now, at most four times a second.
+        if hoverPlaces.arrow == nil, tab != nil, Date().timeIntervalSince(placesTried) > 0.25, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) {
+            placesTried = Date()
+            il2cpp.withoutCollection { keepHoverPlaces(ui) }
+        }
         guard let panel = hoverPlaces.panel, panel.width > 0, panel.height > 0, let window = event.window,
               !Plugin.shared.owns(window), let view = window.contentView, view.bounds.width > 0, view.bounds.height > 0 else { return }
         if !hoverLogged {
@@ -572,32 +584,16 @@ final class FMInterface {
             closeWhenAway?.cancel()
             closeWhenAway = nil
         } else if closeWhenAway == nil {
-            let close = DispatchWorkItem { MainActor.assumeIsolated { FMInterface.shared.closeTabMenu("the pointer left it") } }
+            let places = hoverPlaces
+            let at = "\(FMElements.whole(x)),\(FMElements.whole(y))"
+            let close = DispatchWorkItem {
+                MainActor.assumeIsolated {
+                    FMInterface.shared.closeTabMenu("the pointer left it, at \(at); tab \(Self.describe(places.tab)), menu \(Self.describe(places.menu))")
+                }
+            }
             closeWhenAway = close
             // Next to at once: FM's own menus open the moment the pointer reaches their arrow, and ours mustn't sit beside one.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: close)
-        }
-    }
-
-    /// FM's tab arrows sit on a dimmed background while their menu is up. Ours is set and taken off by hand, as our
-    /// arrow isn't FM's dropdown.
-    static let arrowLit: (Float, Float, Float, Float) = (1, 1, 1, 0.12)
-
-    private func lightArrow(_ on: Bool, _ ui: FMElements) {
-        guard let arrow = tabArrow.flatMap(ui.il2cpp.target) else { return }
-        do {
-            try ui.style(arrow) { style in
-                if on {
-                    try style.color("backgroundColor", Self.arrowLit)
-                    for corner in ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius"] {
-                        try style.length(corner, 4)
-                    }
-                } else {
-                    try style.clearColor("backgroundColor")
-                }
-            }
-        } catch {
-            PluginLog.write("FM Starship's tab arrow couldn't be lit: \(error)")
         }
     }
 
@@ -626,7 +622,6 @@ final class FMInterface {
                 tabMenuOver = visibleState(ui)
                 tabMenuLogged = false
                 hoverPlaces.menu = nil
-                lightArrow(true, ui)
                 PluginLog.write("FM Starship's tab menu opened")
             } catch {
                 PluginLog.write("FM Starship's tab menu doesn't open: \(error)")
@@ -692,7 +687,6 @@ final class FMInterface {
         tabMenuOver = []
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
-            lightArrow(false, ui)
             if let menu = il2cpp.target(of: handle) {
                 do {
                     try ui.remove(menu)
