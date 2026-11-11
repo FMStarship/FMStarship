@@ -324,6 +324,17 @@ final class LauncherTests: XCTestCase {
         XCTAssertFalse(try start().plugin)
     }
 
+    func testAStatusForAnyOtherReasonExcusesNothing() throws {
+        try makeFM(name: "Football Manager 27")
+        try installPlugin()
+        // Written during the start, as the gate's would be, but for a reason that doesn't mean the plugin stayed out.
+        let other: [String: String] = ["FAKE_WRITE": status.path,
+                                       "FAKE_TEXT": #"{"at":"","detail":"says \"unchecked-build\" in passing","fm":"","plugin":"on","reason":"warning"}"#]
+        try start(other.merging(crash) { $1 })
+        try start(other.merging(crash) { $1 })
+        XCTAssertFalse(try start().plugin, "Two crashes counted: only the gate's own reasons excuse one")
+    }
+
     func testAStartThePluginKeptItselfOutOfDoesntCount() throws {
         try makeFM(name: "Football Manager 27")
         try installPlugin()
