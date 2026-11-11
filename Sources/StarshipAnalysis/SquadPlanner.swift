@@ -268,7 +268,7 @@ public enum SquadPlanner {
 
     public static let slotColumns = [
         TableColumn("Position", 7, order: .place), TableColumn("With the ball", 17), TableColumn("Without the ball", 17), TableColumn("Player", 16),
-        TableColumn("Stars", 6), TableColumn("CA", 4), TableColumn("Best fit", 26), TableColumn("Cover", 19),
+        TableColumn("Role", 6), TableColumn("CA", 4), TableColumn("Best fit", 26), TableColumn("Cover", 19),
         TableColumn("Have / want", 8), TableColumn("Status", 6), TableColumn("What's missing", 28),
     ]
 

@@ -94,6 +94,67 @@ struct FMElements {
         try withUnsafeMutablePointer(to: &hidden) { _ = try il2cpp.call(scrollView, "set_verticalScrollerVisibility", [Pointer($0)]) }
     }
 
+    /// FM's star graphic, the yellow stars of its Ability and Potential columns, with `halves` half stars of five in
+    /// gold. It's made as FM's own star cells make it, a row of five plain elements, from the same style classes, so
+    /// FM's style sheets draw it; none of FM's code runs.
+    func stars(_ halves: Int, name: String? = nil) throws -> Pointer {
+        let rating = try box([Self.starRating], name: name)
+        for _ in 0..<5 { try add(try box(), to: rating) }
+        try setStars(rating, halves)
+        return rating
+    }
+
+    /// A star graphic's stars, gold for `halves` half stars, 0 to 10, and empty after.
+    func setStars(_ rating: Pointer, _ halves: Int) throws {
+        let stars = children(of: rating)
+        guard stars.count == 5 else { throw IL2CPP.Failure("A star graphic has \(stars.count) stars, not 5") }
+        for (star, wanted) in zip(stars, Self.starClasses(halves)) {
+            for name in Self.everyStarClass {
+                let has = hasClass(star, name)
+                if wanted.contains(name), !has { try addClass(star, name) }
+                if !wanted.contains(name), has { try removeClass(star, name) }
+            }
+        }
+    }
+
+    /// The classes of FM's star graphic, from FM's star rating settings for players who aren't youth players, as its
+    /// star cells show them: the row, a gold star, a gold half and an empty half, an empty star, and the gap after each
+    /// star but the last.
+    nonisolated static let starRating = "fm-star-rating-container"
+    nonisolated static let goldStar = "ability-max-potential-level-fullfilled-youth-false"
+    nonisolated static let halfStar = "ability-half-potential-level-none-youth-false"
+    nonisolated static let emptyStar = "ability-minimum-potential-level-none-youth-false"
+    nonisolated static let starGap = "fm-star-rating-star"
+    nonisolated static let lastStar = "fm-star-rating-star-no-margin"
+    nonisolated private static let everyStarClass = [goldStar, halfStar, emptyStar, starGap, lastStar]
+
+    /// Each of the five stars' classes for `halves` half stars, as FM's star cells work them out: a whole star in gold
+    /// for every two, then half a gold star for one left over, then empty stars.
+    nonisolated static func starClasses(_ halves: Int) -> [Set<String>] {
+        (0..<5).map { star in
+            let fill = halves >= 2 * star + 2 ? goldStar : halves == 2 * star + 1 ? halfStar : emptyStar
+            return [fill, star == 4 ? lastStar : starGap]
+        }
+    }
+
+    /// The half stars, 0 to 10, in a number of stars as FM Starship writes them: for CA and PA in Stars mode, such as
+    /// 3.5★, and for FM's stars for a player in a role, such as ★★★½. Nil for anything else, such as a number, nothing,
+    /// the dash for a role's no stars, or stars between halves, such as an average's 3.45★.
+    nonisolated static func halfStars(_ text: String) -> Int? {
+        // A role's stars: a ★ for each whole star, then ½ for half of one.
+        let half = text.hasSuffix("½") ? 1 : 0
+        let whole = text.dropLast(half)
+        if !text.isEmpty, whole.allSatisfy({ $0 == "★" }) {
+            let halves = whole.count * 2 + half
+            return halves <= 10 ? halves : nil
+        }
+        guard text.hasSuffix("★") else { return nil }
+        let number = text.dropLast()
+        guard !number.isEmpty, number.allSatisfy({ "0123456789.".contains($0) }), let stars = Double(number),
+              stars.isFinite, stars >= 0, stars <= 5, (stars * 2).rounded() == stars * 2 else { return nil }
+        return Int(stars * 2)
+    }
+
     func setText(_ element: Pointer, _ value: String) throws {
         try il2cpp.call(element, "set_text", [il2cpp.managedString(value)])
     }

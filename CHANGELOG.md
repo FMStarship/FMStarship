@@ -10,8 +10,14 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
   While Hidden attributes is off, it says Off and can't be changed, as in the app.
 - **Both settings moved to each screen's title row** inside FM, at its right. In the row of screen names they squeezed the names
   until they wrapped.
-- **A menu on the FM STARSHIP tab.** Like FM's own tabs, it has an arrow beside its name that opens a menu of its seven screens,
-  from any of FM's screens. Choosing one opens the tab on that screen. A click elsewhere, Escape or FM's Back closes it.
+- **A menu on the FM STARSHIP tab.** Like FM's own tabs, it has an arrow beside its name. Hovering it opens a menu of its seven
+  screens, from any of FM's screens, and FM dims the rest of its screen as it does for its own menus. Choosing one opens the tab on
+  that screen. Like FM's, the menu goes as soon as the pointer leaves the arrow and the menu.
+- **Role, not Stars.** In the Squad planner's first team, Best eleven and Optimized tactic and roles, the column of FM's stars for
+  each player in the role at their place is now called Role, in the app and inside FM. Inside FM, in Stars mode, CA and PA are
+  called Ability and Potential, as FM's own star columns are, so the two kinds of stars no longer look like the same column twice.
+- **FM's own stars inside FM.** In Stars mode, Ability, Potential and Role are drawn as FM's yellow stars, with room for all five,
+  and they sort by stars. They're FM Starship's values, on its own scale, where CA 200 is five stars.
 
 ## 27.0.6
 
