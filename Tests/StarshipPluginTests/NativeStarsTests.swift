@@ -197,4 +197,19 @@ final class NativeStarsTests: XCTestCase {
         XCTAssertNil(FMTable.widen(by: 1, need: 81, got: 0))
         XCTAssertNil(FMTable.widen(by: 1, need: .nan, got: 68))
     }
+
+    func testStarColumnsOfOursStandInForFMsHiddenAndScoutsColumnsOnce() {
+        var ability = FMTable.Extra(host: FMTable.ownID("Ability"), title: "Ability", values: [1: "3.5★"])
+        ability.replaces = ["hidden-current-ability", "scout-opinion-current-ability"]
+        ability.starWidth = 90
+        var potential = FMTable.Extra(host: FMTable.ownID("Potential"), title: "Potential", values: [1: "4.0★"])
+        potential.replaces = ["hidden-potential-ability", "scout-opinion-potential-ability"]
+        // A list screen's FM columns, and a planner's, which already names FM's hidden CA.
+        XCTAssertEqual(FMTable.columns(["name", "wage", "scout-opinion-current-ability", "scout-opinion-potential-ability"],
+                                       with: [ability, potential]),
+                       ["name", "wage", "fmstarship-ability", "fmstarship-potential"])
+        XCTAssertEqual(FMTable.columns(["name", "hidden-current-ability", "scout-opinion-current-ability"], with: [ability]),
+                       ["name", "fmstarship-ability"], "Once, however many of FM's it stands in for")
+        XCTAssertGreaterThanOrEqual(ability.width, 90, "As wide as FM's stars need, whatever its text")
+    }
 }

@@ -295,10 +295,6 @@ struct FMTable {
             try il2cpp.setField(metadata, "m_widthOverride", width)
             try il2cpp.setField(metadata, "m_minWidthOverride", min(width, 60))
         }
-        // FM's stars are wider than FM's hidden CA and PA columns, or our role column. FM fits a table by its columns'
-        // widths, with this in place of the column's own, and holds no column to a minimum over 44, so this is how ours
-        // gets the room.
-        if stars { try il2cpp.setField(metadata, "m_widthOverride", Self.starsWidth) }
         return metadata
     }
 
@@ -341,17 +337,24 @@ struct FMTable {
         /// For CA and PA in FM's columns for them, a heading in place of FM's: in Stars mode, FM's names for its own
         /// star columns. Nil keeps FM's.
         var heading: String?
+        /// FM's columns this one takes the place of: CA and PA drawn as FM's stars go in columns of our own, as FM's
+        /// hidden CA and PA columns are only ever as wide as FM made them, so they stand in for those and FM's scouts' ones.
+        var replaces: [String] = []
+        /// At least this wide, for FM's stars, which need more room than their text.
+        var starWidth: Float = 0
         /// Wide enough for the heading and the longest value. FM fits a table to the screen in proportion to its
         /// columns' own widths, so this is the column's share as much as its width.
         var width: Float {
             let longest = max((title ?? heading)?.count ?? 0, values.values.map(\.count).max() ?? 0)
-            return min(360, max(70, Float(longest) * 7 + 24))
+            return max(starWidth, min(360, max(70, Float(longest) * 7 + 24)))
         }
     }
 
     nonisolated private static let abilityHosts = ["CA": "hidden-current-ability", "PA": "hidden-potential-ability"]
     /// FM's headings for its own Ability and Potential columns, which show stars, for ours in Stars mode.
     nonisolated private static let starHeadings = ["CA": "Ability", "PA": "Potential"]
+    /// FM's scouts' Ability and Potential columns, which ours stand in for.
+    nonisolated private static let scoutColumns = ["CA": "scout-opinion-current-ability", "PA": "scout-opinion-potential-ability"]
     /// Headings in FM's words where FM has its own for what the engine shows: FM calls whether a player would join
     /// his interest.
     nonisolated private static let headings = ["Would join on": "Interest"]
@@ -408,9 +411,18 @@ struct FMTable {
                 var extra = Extra(host: host, title: nil, values: values, tones: tones, quiet: quiet)
                 // In Stars mode, as its values show, under FM's names for its star columns; in Exact, FM's CA and PA.
                 if holdsStars(extra) { extra.heading = starHeadings[title] }
+                // Drawn as FM's stars, in a column of our own that can be as wide as they need.
+                if showsStars(extra), let star = starHeadings[title] {
+                    var own = Extra(host: ownID(star), title: star, values: values, tones: tones, quiet: quiet)
+                    own.replaces = [host, scoutColumns[title] ?? ""].filter { !$0.isEmpty }
+                    own.starWidth = starsWidth
+                    return own
+                }
                 return extra
             }
-            return Extra(host: ownID(heading), title: heading, values: values, tones: tones, quiet: quiet, order: table.columns[column].order)
+            var extra = Extra(host: ownID(heading), title: heading, values: values, tones: tones, quiet: quiet, order: table.columns[column].order)
+            if showsStars(extra) { extra.starWidth = starsWidth }
+            return extra
         }
     }
 
@@ -436,6 +448,15 @@ struct FMTable {
     /// keeps the factory loaded; FM's own tables never ask for them.
     func addOwnColumns(_ extras: [Extra], to factory: Pointer) {
         guard let lookup = il2cpp.fieldObject(factory, "m_rowDataLookup") else { return }
+        // A column of ours FM already has keeps the width it was made with, unless it holds FM's stars, whose room
+        // can grow once they're seen cut off.
+        for extra in extras where extra.title != nil && extra.starWidth > 0 {
+            guard il2cpp.unbox(try? il2cpp.call(lookup, "ContainsKey", [il2cpp.managedString(extra.host)]), as: Bool.self) == true,
+                  let column = try? il2cpp.call(lookup, "get_Item", [il2cpp.managedString(extra.host)]) else { continue }
+            do { try il2cpp.setField(column, "m_defaultWidth", extra.width) } catch {
+                PluginLog.write("Our column \(extra.host) couldn't be made wider for FM's stars: \(error)")
+            }
+        }
         let wanted = extras.filter { extra in
             extra.title != nil && il2cpp.unbox(try? il2cpp.call(lookup, "ContainsKey", [il2cpp.managedString(extra.host)]), as: Bool.self) == false
         }
@@ -461,7 +482,16 @@ struct FMTable {
     /// opinion of them, and its other columns at the end.
     static func columns(_ columns: [String], with extras: [Extra]) -> [String] {
         let hosts = Set(extras.map(\.host))
-        var chosen = columns.map { id -> String in
+        var chosen: [String] = []
+        for id in columns {
+            // Ours drawn as FM's stars, in place of FM's hidden or scouts' column for the same, once.
+            if let standIn = extras.first(where: { $0.replaces.contains(id) }) {
+                if !chosen.contains(standIn.host) { chosen.append(standIn.host) }
+                continue
+            }
+            chosen.append(id)
+        }
+        chosen = chosen.map { id -> String in
             switch id {
             case "scout-opinion-current-ability" where hosts.contains("hidden-current-ability"): return "hidden-current-ability"
             case "scout-opinion-potential-ability" where hosts.contains("hidden-potential-ability"): return "hidden-potential-ability"
@@ -667,7 +697,11 @@ struct FMTable {
     /// The list sorted by one of our columns: positions in FM's order for them, otherwise by the number a value starts
     /// with where it has one, such as CA's 153 or +15 (GK), otherwise alphabetically, with what has no value last.
     static func sorted(_ people: [Person], by extra: Extra, descending: Bool) -> [Person] {
+        // A column of stars sorts by how many, whichever way they're written, with a role FM gives none (a dash) as none.
+        let stars = holdsStars(extra)
         func number(_ text: String) -> Double? {
+            if stars, let halves = FMElements.halfStars(text) { return Double(halves) / 2 }
+            if stars, text == "-" { return 0 }
             let start = text.prefix { "+-0123456789.".contains($0) }
             return Double(start.hasPrefix("+") ? String(start.dropFirst()) : String(start))
         }
