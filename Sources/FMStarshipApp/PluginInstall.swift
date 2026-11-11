@@ -64,6 +64,9 @@ struct PluginFolder: Sendable {
     static let pluginName = "libStarshipPlugin.dylib"
     static let launcherName = "FM Starship Launcher.app"
     static let markerName = "installed-by-app.json"
+    /// How each add's own staging folder is named. Scripts/install-plugin.sh names its staging otherwise, so the sweep
+    /// leaves that alone.
+    static let stagingPrefix = ".adding."
 
     /// The launcher looks for the plugin under HOME, and Scripts/install-plugin.sh puts it there, so the app goes by
     /// HOME too. Foundation's home folder ignores it.
@@ -124,30 +127,42 @@ struct PluginFolder: Sendable {
         guard bundled.isThere else { throw PluginInstallError.notInApp }
         let files = FileManager.default
         try files.createDirectory(at: url, withIntermediateDirectories: true)
+        sweep()
+        // A folder of its own for each add, so two at once, from two copies of the app, never share a copy.
+        let staging = url.appendingPathComponent(Self.stagingPrefix + UUID().uuidString, isDirectory: true)
+        try files.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? files.removeItem(at: staging) }
         for (source, target) in [(bundled.plugin, plugin), (bundled.launcher, launcher)] {
-            let staged = url.appendingPathComponent(".\(target.lastPathComponent).new", isDirectory: target.hasDirectoryPath)
-            try? files.removeItem(at: staged)
+            let staged = staging.appendingPathComponent(target.lastPathComponent, isDirectory: target.hasDirectoryPath)
             try files.copyItem(at: source, to: staged)
-            do {
-                try check(staged, target.lastPathComponent)
-                // Every way of copying keeps the download's quarantine flag, and with it Gatekeeper could stop Steam
-                // starting the launcher. A copy has no notarization ticket stapled to it to show instead.
-                try Self.removeQuarantine(staged)
-                // Marked as the app's, at a build below any real one, before anything of the app's goes in. A copy that
-                // stops halfway is then the app's to finish at its next start, not a developer's own build to leave alone.
-                try mark(PluginMarker(version: marker.version, build: "0"))
-                if files.fileExists(atPath: target.path) {
-                    // The new copy as the app has it, with none of the old copy's metadata carried over.
-                    _ = try files.replaceItemAt(target, withItemAt: staged, options: .usingNewMetadataOnly)
-                } else {
-                    try files.moveItem(at: staged, to: target)
-                }
-            } catch {
-                try? files.removeItem(at: staged)
-                throw error
+            try check(staged, target.lastPathComponent)
+            // Every way of copying keeps the download's quarantine flag, and with it Gatekeeper could stop Steam
+            // starting the launcher. A copy has no notarization ticket stapled to it to show instead.
+            try Self.removeQuarantine(staged)
+            // Marked as the app's, at a build below any real one, before anything of the app's goes in. A copy that
+            // stops halfway is then the app's to finish at its next start, not a developer's own build to leave alone.
+            try mark(PluginMarker(version: marker.version, build: "0"))
+            if files.fileExists(atPath: target.path) {
+                // The new copy as the app has it, with none of the old copy's metadata carried over.
+                _ = try files.replaceItemAt(target, withItemAt: staged, options: .usingNewMetadataOnly)
+            } else {
+                try files.moveItem(at: staged, to: target)
             }
         }
         try mark(marker)
+    }
+
+    /// Takes away the staging folders of adds that stopped partway, such as when the app was quit. A new one may be
+    /// another copy of the app's add that's still going, and an add takes well under a second, so only those an hour
+    /// old go.
+    private func sweep() {
+        let files = FileManager.default
+        let stale = Date(timeIntervalSinceNow: -3600)
+        for name in (try? files.contentsOfDirectory(atPath: url.path)) ?? [] where name.hasPrefix(Self.stagingPrefix) {
+            let item = url.appendingPathComponent(name, isDirectory: true)
+            guard let made = try? item.resourceValues(forKeys: [.creationDateKey]).creationDate, made < stale else { continue }
+            try? files.removeItem(at: item)
+        }
     }
 
     private func mark(_ marker: PluginMarker) throws {

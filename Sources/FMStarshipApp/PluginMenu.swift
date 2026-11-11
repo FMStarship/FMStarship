@@ -9,6 +9,7 @@ final class PluginInstaller: ObservableObject {
     @Published private(set) var installed = InstalledPlugin.nothing
     private let folder = PluginFolder(home: PluginFolder.home)
     private let bundled = BundledPlugin(app: Bundle.main.bundleURL)
+    private let copier = PluginCopier()
     private var marker: PluginMarker {
         PluginMarker(version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
                      build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
@@ -30,11 +31,11 @@ final class PluginInstaller: ObservableObject {
         let installed = folder.installed()
         let marker = marker
         guard PluginFolder.stepAtStart(installed, appBuild: marker.build, carried: bundled.isThere) == .copy else { return }
-        let (folder, bundled) = (folder, bundled)
+        let (folder, bundled, copier) = (folder, bundled, copier)
         let was = if case .fromApp(let build) = installed { build ?? "unknown" } else { "unknown" }
         Task.detached(priority: .utility) {
             do {
-                try folder.add(from: bundled, marker: marker, check: PluginFolder.signedLike(app: Bundle.main.bundleURL))
+                try await copier.add(to: folder, from: bundled, marker: marker)
                 AppLog.write("Plugin: refreshed the copies in \(folder.url.path) from build \(was) to build \(marker.build), \(marker.version)")
             } catch {
                 AppLog.write("Plugin: couldn't refresh the copies in \(folder.url.path): \(error)")
@@ -67,9 +68,7 @@ final class PluginInstaller: ObservableObject {
         Task {
             defer { look() }
             do {
-                try await Task.detached(priority: .userInitiated) {
-                    try folder.add(from: bundled, marker: marker, check: PluginFolder.signedLike(app: Bundle.main.bundleURL))
-                }.value
+                try await copier.add(to: folder, from: bundled, marker: marker)
                 AppLog.write("Plugin: added build \(marker.build), \(marker.version), to \(folder.url.path)")
             } catch {
                 AppLog.write("Plugin: couldn't add it to \(folder.url.path): \(error)")
@@ -161,6 +160,14 @@ final class PluginInstaller: ObservableObject {
         } else {
             then(alert.runModal())
         }
+    }
+}
+
+/// Adds the app's copies off the main thread and one at a time, so the refresh at start and the menu's Add are never
+/// in the folder at once.
+private actor PluginCopier {
+    func add(to folder: PluginFolder, from bundled: BundledPlugin, marker: PluginMarker) throws {
+        try folder.add(from: bundled, marker: marker, check: PluginFolder.signedLike(app: Bundle.main.bundleURL))
     }
 }
 

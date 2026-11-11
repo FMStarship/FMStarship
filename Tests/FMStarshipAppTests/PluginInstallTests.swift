@@ -152,7 +152,7 @@ final class PluginInstallTests: XCTestCase {
         XCTAssertTrue(isQuarantined(folder.url.appendingPathComponent("fm-table-assets.json")), "only the copies are touched")
         XCTAssertFalse(isQuarantined(folder.plugin), "the old copy's flag doesn't come back with the new one")
         XCTAssertFalse(isQuarantined(folder.launcher))
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.url.path).filter { $0.hasSuffix(".new") }, [])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.url.path).filter { $0.hasPrefix(".") }, [], "no staging left")
         XCTAssertEqual(folder.installed(), .fromApp(build: "8"))
     }
 
@@ -186,7 +186,7 @@ final class PluginInstallTests: XCTestCase {
         XCTAssertEqual(seen, ["libStarshipPlugin.dylib"])
         XCTAssertEqual(try read(folder.plugin), "old plugin")
         XCTAssertEqual(folder.installed(), .fromScript, "no marker without the copies")
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.url.path).filter { $0.hasSuffix(".new") }, [])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.url.path).filter { $0.hasPrefix(".") }, [], "no staging left")
     }
 
     func testAFirstAddThatStopsHalfwayIsTheAppsToFinish() throws {
@@ -202,6 +202,41 @@ final class PluginInstallTests: XCTestCase {
         try folder.add(from: bundled, marker: marker)
         XCTAssertEqual(try read(folder.launcher.appendingPathComponent("Contents/MacOS/FM Starship Launcher")), "new launcher")
         XCTAssertEqual(folder.installed(), .fromApp(build: "8"))
+    }
+
+    /// Two copies of the app refreshing at the same start, each with a check slow enough for the other to get in.
+    func testAddsAtTheSameTimeDontShareTheirCopies() throws {
+        try makeApp()
+        try makeOldInstall(marker: PluginMarker(version: "27.0.6", build: "7"))
+        let (folder, bundled, marker) = (folder, bundled, marker)
+        let lock = NSLock()
+        var failures: [String] = []
+        for _ in 0..<20 {
+            DispatchQueue.concurrentPerform(iterations: 2) { _ in
+                do {
+                    try folder.add(from: bundled, marker: marker) { _, _ in usleep(2_000) }
+                } catch {
+                    lock.withLock { failures.append("\(error)") }
+                }
+            }
+        }
+        XCTAssertEqual(failures, [])
+        XCTAssertEqual(try read(folder.plugin), "new plugin")
+        XCTAssertEqual(try read(folder.launcher.appendingPathComponent("Contents/MacOS/FM Starship Launcher")), "new launcher")
+        XCTAssertEqual(folder.installed(), .fromApp(build: "8"))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.url.path).filter { $0.hasPrefix(".") }, [], "no staging left")
+    }
+
+    func testAnAddSweepsUpOldStagingButNotAnotherAddsInProgress() throws {
+        try makeApp()
+        let left = folder.url.appendingPathComponent(PluginFolder.stagingPrefix + "left")
+        let going = folder.url.appendingPathComponent(PluginFolder.stagingPrefix + "going")
+        for staging in [left, going] { try write("half a copy", to: staging.appendingPathComponent(PluginFolder.pluginName)) }
+        try FileManager.default.setAttributes([.creationDate: Date(timeIntervalSinceNow: -7200)], ofItemAtPath: left.path)
+        try folder.add(from: bundled, marker: marker)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: left.path), "left by an add that stopped partway")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: going.path), "another copy of the app may still be adding from it")
+        XCTAssertEqual(try read(folder.plugin), "new plugin")
     }
 
     func testTheCheckRefusesWhatIsntSigned() throws {
