@@ -189,6 +189,21 @@ final class PluginInstallTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.url.path).filter { $0.hasSuffix(".new") }, [])
     }
 
+    func testAFirstAddThatStopsHalfwayIsTheAppsToFinish() throws {
+        try makeApp()
+        XCTAssertThrowsError(try folder.add(from: bundled, marker: marker) { _, name in
+            if name == PluginFolder.launcherName { throw PluginInstallError.otherSigner(name) }
+        })
+        XCTAssertEqual(try read(folder.plugin), "new plugin")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.launcher.path))
+        XCTAssertEqual(folder.installed(), .fromApp(build: "0"), "not a developer's own build")
+        XCTAssertEqual(PluginFolder.stepAtStart(folder.installed(), appBuild: "8", carried: true), .copy, "the next start finishes it")
+        XCTAssertEqual(PluginFolder.stepToAdd(folder.installed()), .copy, "the next Add doesn't ask")
+        try folder.add(from: bundled, marker: marker)
+        XCTAssertEqual(try read(folder.launcher.appendingPathComponent("Contents/MacOS/FM Starship Launcher")), "new launcher")
+        XCTAssertEqual(folder.installed(), .fromApp(build: "8"))
+    }
+
     func testTheCheckRefusesWhatIsntSigned() throws {
         try write("not code", to: root.appendingPathComponent("unsigned"))
         let check = PluginFolder.signedLike(app: URL(fileURLWithPath: "/usr/bin/true"))

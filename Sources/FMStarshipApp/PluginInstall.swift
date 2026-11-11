@@ -133,6 +133,9 @@ struct PluginFolder: Sendable {
                 // Every way of copying keeps the download's quarantine flag, and with it Gatekeeper could stop Steam
                 // starting the launcher. A copy has no notarization ticket stapled to it to show instead.
                 try Self.removeQuarantine(staged)
+                // Marked as the app's, at a build below any real one, before anything of the app's goes in. A copy that
+                // stops halfway is then the app's to finish at its next start, not a developer's own build to leave alone.
+                try mark(PluginMarker(version: marker.version, build: "0"))
                 if files.fileExists(atPath: target.path) {
                     // The new copy as the app has it, with none of the old copy's metadata carried over.
                     _ = try files.replaceItemAt(target, withItemAt: staged, options: .usingNewMetadataOnly)
@@ -144,6 +147,10 @@ struct PluginFolder: Sendable {
                 throw error
             }
         }
+        try mark(marker)
+    }
+
+    private func mark(_ marker: PluginMarker) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(marker).write(to: self.marker, options: .atomic)
