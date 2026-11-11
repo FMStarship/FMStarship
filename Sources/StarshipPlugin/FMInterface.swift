@@ -1935,6 +1935,8 @@ final class FMInterface {
             tableCommand(Array(words.dropFirst()), ui)
         case "methods":
             InterfaceDump.shared.writeMethodMap()
+        case "find":
+            InterfaceDump.shared.find(words.dropFirst().first ?? "")
         case "veil":
             // The tab menu's veil over FM's screen, as red green blue opacity from 0 to 1, from the menu's next opening.
             let parts = words.dropFirst().compactMap { Float($0) }.filter { $0.isFinite }

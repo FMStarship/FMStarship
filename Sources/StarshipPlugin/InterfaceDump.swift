@@ -204,6 +204,22 @@ final class InterfaceDump {
         }
     }
 
+    /// Every method in every image whose name holds `word`, with its class and image, to the log: for finding where in
+    /// FM or Unity something is done.
+    func find(_ word: String) {
+        guard let il2cpp = IL2CPP.shared, !word.isEmpty else { return }
+        var found: [String] = []
+        for image in il2cpp.imageNames {
+            for klass in il2cpp.classes(inImage: image) {
+                let className = il2cpp.name(of: klass)
+                for method in il2cpp.codeOffsets(klass) where method.name.localizedCaseInsensitiveContains(word) {
+                    found.append("\(image): \(className)::\(method.name)")
+                }
+            }
+        }
+        PluginLog.write("Methods with '\(word)': \(found.isEmpty ? "none" : found.prefix(40).joined(separator: "; "))")
+    }
+
     private func write(_ lines: [String], to name: String) throws {
         try FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true)
         try lines.joined(separator: "\n").write(to: Self.folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
