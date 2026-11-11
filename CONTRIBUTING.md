@@ -42,7 +42,10 @@ because it deletes the running app.
 To try your own build of the plugin inside FM, run `Scripts/install-plugin.sh` and set the Steam launch option it prints, as the
 [README](README.md#installing-it) explains. That's safe while FM is running, and the next start of FM gets the new copy. Players add
 the plugin with the app's **Add FM Starship to FM** instead, and the app keeps that copy up to date. It never replaces a build of
-your own by itself, and asks before Add FM Starship to FM does.
+your own by itself, and asks before Add FM Starship to FM does. For quick rounds after a full install,
+`Scripts/install-plugin.sh --plugin-only` (add `--developer` for the developer tools) rebuilds and replaces only the plugin and
+leaves the launcher. `--uninstall` removes the plugin and keeps the launcher, so Steam still starts FM, and `--uninstall-all`
+removes the whole folder, once the launch option is cleared.
 
 ### Working without FM
 

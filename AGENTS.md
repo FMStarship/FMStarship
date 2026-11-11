@@ -18,7 +18,7 @@ the IL2CPP API that FM's game code exports. It's source available under PolyForm
 | Compile | `swift build` | Yes |
 | Check the interpreter against the real CPU | `tools/run-emutest.sh` | Yes |
 | Build `build/FM Starship.app` | `Scripts/build-app.sh` | **No** |
-| Install your own build of the plugin for FM's next start | `Scripts/install-plugin.sh`, with `--developer` for the developer tools | Yes, but ask your user first |
+| Install your own build of the plugin for FM's next start | `Scripts/install-plugin.sh`, with `--developer` for the developer tools and `--plugin-only` to leave the launcher alone | Yes, but ask your user first |
 
 The build needs Xcode and `brew install zstd`. Tests that need FM skip themselves when it isn't installed. `install-plugin.sh` replaces
 the plugin your user's FM loads, so only run it when they've asked. Players add the plugin from the app's menu instead, and the app
