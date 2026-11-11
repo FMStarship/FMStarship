@@ -137,14 +137,22 @@ struct FMElements {
         }
     }
 
-    /// The half stars, 0 to 10, in a number of stars as FM Starship writes them for CA and PA in Stars mode, such as
-    /// 3.5★. Nil for anything else, such as a number or nothing.
+    /// The half stars, 0 to 10, in a number of stars as FM Starship writes them: for CA and PA in Stars mode, such as
+    /// 3.5★, and for FM's stars for a player in a role, such as ★★★½. Nil for anything else, such as a number, nothing,
+    /// the dash for a role's no stars, or stars between halves, such as an average's 3.45★.
     nonisolated static func halfStars(_ text: String) -> Int? {
+        // A role's stars: a ★ for each whole star, then ½ for half of one.
+        let half = text.hasSuffix("½") ? 1 : 0
+        let whole = text.dropLast(half)
+        if !text.isEmpty, whole.allSatisfy({ $0 == "★" }) {
+            let halves = whole.count * 2 + half
+            return halves <= 10 ? halves : nil
+        }
         guard text.hasSuffix("★") else { return nil }
         let number = text.dropLast()
         guard !number.isEmpty, number.allSatisfy({ "0123456789.".contains($0) }), let stars = Double(number),
-              stars.isFinite, stars >= 0, stars <= 5 else { return nil }
-        return Int((stars * 2).rounded())
+              stars.isFinite, stars >= 0, stars <= 5, (stars * 2).rounded() == stars * 2 else { return nil }
+        return Int(stars * 2)
     }
 
     func setText(_ element: Pointer, _ value: String) throws {

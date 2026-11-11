@@ -18,6 +18,14 @@ final class TacticTests: XCTestCase {
         XCTAssertEqual(RoleBook.combined(8, 8), 8)
     }
 
+    func testTheRolesStarsAreCalledRoleBesideCA() {
+        // Not Stars, which beside CA in Stars mode reads as the same column twice.
+        for columns in [SquadPlanner.slotColumns, BestEleven.columns, TacticOptimizer.detailColumns] {
+            XCTAssertTrue(columns.contains { $0.title == "Role" })
+            XCTAssertFalse(columns.contains { $0.title == "Stars" })
+        }
+    }
+
     func testAShapeNoPresetUsesIsCountedLineByLine() {
         let back = [slot("GK"), slot("DR"), slot("DC", .right), slot("DC", .left), slot("DL")]
         XCTAssertEqual(Tactic(slots: back + [slot("DM"), slot("MC", .right), slot("MC", .left), slot("AMR"), slot("AML"), slot("ST")]).shape(in: nil), "4-1-2-2-1")

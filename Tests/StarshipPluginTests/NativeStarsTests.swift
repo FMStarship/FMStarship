@@ -35,8 +35,26 @@ final class NativeStarsTests: XCTestCase {
         XCTAssertEqual(FMElements.halfStars("3.5★"), 7)
         XCTAssertEqual(FMElements.halfStars("0.0★"), 0)
         XCTAssertEqual(FMElements.halfStars("5.0★"), 10)
-        for text in ["153", "", "★", "-0.5★", "5.5★", "3,5★", "3.5", "nan★", "inf★", "1e1★", "3.5★ "] {
+        for text in ["153", "", "-0.5★", "5.5★", "3,5★", "3.5", "nan★", "inf★", "1e1★", "3.5★ "] {
             XCTAssertNil(FMElements.halfStars(text), "\(text) isn't a number of stars")
+        }
+        // An average, such as the tactics' role stars, is between FM's half stars, so it stays text.
+        XCTAssertNil(FMElements.halfStars("3.45★"))
+    }
+
+    func testHalfStarsAreReadFromARolesStars() {
+        XCTAssertEqual(FMElements.halfStars("★★★½"), 7)
+        XCTAssertEqual(FMElements.halfStars("★"), 2)
+        XCTAssertEqual(FMElements.halfStars("½"), 1)
+        XCTAssertEqual(FMElements.halfStars("★★★★★"), 10)
+        // Every role's stars as the engine writes them, half a star to five.
+        for halves in 1...10 {
+            XCTAssertEqual(FMElements.halfStars(RoleBook.stars(halves)), halves, RoleBook.stars(halves))
+        }
+        // A role FM gives no stars is a dash, which stays a dash.
+        XCTAssertNil(FMElements.halfStars(RoleBook.stars(0)))
+        for text in ["★★★★★½", "★★★★★★", "½★", "★½★", "½½", "★★★ ", "Here: Inside Full-Back ★★★½", "Berg ★★★", "+0.5★", "-1★"] {
+            XCTAssertNil(FMElements.halfStars(text), "\(text) isn't a role's stars")
         }
     }
 
@@ -85,10 +103,65 @@ final class NativeStarsTests: XCTestCase {
         FMTable.nativeStars = true
         XCTAssertTrue(stars.allSatisfy(FMTable.showsStars))
         XCTAssertFalse(extras(.numbers).contains(where: FMTable.showsStars), "Exact numbers stay numbers")
-        let ownColumn = FMTable.Extra(host: FMTable.ownID("Value"), title: "Value", values: [1: "4.0★"])
-        XCTAssertFalse(FMTable.showsStars(ownColumn), "Only FM's CA and PA columns")
+        let ownColumn = FMTable.Extra(host: FMTable.ownID("Value"), title: "Value", values: [1: "4.0★", 2: "£4.5M"])
+        XCTAssertFalse(FMTable.showsStars(ownColumn), "One of our columns only with nothing but stars in it")
         FMTable.starsFailed = true
         XCTAssertFalse(stars.contains(where: FMTable.showsStars), "Text again once FM's stars have failed")
+    }
+
+    /// The Squad planner's first team inside FM, as the engine makes it, in Stars mode.
+    private func firstTeam(_ people: [Person]) -> [FMTable.Extra] {
+        let cells = [["GK", "Goalkeeper", "Goalkeeper", "Abel", "★★★½", "3.5★", "Here: Goalkeeper ★★★½", "Berg ★★", "1 / 2", "Fine", ""],
+                     ["DR", "Inside Full-Back", "Full-Back", "Berg", "★★★★", "3.0★", "Here: Inside Full-Back ★★★★", "Nobody", "1 / 2", "Watch", "Thin"],
+                     ["DC", "Centre-Back", "Centre-Back", "Carr", "-", "2.5★", "", "", "2 / 4", "Fine", ""],
+                     ["ST", "Poacher", "Poacher", "nobody picked", "", "", "", "", "0 / 2", "Gap", "Nobody"]]
+        let table = AnalysisTable(columns: SquadPlanner.slotColumns, rows: zip(cells, people).map { TableRow(cells: $0, person: $1) })
+        let layout = FMTable.layout(of: table, fm: ["Player": "name", "Best": "name"])
+        return FMTable.extras(from: table, titles: layout.extras)
+    }
+
+    func testTheRoleColumnGetsFMsStarsAndBestFitStaysText() {
+        let extras = firstTeam(players())
+        let role = extras.first { $0.title == "Role" }
+        XCTAssertEqual(role?.host, "fmstarship-role")
+        XCTAssertEqual(role?.values[1], "★★★½")
+        XCTAssertFalse(extras.contains(where: FMTable.showsStars), "Text until the developer command turns them on")
+        FMTable.nativeStars = true
+        XCTAssertEqual(extras.filter(FMTable.showsStars).map(\.host), ["fmstarship-role", "hidden-current-ability"],
+                       "The role's stars and CA; a dash and no player stay text in their cells")
+        XCTAssertEqual(extras.filter(FMTable.holdsStars).map(\.host), ["fmstarship-role", "hidden-current-ability"])
+        for title in ["Best fit", "Cover", "Have / want", "Status", "What's missing", "With the ball"] {
+            let extra = extras.first { $0.title == title }
+            XCTAssertNotNil(extra, title)
+            XCTAssertFalse(extra.map(FMTable.showsStars) ?? true, "\(title) stays text")
+        }
+        FMTable.starsFailed = true
+        XCTAssertFalse(extras.contains(where: FMTable.showsStars), "Text again once FM's stars have failed")
+    }
+
+    func testTheRoleColumnSortsByStarsWithNoneBelowHalfAStar() {
+        let people = (1...6).map { index -> Person in
+            let person = Person()
+            person.index = UInt32(index)
+            return person
+        }
+        let role = FMTable.Extra(host: FMTable.ownID("Role"), title: "Role",
+                                 values: [1: "★★★½", 2: "★★★★", 3: "-", 4: "", 5: "½", 6: "★★★★★"])
+        XCTAssertEqual(FMTable.sorted(people, by: role, descending: true).map(\.index), [6, 2, 1, 5, 3, 4])
+        XCTAssertEqual(FMTable.sorted(people, by: role, descending: false).map(\.index), [3, 5, 1, 2, 6, 4])
+    }
+
+    func testCAAndPAAreCalledAbilityAndPotentialInStarsModeAsFMsStarColumnsAre() {
+        XCTAssertEqual(extras(.stars).map(\.heading), ["Ability", "Potential"])
+        XCTAssertEqual(extras(.stars).map(\.title), [nil, nil], "Still FM's own columns for them")
+        XCTAssertEqual(extras(.numbers).map(\.heading), [nil, nil], "FM's CA and PA in Exact")
+        XCTAssertTrue(extras(.hidden).isEmpty)
+        // Without the developer command too: the heading goes with Stars mode, not with FM's star graphic.
+        XCTAssertFalse(FMTable.nativeStars)
+        // Our own columns keep their own titles, and get no heading of FM's.
+        XCTAssertTrue(firstTeam(players()).filter { $0.title != nil }.allSatisfy { $0.heading == nil })
+        // Wide enough for "Potential".
+        XCTAssertGreaterThanOrEqual(extras(.stars)[1].width, Float("Potential".count) * 7 + 24)
     }
 
     func testWithHiddenAttributesOffThereAreNoStars() {

@@ -12,6 +12,9 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
   until they wrapped.
 - **A menu on the FM STARSHIP tab.** Like FM's own tabs, it has an arrow beside its name that opens a menu of its seven screens,
   from any of FM's screens. Choosing one opens the tab on that screen. A click elsewhere, Escape or FM's Back closes it.
+- **Role, not Stars.** In the Squad planner's first team, Best eleven and Optimized tactic and roles, the column of FM's stars for
+  each player in the role at their place is now called Role, in the app and inside FM. Inside FM, in Stars mode, CA and PA are
+  called Ability and Potential, as FM's own star columns are, so the two kinds of stars no longer look like the same column twice.
 
 ## 27.0.6
 

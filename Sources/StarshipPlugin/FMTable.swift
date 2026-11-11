@@ -295,8 +295,9 @@ struct FMTable {
             try il2cpp.setField(metadata, "m_widthOverride", width)
             try il2cpp.setField(metadata, "m_minWidthOverride", min(width, 60))
         }
-        // FM's stars are wider than FM's hidden CA and PA columns. FM fits a table by its columns' widths, with this
-        // in place of the column's own, and holds no column to a minimum over 44, so this is how ours gets the room.
+        // FM's stars are wider than FM's hidden CA and PA columns, or our role column. FM fits a table by its columns'
+        // widths, with this in place of the column's own, and holds no column to a minimum over 44, so this is how ours
+        // gets the room.
         if stars { try il2cpp.setField(metadata, "m_widthOverride", Self.starsWidth) }
         return metadata
     }
@@ -337,15 +338,20 @@ struct FMTable {
         var quiet = false
         /// Positions sort in FM's order for them, as the engine's column says.
         var order = TableColumn.Order.text
+        /// For CA and PA in FM's columns for them, a heading in place of FM's: in Stars mode, FM's names for its own
+        /// star columns. Nil keeps FM's.
+        var heading: String?
         /// Wide enough for the heading and the longest value. FM fits a table to the screen in proportion to its
         /// columns' own widths, so this is the column's share as much as its width.
         var width: Float {
-            let longest = max(title?.count ?? 0, values.values.map(\.count).max() ?? 0)
+            let longest = max((title ?? heading)?.count ?? 0, values.values.map(\.count).max() ?? 0)
             return min(360, max(70, Float(longest) * 7 + 24))
         }
     }
 
     nonisolated private static let abilityHosts = ["CA": "hidden-current-ability", "PA": "hidden-potential-ability"]
+    /// FM's headings for its own Ability and Potential columns, which show stars, for ours in Stars mode.
+    nonisolated private static let starHeadings = ["CA": "Ability", "PA": "Potential"]
     /// Headings in FM's words where FM has its own for what the engine shows: FM calls whether a player would join
     /// his interest.
     nonisolated private static let headings = ["Would join on": "Interest"]
@@ -353,18 +359,29 @@ struct FMTable {
     /// for the players in our lists, so it doesn't sort; ours does instead. `table casort on` tries FM's again.
     static var abilitySortable = false
     /// CA and PA in Stars mode as FM's own star graphic, the yellow stars of its Ability and Potential columns, in
-    /// place of text such as 3.5★. They're still ours, on our scale, where CA 200 is five stars, and sort by our
-    /// columns' headings as before. Off until it's been seen in FM: the developer command `stars native` turns it on.
+    /// place of text such as 3.5★, and the stars FM gives a player in a role, in place of ★★★½. CA and PA are still
+    /// ours, on our scale, where CA 200 is five stars, and all of them sort by our columns' headings as before. Off
+    /// until it's been seen in FM: the developer command `stars native` turns it on.
     static var nativeStars = false
-    /// Set once FM's stars couldn't be made, or FM's style didn't reach them, after which CA and PA are text again.
+    /// Set once FM's stars couldn't be made, or FM's style didn't reach them, after which they're text again.
     static var starsFailed = false
     /// When the first of FM's stars went into one of our tables, to check them once they're laid out.
     static var firstStars: Date?
     static var starsChecked = false
 
-    /// Whether one of the engine's columns shows FM's stars: CA or PA, in FM's columns for them, in Stars mode.
+    /// Whether one of the engine's columns holds stars FM's star graphic can show: CA or PA in Stars mode, in FM's
+    /// columns for them, or a column of our own with nothing but stars in it, such as a role's. One with words beside
+    /// its stars, such as the planner's best fit, stays text.
+    nonisolated static func holdsStars(_ extra: Extra) -> Bool {
+        if extra.title == nil { return extra.values.values.contains { FMElements.halfStars($0) != nil } }
+        // A role FM gives no stars shows a dash, and a player with no role nothing.
+        let rated = extra.values.values.filter { !$0.isEmpty && $0 != "-" }
+        return !rated.isEmpty && rated.allSatisfy { FMElements.halfStars($0) != nil }
+    }
+
+    /// Whether one of the engine's columns shows FM's stars.
     static func showsStars(_ extra: Extra) -> Bool {
-        nativeStars && !starsFailed && extra.title == nil && extra.values.values.contains { FMElements.halfStars($0) != nil }
+        nativeStars && !starsFailed && holdsStars(extra)
     }
 
     /// The ID of our own column for one of the engine's, from its title.
@@ -387,7 +404,12 @@ struct FMTable {
             }
             let heading = headings[title] ?? title
             let quiet = table.rows.contains { $0.quietColumn == column }
-            if let host = abilityHosts[title] { return Extra(host: host, title: nil, values: values, tones: tones, quiet: quiet) }
+            if let host = abilityHosts[title] {
+                var extra = Extra(host: host, title: nil, values: values, tones: tones, quiet: quiet)
+                // In Stars mode, as its values show, under FM's names for its star columns; in Exact, FM's CA and PA.
+                if holdsStars(extra) { extra.heading = starHeadings[title] }
+                return extra
+            }
             return Extra(host: ownID(heading), title: heading, values: values, tones: tones, quiet: quiet, order: table.columns[column].order)
         }
     }
@@ -468,6 +490,10 @@ struct FMTable {
         var headedAt: Date?
         /// Whether any of its cells show FM's stars.
         var stars = false
+        /// The columns whose values are stars, worked out once, since a table's values don't change while it's up.
+        var starColumns: Set<String>?
+        /// FM's columns whose heading ours couldn't replace, which keep FM's.
+        var fmHeadings: Set<String> = []
 
         /// Forgets the rows and headings, and lets go of them, when the table goes or FM builds its columns again.
         @MainActor
@@ -475,6 +501,7 @@ struct FMTable {
             for handle in pinned.values { il2cpp?.unpin(handle) }
             for button in buttons { ClickActions.actions[button] = nil }
             stars = false
+            fmHeadings = []
             person = [:]
             cells = [:]
             fitted = []
@@ -501,6 +528,8 @@ struct FMTable {
 
     /// Set once FM's rows have been found not to be as expected, so that's logged only once.
     private static var rowsUnreadable = false
+    /// Set once one of FM's headings couldn't be changed, so that's logged only once.
+    private static var fmHeadingsFailed = false
 
     /// Which of our columns the list is sorted by, and which way.
     struct Sort: Equatable {
@@ -528,6 +557,8 @@ struct FMTable {
             shown.columns = ids
         }
         let placed = extras.compactMap { extra in ids.firstIndex(of: extra.host).map { (extra, $0) } }
+        if shown.starColumns == nil { shown.starColumns = Set(extras.filter(Self.holdsStars).map(\.host)) }
+        let starColumns = Self.nativeStars && !Self.starsFailed ? shown.starColumns ?? [] : []
         if Self.starsFailed, shown.stars {
             // FM's stars are off since they went in, so every row is written again, as text.
             shown.stars = false
@@ -548,8 +579,7 @@ struct FMTable {
             shown.cells[root] = cells
             for (extra, column) in placed where column < cells.count {
                 let value = extra.values[index] ?? ""
-                if Self.nativeStars, !Self.starsFailed, extra.title == nil, let halves = FMElements.halfStars(value),
-                   setStars(halves, in: cells[column]) {
+                if starColumns.contains(extra.host), let halves = FMElements.halfStars(value), setStars(halves, in: cells[column]) {
                     shown.stars = true
                     continue
                 }
@@ -572,7 +602,19 @@ struct FMTable {
                   let header = il2cpp.fieldObject(column, "m_header") else { continue }
             // Kept by its address until the table goes, so a header FM makes in its place can't be taken for it.
             shown.pin(header, il2cpp)
-            if let title = extra.title, !heading(header, title) { complete = false }
+            if let title = extra.title, (try? heading(header, title)) != true { complete = false }
+            if extra.title == nil, let title = extra.heading, !shown.fmHeadings.contains(id) {
+                // CA and PA under FM's names for its star columns. If ours can't go on, FM's CA and PA stay.
+                do {
+                    if try !heading(header, title) { complete = false }
+                } catch {
+                    shown.fmHeadings.insert(id)
+                    if !Self.fmHeadingsFailed {
+                        PluginLog.write("FM's heading for \(id) couldn't be changed to \(title), so it's left as FM's: \(error)")
+                    }
+                    Self.fmHeadingsFailed = true
+                }
+            }
             if !shown.hooked.contains(header), let button = il2cpp.fieldObject(header, "m_button") {
                 // FM can't sort by our values, so clicking the heading sorts the list by them here.
                 try? ui.onButtonClick(button) { onSort(id) }
@@ -594,16 +636,19 @@ struct FMTable {
 
     /// The engine's heading in place of FM's: a label of ours, in the style of FM's, with FM's hidden. FM writes
     /// its own heading into its label again whenever it binds the headings, and that no longer shows. False if ours
-    /// couldn't go on yet.
-    private func heading(_ header: Pointer, _ title: String) -> Bool {
+    /// couldn't go on yet, such as while FM is still filling the header; throws if it couldn't be made or put on.
+    private func heading(_ header: Pointer, _ title: String) throws -> Bool {
+        guard il2cpp.fieldOffset(il2cpp.classOf(header), "<TextLabel>k__BackingField") != nil else {
+            throw IL2CPP.Failure("FM's table headers have no TextLabel on this build of FM")
+        }
         guard let label = il2cpp.fieldObject(header, "<TextLabel>k__BackingField"), let parent = ui.parent(of: label) else { return false }
         if let ours = ui.query(parent, "FMStarshipHeading") {
-            if il2cpp.text(try? il2cpp.call(ours, "get_text")) != title { try? ui.setText(ours, title) }
+            if il2cpp.text(try? il2cpp.call(ours, "get_text")) != title { try ui.setText(ours, title) }
             return true
         }
-        guard let ours = try? ui.text(title, ui.classes(of: label), name: "FMStarshipHeading"),
-              let index = ui.children(of: parent).firstIndex(of: label) else { return false }
-        guard (try? ui.insert(ours, into: parent, at: index + 1)) != nil else { return false }
+        guard let index = ui.children(of: parent).firstIndex(of: label) else { return false }
+        let ours = try ui.text(title, ui.classes(of: label), name: "FMStarshipHeading")
+        try ui.insert(ours, into: parent, at: index + 1)
         try? ui.style(label) { try $0.keyword("display", 1) }
         return true
     }
@@ -747,7 +792,7 @@ struct FMTable {
     }
 
     /// FM's stars for one of our values in one of FM's cells, in place of the text, at the left of the cell and in the
-    /// middle of its height, as in FM's own star cells. False if they couldn't go in, and from then on CA and PA go in
+    /// middle of its height, as in FM's own star cells. False if they couldn't go in, and from then on stars go in
     /// as text.
     private func setStars(_ halves: Int, in cell: Pointer) -> Bool {
         do {
@@ -780,13 +825,13 @@ struct FMTable {
             return true
         } catch {
             Self.starsFailed = true
-            PluginLog.write("FM's stars couldn't go in our CA and PA columns, so they show as text: \(error)")
+            PluginLog.write("FM's stars couldn't go in our columns, so they show as text: \(error)")
             return false
         }
     }
 
     /// Whether FM's style reached the stars in our cells, once one has been laid out: each star is then FM's size, or,
-    /// if FM's style sheets don't reach them, nothing at all, and CA and PA go back to text. Checked once, and given up
+    /// if FM's style sheets don't reach them, nothing at all, and they go back to text. Checked once, and given up
     /// on if no stars have been seen laid out after a few seconds.
     private func checkStars(in table: Pointer, since first: Date) {
         guard let rating = ui.query(table, "FMStarshipStarRating"), let box = ui.parent(of: rating), let cell = ui.parent(of: box),
@@ -796,7 +841,7 @@ struct FMTable {
               let row = ui.layout(rating), row.width.isFinite else {
             if Date().timeIntervalSince(first) > 10 {
                 Self.starsChecked = true
-                PluginLog.write("FM's stars in our CA and PA columns weren't seen laid out, so they weren't checked")
+                PluginLog.write("FM's stars in our columns weren't seen laid out, so they weren't checked")
             }
             return
         }
@@ -814,11 +859,11 @@ struct FMTable {
             return
         }
         if size.width > 0, size.height > 0 {
-            PluginLog.write("FM's stars are up in our CA and PA columns: each star \(FMElements.whole(size.width))x\(FMElements.whole(size.height)), "
+            PluginLog.write("FM's stars are up in our columns: each star \(FMElements.whole(size.width))x\(FMElements.whole(size.height)), "
                 + "the five \(FMElements.whole(row.width)) wide in a cell \(width) wide")
         } else {
             Self.starsFailed = true
-            PluginLog.write("FM's style didn't reach the stars in our CA and PA columns (a star is \(FMElements.whole(size.width))x\(FMElements.whole(size.height))), so they show as text")
+            PluginLog.write("FM's style didn't reach the stars in our columns (a star is \(FMElements.whole(size.width))x\(FMElements.whole(size.height))), so they show as text")
         }
     }
 

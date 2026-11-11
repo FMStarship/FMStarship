@@ -23,7 +23,7 @@ public struct BestEleven {
 
     public static let columns = [
         TableColumn("Position", 8, order: .place), TableColumn("With the ball", 20), TableColumn("Without the ball", 20), TableColumn("Player", 20),
-        TableColumn("Stars", 7), TableColumn("CA", 5), TableColumn("Your pick", 20), TableColumn("Change", 7),
+        TableColumn("Role", 7), TableColumn("CA", 5), TableColumn("Your pick", 20), TableColumn("Change", 7),
     ]
 
     public let shape: String
