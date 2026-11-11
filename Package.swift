@@ -28,8 +28,8 @@ let package = Package(
             exclude: ["CZstd"],
             linkerSettings: [.unsafeFlags(["/opt/homebrew/lib/libzstd.a"])]
         ),
-        // The app's screens, shared by the app and the plugin. The app adds only its entry point and Sparkle,
-        // which can't load inside FM.
+        // The app's screens, shared by the app and the plugin. The app adds only its entry point, Sparkle, which
+        // can't load inside FM, and adding the plugin to FM, which the plugin mustn't carry.
         .target(
             name: "FMStarshipUI",
             dependencies: ["StarshipCore", "StarshipSearch", "StarshipAnalysis", "StarshipFiles"],
@@ -50,5 +50,6 @@ let package = Package(
         .testTarget(name: "StarshipSearchTests", dependencies: ["StarshipSearch", "StarshipCore"]),
         .testTarget(name: "StarshipAnalysisTests", dependencies: ["StarshipAnalysis", "StarshipSearch", "StarshipCore"]),
         .testTarget(name: "StarshipPluginTests", dependencies: ["StarshipPlugin", "StarshipAnalysis", "StarshipCore"]),
+        .testTarget(name: "FMStarshipAppTests", dependencies: ["FMStarship"]),
     ]
 )

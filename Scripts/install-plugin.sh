@@ -27,6 +27,9 @@ swift build -c release --product StarshipPlugin ${FLAGS[@]+"${FLAGS[@]}"}
 BIN="$(swift build -c release --show-bin-path)"
 
 mkdir -p "$DEST"
+# The app refreshes the copies it added itself, which its marker says. This is a developer's own build, so the marker
+# goes before anything is replaced, and the app leaves the folder alone from then on.
+rm -f "$DEST/installed-by-app.json"
 # Replaced rather than overwritten, so a running FM's mapped copy is never changed underneath it.
 cp "$BIN/libStarshipPlugin.dylib" "$DEST/.libStarshipPlugin.dylib.new"
 codesign -f -s - "$DEST/.libStarshipPlugin.dylib.new"
@@ -38,21 +41,7 @@ APP="$DEST/FM Starship Launcher.app"
 BUILD="$(mktemp -d "$DEST/.launcher.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 NEW="$BUILD/FM Starship Launcher.app"
-mkdir -p "$NEW/Contents/MacOS"
-clang -O2 -Wall -arch arm64 -mmacosx-version-min=14.0 -o "$NEW/Contents/MacOS/FM Starship Launcher" plugin/launcher.c \
-    -framework CoreFoundation
-cat > "$NEW/Contents/Info.plist" <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>FM Starship Launcher</string>
-<key>CFBundleIdentifier</key><string>com.fmstarship.launcher</string>
-<key>CFBundleName</key><string>FM Starship Launcher</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>LSMinimumSystemVersion</key><string>14.0</string>
-<key>LSUIElement</key><true/>
-</dict></plist>
-EOF
+Scripts/build-launcher.sh "$NEW"
 codesign -f -s - "$NEW"
 rm -rf "$APP" "$DEST/start-fm.sh"
 mv "$NEW" "$APP"

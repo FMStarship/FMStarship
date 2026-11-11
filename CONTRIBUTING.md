@@ -39,8 +39,10 @@ open "build/FM Starship.app"
 `swift build` and `swift test` are safe at any time. **Don't run `Scripts/build-app.sh` while FM or FM Starship is running**,
 because it deletes the running app.
 
-To try the plugin inside FM, run `Scripts/install-plugin.sh` and set the Steam launch option it prints, as the
-[README](README.md#installing-it) explains. That's safe while FM is running, and the next start of FM gets the new copy.
+To try your own build of the plugin inside FM, run `Scripts/install-plugin.sh` and set the Steam launch option it prints, as the
+[README](README.md#installing-it) explains. That's safe while FM is running, and the next start of FM gets the new copy. Players add
+the plugin with the app's **Add FM Starship to FM** instead, and the app keeps that copy up to date. It never replaces a build of
+your own by itself, and asks before Add FM Starship to FM does.
 
 ### Working without FM
 

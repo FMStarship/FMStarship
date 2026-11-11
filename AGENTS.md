@@ -18,10 +18,13 @@ the IL2CPP API that FM's game code exports. It's source available under PolyForm
 | Compile | `swift build` | Yes |
 | Check the interpreter against the real CPU | `tools/run-emutest.sh` | Yes |
 | Build `build/FM Starship.app` | `Scripts/build-app.sh` | **No** |
-| Install the plugin for FM's next start | `Scripts/install-plugin.sh`, with `--developer` for the developer tools | Yes, but ask your user first |
+| Install your own build of the plugin for FM's next start | `Scripts/install-plugin.sh`, with `--developer` for the developer tools | Yes, but ask your user first |
 
 The build needs Xcode and `brew install zstd`. Tests that need FM skip themselves when it isn't installed. `install-plugin.sh` replaces
-the plugin your user's FM loads, so only run it when they've asked.
+the plugin your user's FM loads, so only run it when they've asked. Players add the plugin from the app's menu instead, and the app
+refreshes its own copy when it updates. It leaves a build from `install-plugin.sh` alone, so after running it, your user gets the
+app's copy back only by choosing Add FM Starship to FM. The app's code for this goes by `HOME`, as the launcher does, so test it with
+a temporary `HOME`, never the real `~/Library/Application Support/FMStarship/Plugin`.
 
 Updates are the only thing the app goes online for, and the plugin never goes online. Keep it that way.
 
@@ -37,7 +40,7 @@ Updates are the only thing the app goes online for, and the plugin never goes on
 | `Sources/StarshipAnalysis` | Recommendations, planner, bargains, club reports |
 | `Sources/StarshipFiles` | Shortlists, snapshots, export, themes |
 | `Sources/FMStarship` | The app's screens, the library `FMStarshipUI`, shared by the app and the plugin |
-| `Sources/FMStarshipApp` | The app's entry point and its updater, which can't load inside FM |
+| `Sources/FMStarshipApp` | The app's entry point, its updater, and Add FM Starship to FM, none of which belong inside FM |
 | `Sources/StarshipPlugin` | The plugin: the IL2CPP bridge, FM's tables, and the screens inside FM |
 | `Sources/StarshipPluginStart` | The plugin's constructor, which starts it only inside FM |
 | `Sources/fmprobe` | Developer probe, for finding things after a patch |
