@@ -74,6 +74,38 @@ extension AppModel {
         set { if newValue != showHidden { showHidden = newValue } }
     }
 
+    /// Ability, as the toolbar's picker shows and sets it, for the dropdown in FM Starship's tab inside FM: Off while
+    /// Hidden attributes is off, when, as with the picker, it can't be changed. Setting it to what it already is changes
+    /// nothing, where setting `reveal` would search again.
+    package var ability: AbilityReveal {
+        get { Self.ability(of: shownReveal) }
+        set {
+            let setting = Self.setting(for: newValue)
+            if showHidden, setting != reveal { reveal = setting }
+        }
+    }
+
+    /// Ability's settings in the order the toolbar's picker has them, with its names for them.
+    nonisolated package static var abilityChoices: [(ability: AbilityReveal, title: String)] {
+        [Reveal.exact, .stars, .hidden].map { (ability(of: $0), $0.title) }
+    }
+
+    nonisolated private static func ability(of setting: Reveal) -> AbilityReveal {
+        switch setting {
+        case .exact: return .numbers
+        case .stars: return .stars
+        case .hidden: return .hidden
+        }
+    }
+
+    nonisolated private static func setting(for ability: AbilityReveal) -> Reveal {
+        switch ability {
+        case .numbers: return .exact
+        case .stars: return .stars
+        case .hidden: return .hidden
+        }
+    }
+
     /// Goes to the Players or Staff screen, which runs its search with that screen's filters, for FM Starship's
     /// screen inside FM to show what it finds.
     package func showListInsideGame(staff: Bool) {

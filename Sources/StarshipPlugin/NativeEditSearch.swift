@@ -237,7 +237,7 @@ struct NativeEditSearch {
         try ui.onClick(backdrop, close)
 
         let rowHeight: Float = 30
-        let top = spot.y + spot.height + 2 - area.y
+        let top = Self.listTop(under: spot.y + spot.height, screenTop: area.y)
         // No taller than FM's, and like FM's, scrolled with the wheel and trackpad without a bar.
         let height = min(Float(choices.count) * rowHeight + 3, 600, max(area.height - top - 16, rowHeight * 4))
         let list = try ui.scrollView(["siscrollview"], name: "FMStarshipDropdownList")
@@ -277,6 +277,12 @@ struct NativeEditSearch {
         return ([backdrop, list], clickable)
     }
 
+    /// Where a dropdown's list starts, down from the top of the screen it opens over: just under the dropdown, but never
+    /// above the screen, as it would be under a dropdown outside it.
+    nonisolated static func listTop(under dropdownBottom: Float, screenTop: Float) -> Float {
+        max(0, dropdownBottom + 2 - screenTop)
+    }
+
     /// One of FM's buttons, with its label.
     func button(_ title: String, _ style: Button) throws -> Pointer {
         let button = try ui.box(["sibutton", "navigatable", style.rawValue, "button-size-medium", "row-direction-normal", "align-items-center",
@@ -291,14 +297,14 @@ struct NativeEditSearch {
         return button
     }
 
-    /// A dropdown like FM's: what's chosen, and FM's chevron.
-    private func dropdown(_ text: String, width: Float) throws -> Pointer {
-        let box = try ui.box(["inputs-combobox-default-default-base", "navigatable-no-cursor", "row-direction-normal", "align-items-center",
-                              "sitext-hover-cursor"])
+    /// A dropdown like FM's: what's chosen, and FM's chevron. One that can't be changed is greyed out, as FM's are.
+    func dropdown(_ text: String, width: Float, height: Float = 32, enabled: Bool = true) throws -> Pointer {
+        let box = try ui.box(["inputs-combobox-default-default-base", "navigatable-no-cursor", "row-direction-normal", "align-items-center"]
+                             + (enabled ? ["sitext-hover-cursor"] : []))
         // FM draws its dropdown's box with the dropdown, so the box's look, read from FM's, is set here.
         try ui.style(box) { style in
             try style.length("width", width)
-            try style.length("height", 32)
+            try style.length("height", height)
             try style.length("paddingLeft", 17)
             try style.length("paddingRight", 9)
             for side in ["Top", "Bottom", "Left", "Right"] {
@@ -308,7 +314,8 @@ struct NativeEditSearch {
             for corner in ["TopLeft", "TopRight", "BottomLeft", "BottomRight"] { try style.length("border\(corner)Radius", 4) }
             try style.color("backgroundColor", (1, 1, 1, 0.137))
         }
-        let label = try ui.text(text, ["body-md", "content-no-wrap", "content-ellipsis", "sitext-hover-cursor"])
+        let label = try ui.text(text, ["body-md", "content-no-wrap", "content-ellipsis"]
+                                + (enabled ? ["sitext-hover-cursor"] : ["global-text-secondary"]))
         try ui.style(label) { try $0.number("flexGrow", 1) }
         try ui.add(label, to: box)
         let chevron = try ui.box(["ui-concepts-chevron-down_small"])
@@ -318,6 +325,7 @@ struct NativeEditSearch {
             try style.number("flexShrink", 0)
         }
         try ui.add(chevron, to: box)
+        if !enabled { try ui.disable(box) }
         return box
     }
 

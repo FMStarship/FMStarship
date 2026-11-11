@@ -64,9 +64,9 @@ The tab has these screens:
 - **Shortlists:** the player shortlists you've saved from the app
 - **Players** and **Staff:** the app's own searches, with its filters
 
-**Hidden attributes** is a switch at the right of the tab's subtabs. Control-Option-S opens the app's own windows over FM, for
-everything else, including Ability and Settings. When FM is in a window rather than full screen, its menu bar has an FM Starship menu
-too.
+**Ability** and **Hidden attributes** are at the right of each screen's title row, and set the same settings as the app's toolbar.
+Control-Option-S opens the app's own windows over FM, for everything else, including Settings. When FM is in a window rather than
+full screen, its menu bar has an FM Starship menu too.
 
 ### Installing it
 

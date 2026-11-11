@@ -3,6 +3,14 @@
 What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 [Releases](https://github.com/FMStarship/FMStarship/releases) page.
 
+## Unreleased
+
+- **Ability inside FM.** The FM STARSHIP tab has an Ability dropdown beside its Hidden attributes switch, for showing CA and PA
+  exactly, as stars, or not at all. It sets the same setting as the app's toolbar, and every screen is drawn again when it changes.
+  While Hidden attributes is off, it says Off and can't be changed, as in the app.
+- **Both settings moved to each screen's title row** inside FM, at its right. In the row of screen names they squeezed the names
+  until they wrapped.
+
 ## 27.0.6
 
 - **Works with FM27's full release.** FM's launch update (27.0.1.2494769) moved the game functions FM Starship runs for "would

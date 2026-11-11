@@ -18,11 +18,16 @@ struct NativeDashboard {
     /// FM's columns for the club's own players: who they are, how old, and where and how they play.
     static let playerColumns = ["name", "age", "scouted-best-position-and-role"]
 
-    func build(into body: Pointer, dashboard: ClubDashboard, table: AddTable) throws {
+    /// `settings` go at the right of the club's name, in the screen's title row.
+    func build(into body: Pointer, dashboard: ClubDashboard, settings: Pointer, table: AddTable) throws {
+        let title = try ui.box(["row-direction-normal", "align-items-center"])
         let heading = try ui.box()
+        try ui.style(heading) { try $0.number("flexGrow", 1) }
         try ui.add(try ui.text(dashboard.club, ["heading-xl", "global-text-primary"]), to: heading)
         try ui.add(try page.spaced(try ui.text(dashboard.line, ["body-md", "global-text-secondary"]), top: 4), to: heading)
-        try ui.add(try page.spaced(heading, bottom: 16), to: body)
+        try ui.add(heading, to: title)
+        try ui.add(settings, to: title)
+        try ui.add(try page.spaced(title, bottom: 16), to: body)
 
         let facts = try ui.box(["row-direction-normal"])
         for fact in dashboard.facts {
