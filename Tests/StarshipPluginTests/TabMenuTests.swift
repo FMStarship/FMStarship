@@ -86,16 +86,18 @@ final class TabMenuTests: XCTestCase {
         XCTAssertEqual(origin.top, 0)
     }
 
-    func testThePointerKeepsTheMenuOverTheTabTheGapAndTheMenu() {
+    func testOnlyTheArrowTheWayDownAndTheMenuKeepIt() {
         var places = FMInterface.HoverPlaces()
-        places.tab = (x: 640, y: 0, width: 109, height: 48)
+        places.tab = (x: 644, y: 2, width: 109, height: 48)
+        places.arrow = (x: 728, y: 13, width: 24, height: 25)
         // Before the menu is laid out, the space under the tab where it opens counts.
-        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 700, y: 20))
-        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 700, y: 150))
-        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 300, y: 20))
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 740, y: 25), "on the arrow")
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 700, y: 150), "where the menu opens")
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 680, y: 25), "on the tab's name, as FM's menus close there")
         places.menu = (x: 644, y: 53, width: 205, height: 212)
-        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 840, y: 200), "over the menu, right of the tab")
-        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 700, y: 50), "in the gap between tab and menu")
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 740, y: 46), "on the way down from the arrow")
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 840, y: 200), "on the menu")
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 680, y: 25), "on the tab's name")
         XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 700, y: 300), "below the menu")
         XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 900, y: 100), "right of the menu")
         XCTAssertFalse(FMInterface.pointerKeepsMenu(FMInterface.HoverPlaces(), x: 700, y: 20), "no tab, nothing keeps it")
@@ -109,14 +111,13 @@ final class TabMenuTests: XCTestCase {
         XCTAssertFalse(FMInterface.inside(nil, x: 730, y: 20))
     }
 
-    func testAPointerThatOvershootsTheArrowKeepsTheMenuButNotOneOnFMsTabToTheLeft() {
+    func testAPointerJustPastTheArrowKeepsItButNotOneOnFMsTabToTheLeft() {
         var places = FMInterface.HoverPlaces()
         places.tab = (x: 644, y: 2, width: 109, height: 48)
+        places.arrow = (x: 728, y: 13, width: 24, height: 25)
         places.menu = (x: 644, y: 53, width: 205, height: 212)
-        // Seen in FM: closes at 757 and 778 as the pointer went just past the arrow.
-        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 757, y: 16))
-        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 778, y: 18))
-        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 800, y: 18), "Well past it")
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 757, y: 16), "Seen in FM: just past the arrow")
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 778, y: 18), "Well past it")
         XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 639, y: 18), "On CLUB, to the left: FM's menu opens there")
     }
 }

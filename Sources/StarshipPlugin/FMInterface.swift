@@ -544,17 +544,18 @@ final class FMInterface {
         return x >= rect.x - margin && x <= rect.x + rect.width + margin && y >= rect.y - margin && y <= rect.y + rect.height + margin
     }
 
-    /// Whether the pointer is still over the tab, the gap below it, or the menu, so the menu stays open. Before the menu
-    /// has been laid out, the space under the tab where it opens counts.
+    /// Whether the pointer is still on the arrow, on the way from it down to the menu, or on the menu, so the menu stays
+    /// open, as FM's do: the rest of the tab doesn't keep it. Before the menu has been laid out, the space under the tab
+    /// where it opens counts as the menu.
     nonisolated static func pointerKeepsMenu(_ places: HoverPlaces, x: Float, y: Float) -> Bool {
-        if inside(places.tab, x: x, y: y, margin: 4) || inside(places.menu, x: x, y: y, margin: 4) { return true }
-        // Our tab is the last in FM's row and its arrow at its right end, so a pointer that overshoots the arrow a little
-        // keeps the menu; on the left, FM's own tab is right next to ours, so there it closes at once.
-        if let tab = places.tab, x > tab.x + tab.width, x <= tab.x + tab.width + 32, y >= tab.y - 4, y <= tab.y + tab.height + 4 { return true }
-        guard let tab = places.tab else { return false }
-        let below = (x: tab.x, y: tab.y + tab.height, width: max(tab.width, places.menu?.width ?? 210),
-                     height: places.menu == nil ? 230 : max(0, (places.menu?.y ?? 0) - tab.y - tab.height))
-        return inside(below, x: x, y: y, margin: 4)
+        if let arrow = places.arrow, x >= arrow.x - 4, x <= arrow.x + arrow.width + 12, y >= arrow.y - 6, y <= arrow.y + arrow.height + 6 {
+            return true
+        }
+        let menu = places.menu ?? places.tab.map { (x: $0.x, y: $0.y + $0.height + 2, width: Float(210), height: Float(230)) }
+        if inside(menu, x: x, y: y, margin: 4) { return true }
+        // Straight down from the arrow to the menu.
+        if let arrow = places.arrow, let menu, x >= arrow.x - 4, x <= arrow.x + arrow.width + 4, y >= arrow.y, y <= menu.y + 4 { return true }
+        return false
     }
 
     nonisolated static func describe(_ rect: HoverPlaces.Rect?) -> String {
