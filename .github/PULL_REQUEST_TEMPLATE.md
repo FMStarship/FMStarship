@@ -12,6 +12,7 @@
 
 - [ ] `swift test` passes
 - [ ] Checked in the app (say which screens, and whether with a live save or a snapshot)
+- [ ] Checked inside FM with the plugin, if this touches the plugin (say which screens)
 - [ ] Ran `tools/run-emutest.sh`, if this touches `Sources/CA64`
 
 ## Checklist
