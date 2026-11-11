@@ -122,6 +122,12 @@ public final class GameProcess: @unchecked Sendable {
         return GameProcess(pid: getpid(), plugin: plugin, regions: regions, smallHeap: smallHeap, inside: true)
     }
 
+    /// Tests stand in memory of their own for FM's: an image holding made-up classes, and regions holding made-up records.
+    static func inside(plugin: (base: Int64, size: Int64, path: String),
+                       regions: [(base: Int64, size: Int64, writable: Bool)]) -> GameProcess {
+        GameProcess(pid: getpid(), plugin: plugin, regions: regions, inside: true)
+    }
+
     private static func localImage(endingWith suffix: String) -> (base: Int64, size: Int64, path: String)? {
         for i in 0..<_dyld_image_count() {
             guard let name = _dyld_get_image_name(i), let header = _dyld_get_image_header(i) else { continue }
