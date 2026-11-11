@@ -117,6 +117,13 @@ final class InterfaceDump {
         if let tint = ui.resolvedColor(element, "unityBackgroundImageTintColor"), tint.0 < 0.999 || tint.1 < 0.999 || tint.2 < 0.999 || tint.3 < 0.999 {
             text += " tint \(hex(tint))"
         }
+        // UI Toolkit's filters (Unity 6.3), such as a darkening or a blur over a whole layer, with what each holds.
+        if let resolved = try? ui.il2cpp.call(element, "get_resolvedStyle"),
+           let getter = ui.il2cpp.method(ui.il2cpp.findClass(toolkit, "IResolvedStyle"), "get_filter", parameters: 0),
+           let filters = try? ui.il2cpp.call(getter, resolved),
+           let count = ui.il2cpp.unbox(try? ui.il2cpp.call(filters, "get_Count"), as: Int32.self), count > 0 {
+            text += " filter \(count): " + ui.il2cpp.describe(object: filters).replacingOccurrences(of: "\n", with: " | ")
+        }
         if ui.il2cpp.isSubclass(ui.il2cpp.classOf(element), of: ui.il2cpp.findClass(toolkit, "TextElement")),
            let colour = ui.resolvedColor(element, "color"), let size = ui.resolvedNumber(element, "fontSize") {
             text += " text \(hex(colour)) \(size)"
