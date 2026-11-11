@@ -1901,6 +1901,15 @@ final class FMInterface {
             tableCommand(Array(words.dropFirst()), ui)
         case "methods":
             InterfaceDump.shared.writeMethodMap()
+        case "veil":
+            // The tab menu's veil over FM's screen, as red green blue opacity from 0 to 1, from the menu's next opening.
+            let parts = words.dropFirst().compactMap { Float($0) }.filter { $0.isFinite }
+            guard parts.count == 4, parts.allSatisfy({ (0...1).contains($0) }) else {
+                let now = NativeTabMenu.dimColour
+                return PluginLog.write("Veil: red green blue opacity, each 0 to 1. Now \(now.0) \(now.1) \(now.2) \(now.3)")
+            }
+            NativeTabMenu.dimColour = (parts[0], parts[1], parts[2], parts[3])
+            PluginLog.write("The tab menu's veil is \(parts.map { "\($0)" }.joined(separator: " ")) from its next opening")
         case "uids":
             // Who's in the screen's tables, by FM's unique IDs, for making test files such as a shortlist.
             for live in liveTables { PluginLog.write(live.people.map { "\($0.uid) \($0.name)" }.joined(separator: "; ")) }

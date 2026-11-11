@@ -86,8 +86,8 @@ struct NativeTabMenu {
         return (menu, rows, dim)
     }
 
-    /// FM's veil over its screen under an open tab menu: a faint black, as matched by eye in FM.
-    static let dimColour: (Float, Float, Float, Float) = (0, 0, 0, 0.05)
+    /// FM's veil over its screen under an open tab menu, as matched by eye in FM. The developer command `veil` changes it.
+    static var dimColour: (Float, Float, Float, Float) = (1, 1, 1, 0.03)
 
     /// Where the menu goes in FM's main document: just under the tab, from its left edge.
     nonisolated static func origin(under tab: (x: Float, y: Float, width: Float, height: Float),
