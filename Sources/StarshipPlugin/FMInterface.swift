@@ -490,7 +490,8 @@ final class FMInterface {
 
     nonisolated static func tabMenuClick(open: Bool, onArrow: Bool, onMenu: Bool) -> TabMenuClick {
         if onMenu { return .nothing }
-        if onArrow { return open ? .close : .open }
+        // As FM's: the menu is there while the pointer is, so a click on the arrow never closes it, and never pins it.
+        if onArrow { return open ? .nothing : .open }
         return open ? .close : .nothing
     }
 
@@ -573,7 +574,30 @@ final class FMInterface {
         } else if closeWhenAway == nil {
             let close = DispatchWorkItem { MainActor.assumeIsolated { FMInterface.shared.closeTabMenu("the pointer left it") } }
             closeWhenAway = close
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: close)
+            // Next to at once: FM's own menus open the moment the pointer reaches their arrow, and ours mustn't sit beside one.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: close)
+        }
+    }
+
+    /// FM's tab arrows sit on a dimmed background while their menu is up. Ours is set and taken off by hand, as our
+    /// arrow isn't FM's dropdown.
+    static let arrowLit: (Float, Float, Float, Float) = (1, 1, 1, 0.12)
+
+    private func lightArrow(_ on: Bool, _ ui: FMElements) {
+        guard let arrow = tabArrow.flatMap(ui.il2cpp.target) else { return }
+        do {
+            try ui.style(arrow) { style in
+                if on {
+                    try style.color("backgroundColor", Self.arrowLit)
+                    for corner in ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius"] {
+                        try style.length(corner, 4)
+                    }
+                } else {
+                    try style.clearColor("backgroundColor")
+                }
+            }
+        } catch {
+            PluginLog.write("FM Starship's tab arrow couldn't be lit: \(error)")
         }
     }
 
@@ -602,6 +626,7 @@ final class FMInterface {
                 tabMenuOver = visibleState(ui)
                 tabMenuLogged = false
                 hoverPlaces.menu = nil
+                lightArrow(true, ui)
                 PluginLog.write("FM Starship's tab menu opened")
             } catch {
                 PluginLog.write("FM Starship's tab menu doesn't open: \(error)")
@@ -667,6 +692,7 @@ final class FMInterface {
         tabMenuOver = []
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
+            lightArrow(false, ui)
             if let menu = il2cpp.target(of: handle) {
                 do {
                     try ui.remove(menu)

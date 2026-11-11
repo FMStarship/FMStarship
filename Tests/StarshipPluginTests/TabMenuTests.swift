@@ -16,9 +16,9 @@ final class TabMenuTests: XCTestCase {
         FMInterface.tabMenuClick(open: open, onArrow: onArrow, onMenu: onMenu)
     }
 
-    func testTheArrowOpensItAndClosesIt() {
+    func testAClickOnTheArrowOpensItButNeverPinsOrClosesIt() {
         XCTAssertEqual(click(open: false, onArrow: true), .open)
-        XCTAssertEqual(click(open: true, onArrow: true), .close)
+        XCTAssertEqual(click(open: true, onArrow: true), .nothing, "The pointer is on the arrow, so the menu stays while it does")
     }
 
     func testAClickOutsideItClosesIt() {
