@@ -114,7 +114,12 @@ final class FMInterface {
         }
         // Any other button's click closes the tab's menu too, and goes on to FM as usual.
         NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .otherMouseDown]) { event in
-            MainActor.assumeIsolated { FMInterface.shared.closeTabMenu() }
+            MainActor.assumeIsolated { FMInterface.shared.closeTabMenu("another mouse button") }
+            return event
+        }
+        // FM's tab menus open when the pointer rests on their arrow, and close when it leaves the tab and the menu.
+        NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { event in
+            MainActor.assumeIsolated { FMInterface.shared.mouseMoved(event) }
             return event
         }
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -166,9 +171,9 @@ final class FMInterface {
         // A click in FM Starship's own windows over FM isn't one on FM's interface, wherever it lands, but it's outside
         // the tab's menu.
         guard let window = event.window, !Plugin.shared.owns(window), let view = window.contentView, view.bounds.width > 0,
-              view.bounds.height > 0, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return closeTabMenu() }
+              view.bounds.height > 0, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return closeTabMenu("a click outside FM's interface") }
         il2cpp.withoutCollection {
-            guard let root = try? ui.mainRoot(), let panel = ui.layout(root) else { return closeTabMenu() }
+            guard let root = try? ui.mainRoot(), let panel = ui.layout(root) else { return closeTabMenu("a click, with FM's interface not found") }
             // FM's interface fills the window, in its own units, from the top left.
             let point = view.convert(event.locationInWindow, from: nil)
             let x = Float(point.x / view.bounds.width) * panel.width
@@ -245,6 +250,7 @@ final class FMInterface {
                 #endif
                 waitToComeBack(ui)
                 if tabMenu != nil { followTabMenu(ui) }
+                keepHoverPlaces(ui)
                 if screen != nil { followFM(ui) }
                 if screen != nil { watchFMTab(ui) }
                 if screen != nil { followHiddenSwitch(ui) }
@@ -310,7 +316,7 @@ final class FMInterface {
         PluginLog.write("\(why), so your save is read again when FM Starship's screen opens")
         saveWatch.saveChanged(read: model?.analysis?.db, loading: model?.readingSave ?? false)
         if screen != nil { leave(ui) }
-        closeTabMenu()
+        closeTabMenu("FM loaded a save")
         contents = [:]
         stopTables()
         signingSearch = nil
@@ -347,7 +353,7 @@ final class FMInterface {
         if let element = tab.flatMap(ui.il2cpp.target), ui.parent(of: element) == group { return }
         // FM built its bar again, or this is the first time we've seen it with a career loaded.
         if screen != nil { leave(ui) }
-        closeTabMenu()
+        closeTabMenu("FM built its bar again")
         // FM builds it again on loading a save, and after a match.
         if tab != nil { saveChanged("FM built its bar again", ui) }
         release(&tab)
@@ -473,7 +479,7 @@ final class FMInterface {
             // Once FM has had the click.
             DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.openTabMenu() } }
         case .close:
-            closeTabMenu()
+            closeTabMenu(onArrow ? "its arrow clicked again" : "a click outside it, at \(FMElements.whole(x)),\(FMElements.whole(y))")
         case .nothing:
             break
         }
@@ -491,7 +497,7 @@ final class FMInterface {
     /// Escape on its own closes the tab's menu, as it does FM's, and FM doesn't get it. Every other key is FM's.
     private func keyDown(_ event: NSEvent) -> Bool {
         guard tabMenu != nil, Self.closesTabMenu(keyCode: event.keyCode, modifiers: event.modifierFlags) else { return false }
-        closeTabMenu()
+        closeTabMenu("Escape")
         // In one of FM Starship's own windows, Escape is still that window's.
         return !(event.window.map { Plugin.shared.owns($0) } ?? false)
     }
@@ -503,6 +509,74 @@ final class FMInterface {
 
     /// FM Starship's screens, in the order of their subtabs, under the tab, with the one that's up marked. If it can't
     /// be made, the log says why and it doesn't open.
+    /// Where the tab, its arrow and its menu are, in FM's units, and how big FM's interface is, as of the last tick or the
+    /// menu opening. The pointer is checked against these as it moves, with no call into FM.
+    private var hoverPlaces = HoverPlaces()
+    private var pointerOnArrow = false
+    private var closeWhenAway: DispatchWorkItem?
+    private var hoverLogged = false
+
+    struct HoverPlaces {
+        typealias Rect = (x: Float, y: Float, width: Float, height: Float)
+        var panel: (width: Float, height: Float)?
+        var tab: Rect?
+        var arrow: Rect?
+        var menu: Rect?
+    }
+
+    private func keepHoverPlaces(_ ui: FMElements) {
+        guard let tab = tab.flatMap(ui.il2cpp.target), ui.isAttached(tab) else { return hoverPlaces = HoverPlaces() }
+        hoverPlaces.panel = (try? ui.mainRoot()).flatMap { ui.layout($0) }.map { (width: $0.width, height: $0.height) }
+        hoverPlaces.tab = ui.worldBound(tab)
+        hoverPlaces.arrow = tabArrow.flatMap(ui.il2cpp.target).flatMap { ui.worldBound($0) }
+        hoverPlaces.menu = tabMenu.flatMap(ui.il2cpp.target).flatMap { ui.worldBound($0) }.flatMap { $0.width > 0 ? $0 : nil }
+    }
+
+    nonisolated static func inside(_ rect: HoverPlaces.Rect?, x: Float, y: Float, margin: Float = 0) -> Bool {
+        guard let rect else { return false }
+        return x >= rect.x - margin && x <= rect.x + rect.width + margin && y >= rect.y - margin && y <= rect.y + rect.height + margin
+    }
+
+    /// Whether the pointer is still over the tab, the gap below it, or the menu, so the menu stays open. Before the menu
+    /// has been laid out, the space under the tab where it opens counts.
+    nonisolated static func pointerKeepsMenu(_ places: HoverPlaces, x: Float, y: Float) -> Bool {
+        if inside(places.tab, x: x, y: y, margin: 4) || inside(places.menu, x: x, y: y, margin: 4) { return true }
+        guard let tab = places.tab else { return false }
+        let below = (x: tab.x, y: tab.y + tab.height, width: max(tab.width, places.menu?.width ?? 210),
+                     height: places.menu == nil ? 230 : max(0, (places.menu?.y ?? 0) - tab.y - tab.height))
+        return inside(below, x: x, y: y, margin: 4)
+    }
+
+    private func mouseMoved(_ event: NSEvent) {
+        guard let panel = hoverPlaces.panel, panel.width > 0, panel.height > 0, let window = event.window,
+              !Plugin.shared.owns(window), let view = window.contentView, view.bounds.width > 0, view.bounds.height > 0 else { return }
+        if !hoverLogged {
+            hoverLogged = true
+            PluginLog.write("FM passes on the pointer's moves, so FM Starship's tab menu opens on hover")
+        }
+        let point = view.convert(event.locationInWindow, from: nil)
+        let x = Float(point.x / view.bounds.width) * panel.width
+        let y = Float((view.isFlipped ? point.y : view.bounds.height - point.y) / view.bounds.height) * panel.height
+        let onArrow = Self.inside(hoverPlaces.arrow, x: x, y: y, margin: 2)
+        defer { pointerOnArrow = onArrow }
+        if tabMenu == nil {
+            closeWhenAway?.cancel()
+            closeWhenAway = nil
+            // On arriving at the arrow, not on every move over it, so a menu closed with a click stays closed.
+            guard onArrow, !pointerOnArrow else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { FMInterface.shared.openTabMenu() } }
+            return
+        }
+        if Self.pointerKeepsMenu(hoverPlaces, x: x, y: y) {
+            closeWhenAway?.cancel()
+            closeWhenAway = nil
+        } else if closeWhenAway == nil {
+            let close = DispatchWorkItem { MainActor.assumeIsolated { FMInterface.shared.closeTabMenu("the pointer left it") } }
+            closeWhenAway = close
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: close)
+        }
+    }
+
     private func openTabMenu() {
         guard tabMenu == nil, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
@@ -527,6 +601,7 @@ final class FMInterface {
                 tabMenuRows = made.rows
                 tabMenuOver = visibleState(ui)
                 tabMenuLogged = false
+                hoverPlaces.menu = nil
                 PluginLog.write("FM Starship's tab menu opened")
             } catch {
                 PluginLog.write("FM Starship's tab menu doesn't open: \(error)")
@@ -580,8 +655,12 @@ final class FMInterface {
 
     /// Takes the menu away at once. A click outside it is seen before FM has it, so FM gets it as if the menu had never
     /// been there. If FM won't take the menu out, it's hidden instead, so it never stays up.
-    private func closeTabMenu() {
+    private func closeTabMenu(_ why: String = "") {
         guard let handle = tabMenu else { return }
+        if !why.isEmpty { PluginLog.write("FM Starship's tab menu closes: \(why)") }
+        closeWhenAway?.cancel()
+        closeWhenAway = nil
+        hoverPlaces.menu = nil
         tabMenu = nil
         for row in tabMenuRows { ClickActions.actions[row] = nil }
         tabMenuRows = []
@@ -701,7 +780,7 @@ final class FMInterface {
 
     /// Puts FM's screens and subtabs back as they were and takes ours away.
     private func leave(_ ui: FMElements) {
-        closeTabMenu()
+        closeTabMenu("our screen closed")
         for (handle, display) in hidden {
             if let element = ui.il2cpp.target(of: handle) { try? ui.style(element) { try $0.setEnum("display", display) } }
             ui.il2cpp.unpin(handle)

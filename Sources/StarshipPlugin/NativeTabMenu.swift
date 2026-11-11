@@ -12,8 +12,10 @@ struct NativeTabMenu {
     func arrow() throws -> (frame: Pointer, arrow: Pointer) {
         let frame = try ui.box(["justify-content-center"], name: "DropdownVisible")
         let remapper = try ui.box(["justify-content-center", "navigation-tab-dropdown-large"])
-        let arrow = try ui.box(["navigation-tab-dropdown", "flex-grow-class", "navigatable-no-cursor"], name: "FMStarshipTabDropdown")
-        let chevron = try ui.box(["ui-concepts-chevron-down_small", "portal-image"], name: "NavTabDropdownIndicator")
+        // FM's pointing hand over the arrow, as over our subtabs' names.
+        let arrow = try ui.box(["navigation-tab-dropdown", "flex-grow-class", "navigatable-no-cursor", "sitext-hover-cursor"],
+                               name: "FMStarshipTabDropdown")
+        let chevron = try ui.box(["ui-concepts-chevron-down_small", "portal-image", "sitext-hover-cursor"], name: "NavTabDropdownIndicator")
         // FM's sizes for them, which FM's dropdown may set itself.
         for element in [frame, remapper] {
             try ui.style(element) { style in

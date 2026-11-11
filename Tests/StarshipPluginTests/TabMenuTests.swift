@@ -85,4 +85,27 @@ final class TabMenuTests: XCTestCase {
         XCTAssertEqual(origin.left, 0)
         XCTAssertEqual(origin.top, 0)
     }
+
+    func testThePointerKeepsTheMenuOverTheTabTheGapAndTheMenu() {
+        var places = FMInterface.HoverPlaces()
+        places.tab = (x: 640, y: 0, width: 109, height: 48)
+        // Before the menu is laid out, the space under the tab where it opens counts.
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 700, y: 20))
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 700, y: 150))
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 300, y: 20))
+        places.menu = (x: 644, y: 53, width: 205, height: 212)
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 840, y: 200), "over the menu, right of the tab")
+        XCTAssertTrue(FMInterface.pointerKeepsMenu(places, x: 700, y: 50), "in the gap between tab and menu")
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 700, y: 300), "below the menu")
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(places, x: 900, y: 100), "right of the menu")
+        XCTAssertFalse(FMInterface.pointerKeepsMenu(FMInterface.HoverPlaces(), x: 700, y: 20), "no tab, nothing keeps it")
+    }
+
+    func testInsideHasAMargin() {
+        let arrow = (x: Float(729), y: Float(12), width: Float(20), height: Float(25))
+        XCTAssertTrue(FMInterface.inside(arrow, x: 730, y: 20))
+        XCTAssertTrue(FMInterface.inside(arrow, x: 727.5, y: 20, margin: 2))
+        XCTAssertFalse(FMInterface.inside(arrow, x: 727.5, y: 20))
+        XCTAssertFalse(FMInterface.inside(nil, x: 730, y: 20))
+    }
 }
