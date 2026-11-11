@@ -75,7 +75,12 @@ mkdir "$STAGE/image"
 ditto "$APP" "$STAGE/image/FM Starship.app"
 ln -s /Applications "$STAGE/image/Applications"
 rm -f "$DMG"
-hdiutil create -volname "FM Starship" -srcfolder "$STAGE/image" -format UDZO -ov "$DMG"
+# macOS 27 deprecated hdiutil's way of making the image and points to diskutil's. Older macOS keeps hdiutil.
+if [ "$(sw_vers -productVersion | cut -d. -f1)" -ge 27 ]; then
+    diskutil image create from --format UDZO --volumeName "FM Starship" "$STAGE/image" "$DMG"
+else
+    hdiutil create -volname "FM Starship" -srcfolder "$STAGE/image" -format UDZO -ov "$DMG"
+fi
 codesign -f -s "$SIGN_IDENTITY" --timestamp "$DMG"
 xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
 xcrun stapler staple "$DMG"
