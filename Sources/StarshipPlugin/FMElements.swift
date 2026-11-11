@@ -81,6 +81,12 @@ struct FMElements {
         il2cpp.unbox(try? il2cpp.call(element, "get_value"), as: Bool.self)
     }
 
+    /// Greys an element out, as FM's own are when they can't be used, and it takes no clicks.
+    func disable(_ element: Pointer) throws {
+        var value = false
+        try withUnsafeMutablePointer(to: &value) { _ = try il2cpp.call(element, "SetEnabled", [Pointer($0)]) }
+    }
+
     /// A scroll view without its vertical bar: it still scrolls with the wheel and trackpad.
     func hideScroller(_ scrollView: Pointer) throws {
         // ScrollerVisibility.Hidden

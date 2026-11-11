@@ -46,6 +46,8 @@ final class FMInterface {
     /// The Hidden attributes switch at the right of the row, and what it was last set to.
     private var hiddenSwitch: IL2CPP.Handle?
     private var hiddenSwitchShows = false
+    /// The Ability dropdown beside it, for its list to open under.
+    private var abilityDropdown: IL2CPP.Handle?
 
     /// The FM table last made for a screen of ours, for the developer's `table` commands.
     private var lastTable: IL2CPP.Handle?
@@ -537,6 +539,7 @@ final class FMInterface {
         release(&screen)
         release(&subtabs)
         release(&hiddenSwitch)
+        release(&abilityDropdown)
         release(&menuBody)
         release(&screenHost)
         release(&reportBody)
@@ -610,7 +613,10 @@ final class FMInterface {
         let searchState = editing.map { $0.screen == current ? "editing \($0.draft.key)" : "" } ?? search(for: current)?.key ?? ""
         // Drawn again once FM's own tables are known, in place of plain rows.
         let known = FMTable.Kind.allCases.map { FMTable.ready($0) ? "1" : "0" }.joined()
+        // The Ability dropdown shows the setting, and is greyed out with Hidden attributes off, even with no read to show.
+        let settings = model.map { "\($0.ability) \($0.hiddenAttributes)" } ?? ""
         let key = "\(current) \(content?.revision ?? -1) \(status) \(chosenShortlist?.path ?? "") \(listState) \(searchState) \(known)"
+            + " \(settings)"
         if key == shown {
             if let progress = list.flatMap(searchProgress) { showProgress(progress, ui) }
             return
@@ -1195,11 +1201,86 @@ final class FMInterface {
         }
         try ui.add(tabs, to: bar)
 
-        // The row stretches to FM's bookmarks, so the switch goes at its end, just before them.
+        // The row stretches to FM's bookmarks, so Ability and the switch go at its end, just before them, in the order
+        // they have in FM Starship's toolbar.
         let gap = try ui.box()
         try ui.style(gap) { try $0.number("flexGrow", 1) }
         try ui.add(gap, to: bar)
+        try ui.add(try abilitySetting(ui), to: bar)
         try ui.add(try hiddenAttributesSwitch(ui), to: bar)
+    }
+
+    /// Ability, the same setting as the picker in FM Starship's window, with a dropdown like FM's, as on its Edit Search,
+    /// and its name beside it. While Hidden attributes is off it says Off and is greyed out, as the picker is: CA and PA
+    /// are hidden in FM.
+    private func abilitySetting(_ ui: FMElements) throws -> Pointer {
+        let shown = model?.ability ?? .hidden
+        let title = AppModel.abilityChoices.first { $0.ability == shown }?.title ?? ""
+        let box = try ui.box(["row-direction-normal", "align-items-center"], name: "FMStarshipAbility")
+        try ui.style(box) { style in
+            try style.number("flexShrink", 0)
+            try style.length("marginLeft", 16)
+        }
+        let label = try ui.text("Ability", ["body-md", "content-no-wrap"])
+        try ui.style(label) { try $0.length("marginRight", 8) }
+        try ui.add(label, to: box)
+        // As tall as FM's subtabs, so the row stays the height FM gives it, and no wider than Exact needs, as the row
+        // has FM's bookmarks to make room for too.
+        let page = NativePage(ui: ui, look: look ?? .fallback)
+        let dropdown = try NativeEditSearch(page: page).dropdown(title, width: 88, height: 24, enabled: model?.hiddenAttributes ?? false)
+        try ui.add(dropdown, to: box)
+        try ui.onClick(dropdown) { FMInterface.shared.abilityClicked() }
+        subtabButtons.append(dropdown)
+        release(&abilityDropdown)
+        abilityDropdown = ui.il2cpp.pin(dropdown)
+        return box
+    }
+
+    /// The click on the Ability dropdown opens its list under it, over the screen, once FM has finished with the click,
+    /// or closes the list if it's open. While Hidden attributes is off, the dropdown can't be changed.
+    private func abilityClicked() {
+        guard openList.isEmpty else { return closeList() }
+        guard let model, model.hiddenAttributes else { return }
+        let chosen = model.ability
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let interface = FMInterface.shared
+                guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
+                il2cpp.withoutCollection {
+                    guard interface.openList.isEmpty, let element = interface.screen.flatMap(il2cpp.target),
+                          let dropdown = interface.abilityDropdown.flatMap(il2cpp.target), ui.isAttached(dropdown) else { return }
+                    let choices = AppModel.abilityChoices
+                    do {
+                        let page = NativePage(ui: ui, look: interface.look ?? .fallback)
+                        let list = try NativeEditSearch(page: page).list(
+                            choices.map(\.title), selected: choices.firstIndex { $0.ability == chosen } ?? -1,
+                            under: dropdown, in: element,
+                            choose: { index in
+                                interface.closeList()
+                                if choices.indices.contains(index) { interface.chooseAbility(choices[index]) }
+                            },
+                            close: { interface.closeList() })
+                        interface.openList = list.elements
+                        interface.listButtons += list.clickable
+                    } catch {
+                        interface.report(error)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Sets Ability as the picker in FM Starship's window does, which then shows it. FM Starship's screens are made
+    /// again through the stale-screens path, and until then they say they're working. Once FM has finished with the
+    /// click, which came from the list, as the row and the screen are made again.
+    private func chooseAbility(_ choice: (ability: AbilityReveal, title: String)) {
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard let model = FMInterface.shared.model, model.hiddenAttributes, model.ability != choice.ability else { return }
+                PluginLog.write("Ability set to \(choice.title) in FM Starship's tab")
+                model.ability = choice.ability
+            }
+        }
     }
 
     /// Hidden attributes, the same setting as the eye in FM Starship's window, with FM's own switch as on its Edit

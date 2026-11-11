@@ -41,13 +41,13 @@ public struct DisplayOptions {
     /// False while CA and PA are off, so a screen can leave out whatever would give them away.
     public var showsAbility: Bool { reveal != .hidden }
 
-    /// What to press to see something that needs CA and PA. Inside FM, Ability is only in FM Starship's own window.
+    /// What to press to see something that needs CA and PA. Inside FM, both are at the top right of FM Starship's tab.
     public var abilityHint: String {
         switch (showHidden, insideGame) {
         case (false, false): return "Switch on Hidden attributes (the eye in the toolbar)"
         case (false, true): return "Switch on Hidden attributes at the top right of FM Starship's tab"
         case (true, false): return "Set Ability in the toolbar to Exact or Stars"
-        case (true, true): return "Set Ability to Exact or Stars in FM Starship's window (Control-Option-S)"
+        case (true, true): return "Set Ability to Exact or Stars at the top right of FM Starship's tab"
         }
     }
 
