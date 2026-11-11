@@ -31,7 +31,7 @@ body:
     attributes:
       label: FM build
       description: Help > Compatibility shows what's working on your build.
-      placeholder: "27.0.0"
+      placeholder: "27.0.1.2494769"
     validations:
       required: true
   - type: input

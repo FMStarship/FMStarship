@@ -6,6 +6,10 @@
 
 <!-- What problem does it solve? Use "Closes #123" if there's an issue. -->
 
+## Changelog
+
+<!-- The line for players, as it should read under Unreleased in CHANGELOG.md, or "none" if players see no change. Don't edit CHANGELOG.md in the PR: the maintainer adds the lines. -->
+
 ## How you tested it
 
 <!-- CI has no FM and no save, so say what you checked by hand, and what you couldn't check. -->

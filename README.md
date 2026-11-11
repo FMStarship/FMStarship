@@ -31,8 +31,9 @@ to run, come from FM Moleman, whose emulator runs x86-64.
 
 - A Mac with Apple Silicon, on macOS 14 or later
 - The Steam version of Football Manager 27. Other stores aren't supported.
-- FM27 build 27.0.0 for everything to work. When SI patches the game, features that run FM's own code switch off until FM Starship
-  catches up. They switch off rather than show wrong numbers, and Help > Compatibility shows what's working on your build.
+- FM27 build 27.0.1 (the full release) for everything to work. When SI patches the game, features that run FM's own code switch
+  off until FM Starship catches up. They switch off rather than show wrong numbers, and Help > Compatibility shows what's working on
+  your build.
 
 ## Using it
 
