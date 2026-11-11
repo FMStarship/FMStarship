@@ -25,15 +25,16 @@ public enum AbilityReveal: Int, CaseIterable {
 }
 
 public struct DisplayOptions {
-    public var reveal: AbilityReveal
-    public var showHidden: Bool
+    /// Always `.hidden` while `showHidden` is off: CA and PA are hidden in FM too.
+    public private(set) var reveal: AbilityReveal
+    public private(set) var showHidden: Bool
     public var units: MoneyUnits
     /// Inside FM, where FM Starship's tab has a Hidden attributes switch of its own, so the hints point there.
     public var insideGame: Bool
 
     /// No default for `reveal` or `showHidden`, so every caller says what the settings are.
     public init(reveal: AbilityReveal, showHidden: Bool, units: MoneyUnits = MoneyUnits(), insideGame: Bool = false) {
-        self.reveal = reveal
+        self.reveal = showHidden ? reveal : .hidden
         self.showHidden = showHidden
         self.units = units
         self.insideGame = insideGame

@@ -133,8 +133,19 @@ final class AbilityOffTests: XCTestCase {
         session.db.players.forEach { $0.endYear = 2026 }
         let options = BargainOptions(kind: .ending, minCA: "199")
         XCTAssertFalse(BargainFinder(session: session).find(options)?.rows.isEmpty ?? true)
-        session.display.reveal = .numbers
+        session.display = DisplayOptions(reveal: .numbers, showHidden: true)
         XCTAssertEqual(BargainFinder(session: session).find(options)?.rows.count, 0)
+    }
+
+    /// CA and PA are hidden in FM, so with Hidden attributes off they're off whatever Ability is set to.
+    func testHiddenAttributesOffMeansAbilityOff() {
+        for reveal in [AbilityReveal.numbers, .stars, .hidden] {
+            let display = DisplayOptions(reveal: reveal, showHidden: false)
+            XCTAssertEqual(display.reveal, .hidden)
+            XCTAssertFalse(display.showsAbility)
+            XCTAssertNil(display.labelled("CA", 117))
+            XCTAssertEqual(DisplayOptions(reveal: reveal, showHidden: true).reveal, reveal)
+        }
     }
 
     func testComparingPeopleLeavesAbilityOut() {

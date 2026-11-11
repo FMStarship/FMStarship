@@ -23,7 +23,7 @@ final class OpenSquadTests: XCTestCase {
     }
 
     private func session(_ db: Database) -> AnalysisSession {
-        AnalysisSession(db: db, club: ChosenClub(team: 1, name: "Molde"), display: DisplayOptions(reveal: .numbers, showHidden: false))
+        AnalysisSession(db: db, club: ChosenClub(team: 1, name: "Molde"), display: DisplayOptions(reveal: .numbers, showHidden: true))
     }
 
     func testChoicesFoundAheadAreTheSame() {

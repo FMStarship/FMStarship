@@ -126,25 +126,45 @@ final class HiddenExportTests: XCTestCase {
             XCTAssertFalse(filter.showHidden)
             XCTAssertFalse(filter.showAbility)
         }
-        for filter in [off.staffFilter, off.squadStaffFilter, off.listStaffFilter] { XCTAssertFalse(filter.showHidden) }
+        for filter in [off.staffFilter, off.squadStaffFilter, off.listStaffFilter] {
+            XCTAssertFalse(filter.showHidden)
+            XCTAssertFalse(filter.showAbility)
+        }
 
         let on = model(hidden: true)
         XCTAssertTrue(on.playerFilter.showHidden)
         XCTAssertTrue(on.playerFilter.showAbility)
         XCTAssertTrue(on.staffFilter.showHidden)
+        XCTAssertTrue(on.staffFilter.showAbility)
 
         let abilityOff = model(hidden: true, reveal: .hidden)
         XCTAssertTrue(abilityOff.playerFilter.showHidden)
         XCTAssertFalse(abilityOff.playerFilter.showAbility)
+        XCTAssertFalse(abilityOff.staffFilter.showAbility)
     }
 
     func testAShortlistsFreshFiltersFollowTheSetting() {
-        let model = model(hidden: false)
-        model.showShortlist(nil)
-        XCTAssertFalse(model.listPlayerFilter.showHidden)
-        XCTAssertFalse(model.listPlayerFilter.showAbility)
-        model.showShortlist(OpenShortlist(url: URL(fileURLWithPath: "/nonexistent/Test.fmsl"), name: "Test", isStaff: true, uids: []))
-        XCTAssertFalse(model.listStaffFilter.showHidden)
+        let staffList = OpenShortlist(url: URL(fileURLWithPath: "/nonexistent/Test.fmsl"), name: "Test", isStaff: true, uids: [])
+        for hidden in [false, true] {
+            let model = model(hidden: hidden)
+            // Change what they are first, so a fresh filter that ignored the setting would show.
+            model.listPlayerFilter.showHidden = !hidden
+            model.listPlayerFilter.showAbility = !hidden
+            model.listStaffFilter.showHidden = !hidden
+            model.listStaffFilter.showAbility = !hidden
+            model.showShortlist(nil)
+            XCTAssertEqual(model.listPlayerFilter.showHidden, hidden)
+            XCTAssertEqual(model.listPlayerFilter.showAbility, hidden)
+            model.showShortlist(staffList)
+            XCTAssertEqual(model.listStaffFilter.showHidden, hidden)
+            XCTAssertEqual(model.listStaffFilter.showAbility, hidden)
+        }
+    }
+
+    func testAnExportedAbilityCellIsEmptyWhenAbilityIsOff() throws {
+        let ca = try XCTUnwrap(Columns.forPlayers().first { $0.name == "CA" })
+        XCTAssertEqual(AppModel.exportCell(ca, player(), reveal: .hidden), ExportCell(.none))
+        XCTAssertEqual(AppModel.exportCell(ca, player(), reveal: .exact), ExportCell(.int(187)))
     }
 
     func testAColumnFilterOnAHiddenColumnDoesNothingWhileHiddenAttributesIsOff() {

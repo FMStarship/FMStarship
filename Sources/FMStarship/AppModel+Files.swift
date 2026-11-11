@@ -124,6 +124,7 @@ extension AppModel {
 
     nonisolated static func exportCell(_ col: Col, _ person: Person, reveal: Reveal) -> ExportCell {
         let value = col.get(person)
+        if col.ability, reveal == .hidden { return ExportCell(.none) }
         if col.ability, reveal == .stars, case .int(let number) = value { return ExportCell(.string(Columns.abilityStars(number))) }
         let exported: ExportValue
         switch value {

@@ -39,11 +39,14 @@ public struct StaffFilter: SearchFilter, Equatable {
     public var showHidden: Bool {
         didSet { dropHiddenRules() }
     }
+    /// Staff have no CA or PA section yet, but one would go while this is off.
+    public var showAbility: Bool
 
     public var defaults: [String: String] = [:]
 
-    public init(showHidden: Bool) {
+    public init(showHidden: Bool, showAbility: Bool) {
         self.showHidden = showHidden
+        self.showAbility = showAbility
         markDefaults()
     }
 

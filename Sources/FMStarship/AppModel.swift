@@ -110,11 +110,11 @@ package final class AppModel: ObservableObject {
     // Each kind of list keeps its own filters, so opening a squad doesn't disturb a search.
     // They start with hidden values off, and `init` gives them the real setting.
     @Published var playerFilter = PlayerFilter(showHidden: false, showAbility: false)
-    @Published var staffFilter = StaffFilter(showHidden: false)
+    @Published var staffFilter = StaffFilter(showHidden: false, showAbility: false)
     @Published var squadPlayerFilter = PlayerFilter(showHidden: false, showAbility: false)
-    @Published var squadStaffFilter = StaffFilter(showHidden: false)
+    @Published var squadStaffFilter = StaffFilter(showHidden: false, showAbility: false)
     @Published var listPlayerFilter = PlayerFilter(showHidden: false, showAbility: false)
-    @Published var listStaffFilter = StaffFilter(showHidden: false)
+    @Published var listStaffFilter = StaffFilter(showHidden: false, showAbility: false)
 
     @Published var playerColumns: [Col] = []
     @Published var staffColumns: [Col] = []
@@ -557,7 +557,10 @@ package final class AppModel: ObservableObject {
             self[keyPath: keyPath].showHidden = showHidden
             self[keyPath: keyPath].showAbility = showsAbility
         }
-        for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] { self[keyPath: keyPath].showHidden = showHidden }
+        for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] {
+            self[keyPath: keyPath].showHidden = showHidden
+            self[keyPath: keyPath].showAbility = showsAbility
+        }
     }
 
     private func visibilityChanged() {
@@ -976,7 +979,7 @@ package final class AppModel: ObservableObject {
         openShortlist = shortlist
         // The original starts from a clean filter too: a shortlist should show everyone on it.
         if shortlist?.isStaff == true {
-            listStaffFilter = StaffFilter(showHidden: showHidden)
+            listStaffFilter = StaffFilter(showHidden: showHidden, showAbility: showsAbility)
             listStaffFilter.job = "Any job"
             listStaffFilter.rank = StaffFilter.noRanking
             listStaffFilter.markDefaults()

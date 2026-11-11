@@ -89,7 +89,7 @@ final class AbilityOffTests: XCTestCase {
 
     func testNothingInTheStaffRankingNamesCA() {
         XCTAssertFalse(StaffFilter.noRanking.contains("CA"))
-        var filter = StaffFilter(showHidden: true)
+        var filter = StaffFilter(showHidden: true, showAbility: true)
         filter.rank = StaffFilter.noRanking
         XCTAssertEqual(filter.rankArea, -1)
     }

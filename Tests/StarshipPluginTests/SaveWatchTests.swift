@@ -170,7 +170,7 @@ final class SaveWatchTests: XCTestCase {
 
     /// A display setting added later has to decide what's shown too, or be said here not to.
     func testTheKeyHoldsEveryDisplaySetting() {
-        let settings = Set(Mirror(reflecting: DisplayOptions(reveal: .numbers, showHidden: false)).children.compactMap(\.label))
+        let settings = Set(Mirror(reflecting: DisplayOptions(reveal: .numbers, showHidden: true)).children.compactMap(\.label))
         let key = Set(Mirror(reflecting: shown()).children.compactMap(\.label))
         XCTAssertEqual(settings.subtracting(key), ["insideGame"], "Always true inside FM")
     }

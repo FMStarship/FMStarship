@@ -21,7 +21,7 @@ final class ShortlistViewTests: XCTestCase {
         player(1, "Abel", club: "Brann"), player(2, "Berg", club: "Molde FK"), player(3, "Carr", club: "Viking", ca: 130, pa: 150),
     ].map { ($0.uid, $0) })
 
-    private func view(_ uids: [UInt32], display: DisplayOptions = DisplayOptions(reveal: .numbers, showHidden: false)) -> ShortlistView {
+    private func view(_ uids: [UInt32], display: DisplayOptions = DisplayOptions(reveal: .numbers, showHidden: true)) -> ShortlistView {
         ShortlistView(url: URL(fileURLWithPath: "/tmp/Targets.fmf"), name: "Targets", modified: .distantPast, uids: uids,
                       players: players, club: "Molde FK", display: display)
     }

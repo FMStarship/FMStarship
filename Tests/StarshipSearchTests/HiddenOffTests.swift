@@ -34,7 +34,7 @@ final class HiddenOffTests: XCTestCase {
     }
 
     private func staffFilter(hidden: Bool) -> StaffFilter {
-        var filter = StaffFilter(showHidden: hidden)
+        var filter = StaffFilter(showHidden: hidden, showAbility: hidden)
         filter.job = "Any job"
         filter.rank = StaffFilter.noRanking
         filter.markDefaults()
