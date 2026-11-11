@@ -28,8 +28,10 @@ struct PluginNotice: Equatable {
                 }
                 return updated(fm: installedFM?.version ?? (status.fm.isEmpty ? nil : status.fm))
             case PluginStatus.unreadableBuild:
-                // Said whatever the app reads of FM, since the plugin couldn't.
-                return PluginNotice(key: "\(status.reason) \(status.at)", title: "FM Starship stayed out of FM",
+                // Said whatever the app reads of FM, since the plugin couldn't. Once per FM build, not per start: the gate
+                // writes the file again at every start it stays out of, which the launcher's crash-loop breaker relies on.
+                let fm = installedFM.map { "\($0.version) \($0.gameAssembly)" } ?? "unknown"
+                return PluginNotice(key: "\(status.reason) \(fm)", title: "FM Starship stayed out of FM",
                                     message: PluginStatus.unreadableDetail)
             default:
                 return PluginNotice(key: "\(status.reason) \(status.at)", title: "FM Starship stayed out of FM", message: status.detail)

@@ -101,7 +101,8 @@ final class PluginNoticeTests: XCTestCase {
             XCTAssertEqual(notice.title, "FM Starship stayed out of FM")
             XCTAssertEqual(notice.message, PluginStatus.unreadableDetail)
             XCTAssertFalse(notice.message.contains("updated"), "It isn't known that FM updated")
-            XCTAssertEqual(notice.key, "unreadable-build 2026-11-11T20:15:03Z")
+            // Once per FM build the app sees, not per start (the gate writes the file again each time).
+            XCTAssertEqual(notice.key, "unreadable-build " + (fm.map { "\($0.version) \($0.gameAssembly)" } ?? "unknown"))
         }
     }
 
@@ -147,5 +148,15 @@ final class PluginNoticeTests: XCTestCase {
                                                      installedFM: FMBuild(version: "27.0.3.2510000", gameAssembly: unchecked.gameAssembly),
                                                      appBuild: "9"))
         XCTAssertTrue(PluginNotice.shouldShow(next, defaults: defaults), "The next build of FM is told again")
+    }
+
+    func testAnUnreadableBuildIsToldOncePerFMBuildNotOncePerStart() {
+        let first = PluginStatus(reason: PluginStatus.unreadableBuild, detail: "", at: "2026-11-11T20:00:00Z", fm: "")
+        let second = PluginStatus(reason: PluginStatus.unreadableBuild, detail: "", at: "2026-11-11T21:30:00Z", fm: "")
+        let fm = FMBuild(version: "27.0.2.1", gameAssembly: "00000000-0000-0000-0000-000000000000")
+        let a = PluginNotice.notice(installed: .fromApp(build: "8"), status: first, installedFM: fm, appBuild: "8")
+        let b = PluginNotice.notice(installed: .fromApp(build: "8"), status: second, installedFM: fm, appBuild: "8")
+        XCTAssertNotNil(a)
+        XCTAssertEqual(a?.key, b?.key, "The gate rewrites the file at every start; the notice comes once")
     }
 }
