@@ -370,9 +370,10 @@ public final class GameReader {
         staff.repHome = GameReader.u16(b, L.repHome)
         staff.repWorld = GameReader.u16(b, L.repWorld)
         for i in 0..<52 {
-            let offset = L.attributes + i
-            // The first block is stored 1-20 already, the rest 1-100, and one mid-block value is 1-100.
-            staff.attr[i] = offset >= 42 || offset == 29 ? GameReader.to20(b[offset]) : b[offset]
+            let stored = b[L.attributes + i]
+            // The first block is stored 1-20 already, the rest 1-100, and one mid-block value, Determination, is 1-100.
+            // Counted from the first attribute, so the rule moves with `MacLayout.Staff.attributes`.
+            staff.attr[i] = i >= 26 || i == 13 ? GameReader.to20(stored) : stored
         }
         applyPerson(b, staff, item, person: L.person, identity: L.identity)
         guard staff.index != 0 || staff.uid != 0, staff.index < 10_000_000 else { return nil }
