@@ -43,8 +43,7 @@ struct NativeTabMenu {
               choose: @escaping @MainActor (Int) -> Void) throws -> (menu: Pointer, rows: [Pointer], dim: Pointer)? {
         guard let spot = ui.worldBound(tab), let area = ui.worldBound(root), spot.width > 0, spot.height > 0 else { return nil }
         let origin = Self.origin(under: spot, in: area)
-        // FM veils its whole screen while one of its tab menus is up, with only the menu as it was. The pointer passes
-        // through it to FM.
+        // The pointer passes through it to FM.
         let dim = try ui.box(name: "FMStarshipTabMenuDim")
         try ui.style(dim) { style in
             try style.keyword("position", 1)
@@ -86,8 +85,10 @@ struct NativeTabMenu {
         return (menu, rows, dim)
     }
 
-    /// FM's veil over its screen under an open tab menu, as matched by eye in FM. The developer command `veil` changes it.
-    static var dimColour: (Float, Float, Float, Float) = (1, 1, 1, 0.03)
+    /// A veil over FM's screen under the open menu. FM has none: its screen only looks dimmer because the tab whose menu
+    /// is open lights up (seen in FM's interface with its menu open and closed). So it's clear, and the developer
+    /// command `veil` can try one.
+    static var dimColour: (Float, Float, Float, Float) = (0, 0, 0, 0)
 
     /// Where the menu goes in FM's main document: just under the tab, from its left edge.
     nonisolated static func origin(under tab: (x: Float, y: Float, width: Float, height: Float),

@@ -626,6 +626,38 @@ final class FMInterface {
         }
     }
 
+    /// While its menu is up, our tab lights as FM's does while its own is: its name at full strength in white, its chip
+    /// at 0.65, and its arrow without FM's lilac tint. The chip only on a tab that isn't the one up, whose chip is lit
+    /// already. Taken off again with the menu, back to FM's style sheets.
+    private func lightTab(_ on: Bool, _ ui: FMElements) {
+        guard let tab = tab.flatMap(ui.il2cpp.target) else { return }
+        do {
+            if let text = ui.query(tab, "text") {
+                try ui.style(text) { style in
+                    if on {
+                        try style.number("opacity", 1)
+                        try style.color("color", (1, 1, 1, 1))
+                    } else {
+                        try style.clearKeyword("opacity")
+                        try style.clearColor("color")
+                    }
+                }
+            }
+            if screen == nil || !on, let chip = ui.query(tab, "Chip") {
+                try ui.style(chip) { style in
+                    if on { try style.number("opacity", 0.65) } else { try style.clearKeyword("opacity") }
+                }
+            }
+            if let chevron = ui.query(tab, "NavTabDropdownIndicator") {
+                try ui.style(chevron) { style in
+                    if on { try style.color("unityBackgroundImageTintColor", (1, 1, 1, 1)) } else { try style.clearColor("unityBackgroundImageTintColor") }
+                }
+            }
+        } catch {
+            PluginLog.write("FM Starship's tab couldn't light with its menu: \(error)")
+        }
+    }
+
     private func openTabMenu() {
         guard tabMenu == nil, let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
@@ -649,6 +681,7 @@ final class FMInterface {
                 }
                 tabMenu = handle
                 tabMenuDim = il2cpp.pin(made.dim)
+                lightTab(true, ui)
                 tabMenuRows = made.rows
                 tabMenuOver = visibleState(ui)
                 tabMenuLogged = false
@@ -718,6 +751,7 @@ final class FMInterface {
         tabMenuOver = []
         guard let il2cpp = IL2CPP.shared, let ui = FMElements(il2cpp) else { return }
         il2cpp.withoutCollection {
+            lightTab(false, ui)
             if let dim = tabMenuDim {
                 if let element = il2cpp.target(of: dim) { try? ui.remove(element) }
                 il2cpp.unpin(dim)
