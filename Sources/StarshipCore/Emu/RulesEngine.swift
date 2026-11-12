@@ -7,7 +7,7 @@ public final class RulesEngine: GameRulesEngine {
     /// Only valid for one build of game_plugin: the engine refuses to start on any other. fmprobe takes its
     /// addresses from here too, so a patch only changes them here.
     package enum Mac27 {
-        package static let fingerprint = "3273c947b3b3e8a3"
+        package static let fingerprint = "00a88841ced3ea73"
         package static let interestManagerGlobal: Int64 = 0x576ed40
         package static let statusFunction: Int64 = 0xd52c30
         package static let interestSlot = 30

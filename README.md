@@ -102,7 +102,8 @@ launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes th
 
 ### What to know
 
-- **It's a preview.** It has only been tried on FM27 27.0.1.2494769 (the full release) and the Launch Preview build before it, with FM in full screen. It finds FM's interface by the names
+- **It's a preview.** It has only been tried on FM27 27.0.1.2503222 (12 November's update), 27.0.1.2494769 (the full release)
+  and the Launch Preview build before it, with FM in full screen. It finds FM's interface by the names
   of FM's classes, methods and elements, so an FM patch can stop the tab appearing or a screen opening. Clear the launch option to play
   without it.
 - **It runs inside FM**, so if the plugin crashes, FM closes with it. Save your career before you try something new.
