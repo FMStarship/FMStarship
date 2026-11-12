@@ -57,15 +57,20 @@ public struct PlayerFilter: SearchFilter, Equatable {
     public var onTransfer = false
     public var onLoan = false
 
-    public var showHidden = true {
+    /// No default, so every caller says what Hidden attributes is set to.
+    public var showHidden: Bool {
         didSet { dropHiddenRules() }
     }
     /// While off, the CA and PA boxes keep what's typed but don't apply.
-    public var showAbility = true
+    public var showAbility: Bool
 
     public var defaults: [String: String] = [:]
 
-    public init() { markDefaults() }
+    public init(showHidden: Bool, showAbility: Bool) {
+        self.showHidden = showHidden
+        self.showAbility = showAbility
+        markDefaults()
+    }
 
     /// The club whose interest is checked. It lives in `RulesState` because staff searches and other
     /// windows share it. Setting it picks that club.

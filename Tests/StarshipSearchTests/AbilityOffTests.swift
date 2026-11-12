@@ -28,7 +28,7 @@ final class AbilityOffTests: XCTestCase {
     }
 
     func testAnAbilityFilterDoesNothingWhileAbilityIsOff() {
-        var filter = PlayerFilter()
+        var filter = PlayerFilter(showHidden: true, showAbility: true)
         filter.caMin = "150"
         filter.paMax = "90"
         let weak = player(ca: 100, pa: 120, value: 1)
@@ -40,7 +40,7 @@ final class AbilityOffTests: XCTestCase {
     }
 
     func testTheAbilitySectionGoesFromTheFilterWindow() {
-        var filter = PlayerFilter()
+        var filter = PlayerFilter(showHidden: true, showAbility: true)
         filter.caMin = "150"
         XCTAssertTrue(filter.visibleSections(inTab: "General").contains { $0.title == "Ability" })
         XCTAssertTrue(filter.isActive(tab: "General"))
@@ -51,7 +51,7 @@ final class AbilityOffTests: XCTestCase {
 
     func testAListKeepsItsOrderFromCAOnlyWhileCAIsOn() {
         let rows = [player(ca: 100, pa: 120, value: 9), player(ca: 150, pa: 160, value: 1)]
-        XCTAssertEqual(Columns.ordered(players: rows, sortBy: nil, descending: true).map(\.ca), [150, 100])
+        XCTAssertEqual(Columns.ordered(players: rows, sortBy: nil, descending: true, byAbility: true).map(\.ca), [150, 100])
         XCTAssertEqual(Columns.ordered(players: rows, sortBy: nil, descending: true, byAbility: false).map(\.value), [9, 1])
     }
 
@@ -89,7 +89,7 @@ final class AbilityOffTests: XCTestCase {
 
     func testNothingInTheStaffRankingNamesCA() {
         XCTAssertFalse(StaffFilter.noRanking.contains("CA"))
-        var filter = StaffFilter()
+        var filter = StaffFilter(showHidden: true, showAbility: true)
         filter.rank = StaffFilter.noRanking
         XCTAssertEqual(filter.rankArea, -1)
     }

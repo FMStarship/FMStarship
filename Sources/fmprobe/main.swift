@@ -1087,7 +1087,7 @@ case "agecurve":
 case "talent":
     // What the app says about the club's young players, and the world's best teenagers.
     let db = try GameReader(game: game) { _ in }.readAll()
-    let curve = DevelopmentCurve(players: db.players)
+    let curve = DevelopmentCurve(players: db.players, usesHidden: true)
     let name = db.humanClubs[0].name
     func show(_ player: Player) {
         let talent = curve.talent(player)

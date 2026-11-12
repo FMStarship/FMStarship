@@ -108,12 +108,13 @@ package final class AppModel: ObservableObject {
     var showsAbility: Bool { shownReveal != .hidden }
 
     // Each kind of list keeps its own filters, so opening a squad doesn't disturb a search.
-    @Published var playerFilter = PlayerFilter()
-    @Published var staffFilter = StaffFilter()
-    @Published var squadPlayerFilter = PlayerFilter()
-    @Published var squadStaffFilter = StaffFilter()
-    @Published var listPlayerFilter = PlayerFilter()
-    @Published var listStaffFilter = StaffFilter()
+    // They start with hidden values off, and `init` gives them the real setting.
+    @Published var playerFilter = PlayerFilter(showHidden: false, showAbility: false)
+    @Published var staffFilter = StaffFilter(showHidden: false, showAbility: false)
+    @Published var squadPlayerFilter = PlayerFilter(showHidden: false, showAbility: false)
+    @Published var squadStaffFilter = StaffFilter(showHidden: false, showAbility: false)
+    @Published var listPlayerFilter = PlayerFilter(showHidden: false, showAbility: false)
+    @Published var listStaffFilter = StaffFilter(showHidden: false, showAbility: false)
 
     @Published var playerColumns: [Col] = []
     @Published var staffColumns: [Col] = []
@@ -556,7 +557,10 @@ package final class AppModel: ObservableObject {
             self[keyPath: keyPath].showHidden = showHidden
             self[keyPath: keyPath].showAbility = showsAbility
         }
-        for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] { self[keyPath: keyPath].showHidden = showHidden }
+        for keyPath in [\AppModel.staffFilter, \.squadStaffFilter, \.listStaffFilter] {
+            self[keyPath: keyPath].showHidden = showHidden
+            self[keyPath: keyPath].showAbility = showsAbility
+        }
     }
 
     private func visibilityChanged() {
@@ -697,9 +701,11 @@ package final class AppModel: ObservableObject {
         search()
     }
 
-    private func parsedFilters(_ columns: [Col], _ texts: [String: String]) -> [(col: Col, filter: ColumnFilter)] {
+    /// A filter typed in a column that Hidden attributes or Ability no longer allows does nothing.
+    func parsedFilters(_ columns: [Col], _ texts: [String: String]) -> [(col: Col, filter: ColumnFilter)] {
         columns.compactMap { col in
-            guard let text = texts[col.name], let filter = ColumnFilter.parse(text, numeric: col.numeric) else { return nil }
+            guard Columns.allowed(col, showHidden: showHidden, showAbility: showsAbility),
+                  let text = texts[col.name], let filter = ColumnFilter.parse(text, numeric: col.numeric) else { return nil }
             return (col, filter)
         }
     }
@@ -973,15 +979,12 @@ package final class AppModel: ObservableObject {
         openShortlist = shortlist
         // The original starts from a clean filter too: a shortlist should show everyone on it.
         if shortlist?.isStaff == true {
-            listStaffFilter = StaffFilter()
+            listStaffFilter = StaffFilter(showHidden: showHidden, showAbility: showsAbility)
             listStaffFilter.job = "Any job"
             listStaffFilter.rank = StaffFilter.noRanking
             listStaffFilter.markDefaults()
-            listStaffFilter.showHidden = showHidden
         } else {
-            listPlayerFilter = PlayerFilter()
-            listPlayerFilter.showHidden = showHidden
-            listPlayerFilter.showAbility = showsAbility
+            listPlayerFilter = PlayerFilter(showHidden: showHidden, showAbility: showsAbility)
         }
         if screen == .shortlists { search() }
     }

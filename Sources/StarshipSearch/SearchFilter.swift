@@ -123,8 +123,6 @@ public protocol SearchFilter {
 }
 
 extension SearchFilter {
-    public var showAbility: Bool { true }
-
     public static func sections(inTab tab: String) -> [FilterSection<Self>] { sections.filter { $0.tab == tab } }
 
     /// The sections to draw in a tab, leaving out hidden-attribute ones when `showHidden` is off and ability ones when `showAbility` is.

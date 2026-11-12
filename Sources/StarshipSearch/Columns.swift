@@ -113,7 +113,7 @@ public struct Col: Identifiable {
     }
 
     /// The grid's `CellValue` and `CellFormatting` handlers for one cell.
-    public func cell(_ person: Person, reveal: Reveal = .exact) -> Cell {
+    public func cell(_ person: Person, reveal: Reveal) -> Cell {
         var value = get(person)
 
         if value == .empty, name == "Days out", let player = person as? Player, player.injury != nil,
@@ -482,7 +482,7 @@ public enum Columns {
 
     /// The order of a player search: the sorted column, or highest CA first. An order would give CA away while it's off,
     /// so then it's highest value first, with "not for sale" last because its value is only a placeholder.
-    public static func ordered(players rows: [Player], sortBy col: Col?, descending: Bool, byAbility: Bool = true) -> [Player] {
+    public static func ordered(players rows: [Player], sortBy col: Col?, descending: Bool, byAbility: Bool) -> [Player] {
         if let col, !sortsAfterChecks(col) { return sortRows(rows, by: col, descending: descending) }
         if byAbility { return rows.sorted { $0.ca > $1.ca } }
         return rows.sorted { ($0.notForSale ? -1 : $0.value) > ($1.notForSale ? -1 : $1.value) }

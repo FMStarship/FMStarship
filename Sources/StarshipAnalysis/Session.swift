@@ -25,14 +25,16 @@ public enum AbilityReveal: Int, CaseIterable {
 }
 
 public struct DisplayOptions {
-    public var reveal: AbilityReveal
-    public var showHidden: Bool
+    /// Always `.hidden` while `showHidden` is off: CA and PA are hidden in FM too.
+    public private(set) var reveal: AbilityReveal
+    public private(set) var showHidden: Bool
     public var units: MoneyUnits
     /// Inside FM, where FM Starship's tab has a Hidden attributes switch of its own, so the hints point there.
     public var insideGame: Bool
 
-    public init(reveal: AbilityReveal = .numbers, showHidden: Bool = false, units: MoneyUnits = MoneyUnits(), insideGame: Bool = false) {
-        self.reveal = reveal
+    /// No default for `reveal` or `showHidden`, so every caller says what the settings are.
+    public init(reveal: AbilityReveal, showHidden: Bool, units: MoneyUnits = MoneyUnits(), insideGame: Bool = false) {
+        self.reveal = showHidden ? reveal : .hidden
         self.showHidden = showHidden
         self.units = units
         self.insideGame = insideGame
@@ -92,13 +94,13 @@ public final class AnalysisSession {
     /// Mentality is hidden, so it only counts while the user shows hidden attributes.
     public var development: DevelopmentCurve { display.showHidden ? curve : curve.hidingMentality() }
 
-    public init(db: Database, club: ChosenClub, display: DisplayOptions = DisplayOptions(), library: TacticLibrary? = nil) {
+    public init(db: Database, club: ChosenClub, display: DisplayOptions, library: TacticLibrary? = nil) {
         self.db = db
         self.club = club
         self.display = display
         self.library = library
         self.checks = GameChecks(club: club)
-        curve = DevelopmentCurve(players: db.players)
+        curve = DevelopmentCurve(players: db.players, usesHidden: true)
     }
 
     /// `db.GameDate ?? DateTime.Today`.

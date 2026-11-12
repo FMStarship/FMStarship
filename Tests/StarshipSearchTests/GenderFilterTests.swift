@@ -11,7 +11,7 @@ final class GenderFilterTests: XCTestCase {
     }
 
     func testTheFilterKeepsOneSideOrBoth() {
-        var filter = PlayerFilter()
+        var filter = PlayerFilter(showHidden: true, showAbility: true)
         filter.ratingAtLeast = ""
         XCTAssertTrue(filter.matches(player(woman: false)))
         XCTAssertTrue(filter.matches(player(woman: true)))

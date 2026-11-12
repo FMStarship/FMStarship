@@ -18,7 +18,7 @@ final class PeopleListViewTests: XCTestCase {
     }
 
     func testFMsTableGetsTheFirstFewHundredInTheSearchsOrder() {
-        let list = PeopleListView(people: players(1_200), staff: false, filter: "", display: DisplayOptions())
+        let list = PeopleListView(people: players(1_200), staff: false, filter: "", display: DisplayOptions(reveal: .numbers, showHidden: true))
         XCTAssertEqual(list.table.rows.count, PeopleListView.limit)
         XCTAssertEqual(list.table.rows.first?.cells[0], "Player 1")
         XCTAssertEqual(list.found, 1_200)
@@ -26,7 +26,7 @@ final class PeopleListViewTests: XCTestCase {
     }
 
     func testAShortListSaysHowManyWereFound() {
-        let list = PeopleListView(people: players(1), staff: false, filter: "", display: DisplayOptions())
+        let list = PeopleListView(people: players(1), staff: false, filter: "", display: DisplayOptions(reveal: .numbers, showHidden: true))
         XCTAssertEqual(list.count, "1 player found.")
     }
 
@@ -35,13 +35,13 @@ final class PeopleListViewTests: XCTestCase {
         staff.commonName = "Coach"
         staff.ca = 130
         staff.pa = 140
-        let list = PeopleListView(people: [staff], staff: true, filter: "Coaching staff", display: DisplayOptions())
+        let list = PeopleListView(people: [staff], staff: true, filter: "Coaching staff", display: DisplayOptions(reveal: .numbers, showHidden: true))
         XCTAssertEqual(list.table.rows[0].cells, ["Coach", "130", "140"])
         XCTAssertEqual(list.title, "Staff")
     }
 
     func testWithCAAndPAOffFMsTableGetsNoneOfThem() {
-        let list = PeopleListView(people: players(3), staff: false, filter: "", display: DisplayOptions(reveal: .hidden))
+        let list = PeopleListView(people: players(3), staff: false, filter: "", display: DisplayOptions(reveal: .hidden, showHidden: false))
         XCTAssertEqual(list.table.columns.map(\.title), ["Name"])
         XCTAssertEqual(FMTable.columns(NativeSearch.playerColumns, with: FMTable.extras(from: list.table, titles: ["CA", "PA"])),
                        NativeSearch.playerColumns)
