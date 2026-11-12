@@ -4,7 +4,7 @@ struct AboutWindow: View {
     private var version: String {
         // Inside FM, the main bundle is the game's.
         AppModel.editionInsideGame
-            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "27.0.6"
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "27.0.7"
     }
 
     var body: some View {

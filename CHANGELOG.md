@@ -3,7 +3,7 @@
 What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 [Releases](https://github.com/FMStarship/FMStarship/releases) page.
 
-## Unreleased
+## 27.0.7
 
 - **Works with FM's update of 12 November (27.0.1.2503222).** FM's rules (role stars, "would join you" and the other answers
   FM gives) are back on, after 27.0.6 switched them off for an FM build it didn't know. FM Starship's tab inside FM has been
@@ -12,6 +12,10 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
   into place and shows the Steam launch option to set, with a Copy button and the steps. If you added a build you made yourself, it
   asks before replacing it. The app carries both, notarized with it, and refreshes the plugin it installed when it updates.
   FM Starship > Remove FM Starship from FM… takes it away again.
+- **A safety net for FM Starship inside FM.** If FM closes twice in a row before FM Starship's tab has settled in, FM starts
+  without it until the next FM Starship update, and the app tells you why.
+- **FM Starship's tab stays out of a version of FM it hasn't been checked on,** and the app tells you once that it comes back
+  with the next FM Starship update. FM itself starts as normal.
 - **Remove keeps the launcher.** Removing FM Starship from FM takes away the plugin and FM's table files but leaves the launcher, so
   Steam still starts FM if the launch option is still set. FM then starts without the FM STARSHIP tab. Clearing the launch option is
   still recommended, and Add puts everything back.

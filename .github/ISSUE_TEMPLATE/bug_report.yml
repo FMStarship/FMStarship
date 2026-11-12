@@ -13,7 +13,7 @@ body:
     attributes:
       label: FM Starship version
       description: Find it in FM Starship > About FM Starship.
-      placeholder: "27.0.6"
+      placeholder: "27.0.7"
     validations:
       required: true
   - type: dropdown
@@ -31,7 +31,7 @@ body:
     attributes:
       label: FM build
       description: Help > Compatibility shows what's working on your build.
-      placeholder: "27.0.1.2494769"
+      placeholder: "27.0.1.2503222"
     validations:
       required: true
   - type: input
