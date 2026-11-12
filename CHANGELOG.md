@@ -5,6 +5,9 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 
 ## Unreleased
 
+- **Works with FM's update of 12 November (27.0.1.2503222).** FM's rules (role stars, "would join you" and the other answers
+  FM gives) are back on, after 27.0.6 switched them off for an FM build it didn't know. FM Starship's tab inside FM has been
+  checked on it, and is listed for it.
 - **Add FM Starship to FM from the app, without Xcode.** FM Starship > Add FM Starship to FM… copies the plugin and its launcher
   into place and shows the Steam launch option to set, with a Copy button and the steps. If you added a build you made yourself, it
   asks before replacing it. The app carries both, notarized with it, and refreshes the plugin it installed when it updates.
