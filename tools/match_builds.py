@@ -583,8 +583,10 @@ def mac27_values(path):
     if not block: sys.exit(f'{path}: no Mac27')
     values = {}
     for line in block[1].splitlines():
-        m = re.match(r'\s*static let (\w+)(?:\s*:\s*\w+)?\s*=\s*(.+?)\s*(?://.*)?$', line)
+        m = re.match(r'\s*(?:package\s+|public\s+)?static let (\w+)(?:\s*:\s*\w+)?\s*=\s*(.+?)\s*(?://.*)?$', line)
         if m: values[m[1]] = parse_value(m[2])
+    # Finding none would check nothing and still exit 0, which reads as every value found.
+    if not values: sys.exit(f'{path}: no values in Mac27')
     return values
 
 
