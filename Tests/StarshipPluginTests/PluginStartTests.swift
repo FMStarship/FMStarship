@@ -14,17 +14,19 @@ final class PluginStartTests: XCTestCase {
         #include <stdio.h>
         #include <stdlib.h>
         int main(int argc, char **argv) {
-            printf("started=%s\\n", getenv("STARSHIP_STARTED") ? "yes" : "no");
+            const char *app = getenv("STARSHIP_STARTED");
+            printf("started=%s\\n", app ? "yes" : "no");
+            if (app) printf("app=%s\\n", app);
             printf("inserted=%s\\n", getenv("DYLD_INSERT_LIBRARIES") ? "yes" : "no");
             bool (*is_game)(const char *) = (bool (*)(const char *))dlsym(RTLD_DEFAULT, "starship_plugin_is_game");
             for (int i = 1; i < argc; i++) printf("game=%d\\n", is_game ? is_game(argv[i]) : -1);
             return 0;
         }
         """
-    /// Stands in for the Swift side, which start.c calls only inside FM.
+    /// Stands in for the Swift side, which start.c calls only inside FM, and says which bundle it was given.
     private static let swiftSide = """
         #include <stdlib.h>
-        void starship_plugin_start(void) { setenv("STARSHIP_STARTED", "1", 1); }
+        void starship_plugin_start(const char *game_app) { setenv("STARSHIP_STARTED", game_app ? game_app : "NULL", 1); }
         """
 
     private static let built = Result { try build() }
@@ -83,7 +85,7 @@ final class PluginStartTests: XCTestCase {
     }
 
     /// Runs `executable` with the start inserted, and what it said.
-    private func launch(_ executable: URL, asking paths: [String] = []) throws -> (started: Bool, inserted: Bool, games: [Bool]) {
+    private func launch(_ executable: URL, asking paths: [String] = []) throws -> (started: Bool, inserted: Bool, games: [Bool], app: String?) {
         let process = Process()
         process.executableURL = executable
         process.arguments = paths
@@ -96,7 +98,8 @@ final class PluginStartTests: XCTestCase {
         XCTAssertEqual(process.terminationStatus, 0, text)
         let lines = text.split(separator: "\n").map(String.init)
         return (lines.contains("started=yes"), lines.contains("inserted=yes"),
-                lines.filter { $0.hasPrefix("game=") }.map { $0 == "game=1" })
+                lines.filter { $0.hasPrefix("game=") }.map { $0 == "game=1" },
+                lines.first { $0.hasPrefix("app=") }.map { String($0.dropFirst(4)) })
     }
 
     func testItStartsInFMWhateverAPatchCallsItsBundleOrExecutable() throws {
@@ -106,6 +109,10 @@ final class PluginStartTests: XCTestCase {
             let run = try launch(fm)
             XCTAssertTrue(run.started, fm.path)
             XCTAssertFalse(run.inserted, "anything FM starts mustn't get the plugin")
+            // The bundle the Swift side reads FM's build from, worked out here so it never asks CFBundle before FM's main().
+            let bundle = try XCTUnwrap(realpath(fm.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path, nil))
+            defer { free(bundle) }
+            XCTAssertEqual(run.app, String(cString: bundle))
         }
     }
 

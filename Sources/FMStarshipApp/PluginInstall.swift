@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Security
+import StarshipCore
 
 /// The plugin and its launcher as the app carries them, where Apple wants a dylib and a helper app, so that the app's
 /// signature and notarization cover them. A build without them, such as `swift run`, has nothing to add.
@@ -72,11 +73,8 @@ struct PluginFolder: Sendable {
     static let stagingPrefix = ".adding."
 
     /// The launcher looks for the plugin under HOME, and Scripts/install-plugin.sh puts it there, so the app goes by
-    /// HOME too. Foundation's home folder ignores it.
-    static var home: URL {
-        if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty { return URL(fileURLWithPath: home, isDirectory: true) }
-        return FileManager.default.homeDirectoryForCurrentUser
-    }
+    /// HOME too, by the same rule as the plugin's status file. Foundation's home folder ignores it.
+    static var home: URL { PluginStatus.home }
 
     let url: URL
 

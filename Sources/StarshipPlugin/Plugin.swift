@@ -1,12 +1,16 @@
 import AppKit
 import FMStarshipUI
+import StarshipCore
 import SwiftUI
 
 /// FM Starship running inside Football Manager instead of beside it: the app's own windows and screens, over the game.
 /// Control-Option-S shows and hides it, and in windowed mode there's also an FM Starship menu in FM's menu bar.
+/// `gameApp` is fm.app's path, worked out by start.c, so nothing here asks CFBundle for FM's bundle before FM's main().
 @_cdecl("starship_plugin_start")
-public func starshipPluginStart() {
-    PluginLog.write("Loaded into FM, pid \(getpid())\(PluginBuild.developerTools ? ", with the developer tools" : "")")
+public func starshipPluginStart(_ gameApp: UnsafePointer<CChar>?) {
+    // Before anything of FM's is touched, so on a build nobody has checked there's no tab, menu, monitor or timer.
+    let build = gameApp.flatMap { FMBuild.installed(app: URL(fileURLWithPath: String(cString: $0), isDirectory: true)) }
+    guard PluginStartGate.allows(build, developer: PluginBuild.developerTools, home: PluginStatus.home) else { return }
     // The constructor runs before FM's main(), so nothing in AppKit is up yet.
     NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
         MainActor.assumeIsolated { Plugin.shared.install() }
@@ -167,6 +171,39 @@ final class Plugin: NSObject, NSWindowDelegate {
         case ("z", [.command]): return Selector(("undo:"))
         case ("z", [.command, .shift]): return Selector(("redo:"))
         default: return nil
+        }
+    }
+}
+
+/// Whether FM Starship starts in this build of FM: only one it has been checked on, or any with the developer tools,
+/// since that's how a build gets checked. It writes one log line either way, and the status file the app reads.
+enum PluginStartGate {
+    static func allows(_ build: FMBuild?, developer: Bool, home: URL, pid: Int32 = getpid(),
+                       log: (String) -> Void = { PluginLog.write($0) }) -> Bool {
+        let status = PluginStatus.file(home: home)
+        let named = build.map { "FM \($0)" } ?? "a build of FM whose version or GameAssembly couldn't be read"
+        switch PluginGate.decide(build, developer: developer) {
+        case .run:
+            PluginStatus.remove(at: status)
+            log("Loaded into FM, pid \(pid)\(developer ? ", with the developer tools" : ""), on \(named), which is checked")
+            return true
+        case .runUnchecked:
+            PluginStatus.remove(at: status)
+            log("Loaded into FM, pid \(pid), with the developer tools, on \(named), which isn't checked: starting anyway, as a developer build does")
+            return true
+        case .off:
+            var written = "the app is told"
+            do {
+                try PluginStatus.keptOut(build).write(to: status)
+            } catch {
+                written = "the app couldn't be told: \(error)"
+            }
+            if build == nil {
+                log("Loaded into FM, pid \(pid), on \(named), so FM Starship stays out of FM; \(written)")
+            } else {
+                log("Loaded into FM, pid \(pid), on \(named), which nobody has checked, so FM Starship stays out of FM until an update lists it; \(written)")
+            }
+            return false
         }
     }
 }

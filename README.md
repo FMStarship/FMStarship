@@ -300,6 +300,13 @@ couldn't find. Built with `Scripts/install-plugin.sh --developer`, the plugin wr
 Control-Option-D, which is how those names were found. [CONTRIBUTING.md](CONTRIBUTING.md#working-on-the-plugin) covers the other
 developer tools.
 
+The plugin also **stays out of any build of FM nobody has checked**: no tab, no menu, nothing hooked, one line in `plugin.log`,
+and a `status.json` beside it that the app reads to tell the player. A build is FM's version with `GameAssembly`'s UUID
+(`dwarfdump --uuid` on `fm.app/Contents/Frameworks/GameAssembly.dylib`, the arm64 one). A developer build, from
+`Scripts/install-plugin.sh --developer`, starts anyway, which is how a new build gets checked. Once every plugin screen has
+worked on it, add the build to `CheckedBuilds.list` in `Sources/StarshipCore/Memory/CheckedBuilds.swift`, and players get the
+tab back with the next update.
+
 FM Starship's own parts, and how to check them after a patch:
 
 - **Your tactic** is read from `TACTIC_EDIT_SESSION` objects, with offsets in `MacLayout.Tactic`. If they move, the planner
