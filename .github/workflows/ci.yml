@@ -31,6 +31,12 @@ jobs:
           sw_vers
           swift --version
 
+      - name: Check the scripts
+        run: |
+          for script in Scripts/*.sh tools/*.sh; do bash -n "$script"; done
+          # The cache goes to the runner's temp folder, so nothing is written into the checkout.
+          python3 -I -X pycache_prefix="$RUNNER_TEMP/pycache" -m py_compile Scripts/*.py tools/*.py
+
       - name: Run the tests
         run: swift test
 
@@ -38,8 +44,24 @@ jobs:
       - name: Build the plugin with its developer tools
         run: swift build --product StarshipPlugin -Xswiftc -DSTARSHIP_DEVELOPER
 
+      # Strings only the developer code has. Two are under 16 bytes, which Swift may keep out of the string table, so the
+      # developer build must show them all, or the check of the app's plugin below has gone blind.
+      - name: Check the developer tools are in the developer plugin
+        run: |
+          strings -a .build/debug/libStarshipPlugin.dylib > "$RUNNER_TEMP/developer-strings"
+          for tool in "watch-tables" "Plugin/command" "Watching FM's screens for tables" "Dumped FM's interface"; do
+            grep -qF -- "$tool" "$RUNNER_TEMP/developer-strings" || { echo "Not in the developer plugin: $tool"; exit 1; }
+          done
+
       - name: Check the interpreter against the CPU
         run: tools/run-emutest.sh
 
       - name: Build the app
         run: Scripts/build-app.sh
+
+      - name: Check the plugin in the app has no developer tools
+        run: |
+          strings -a "build/FM Starship.app/Contents/Frameworks/libStarshipPlugin.dylib" > "$RUNNER_TEMP/plugin-strings"
+          for tool in "watch-tables" "Plugin/command" "Watching FM's screens for tables" "Dumped FM's interface"; do
+            if grep -qF -- "$tool" "$RUNNER_TEMP/plugin-strings"; then echo "Developer tool in the normal plugin: $tool"; exit 1; fi
+          done
