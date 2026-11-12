@@ -5,6 +5,16 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 
 ## Unreleased
 
+- **Add FM Starship to FM from the app, without Xcode.** FM Starship > Add FM Starship to FM… copies the plugin and its launcher
+  into place and shows the Steam launch option to set, with a Copy button and the steps. If you added a build you made yourself, it
+  asks before replacing it. The app carries both, notarized with it, and refreshes the plugin it installed when it updates.
+  FM Starship > Remove FM Starship from FM… takes it away again.
+- **Remove keeps the launcher.** Removing FM Starship from FM takes away the plugin and FM's table files but leaves the launcher, so
+  Steam still starts FM if the launch option is still set. FM then starts without the FM STARSHIP tab. Clearing the launch option is
+  still recommended, and Add puts everything back.
+- **Position columns sort in FM's order.** Clicking a Position column now goes goalkeeper first, then each line from right to left
+  (DR, WBR, DC, DL, WBL), then DM, midfield, attacking midfield and strikers, as FM's own lists do. Columns of a player's positions
+  go by the position they're rated best at; columns of places in a tactic go by the place, so DC (R) comes before DC (L).
 - **Ability inside FM.** The FM STARSHIP tab has an Ability dropdown beside its Hidden attributes switch, for showing CA and PA
   exactly, as stars, or not at all. It sets the same setting as the app's toolbar, and every screen is drawn again when it changes.
   While Hidden attributes is off, it says Off and can't be changed, as in the app.
