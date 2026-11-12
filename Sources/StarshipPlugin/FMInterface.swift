@@ -343,6 +343,8 @@ final class FMInterface {
     /// FM's group of tabs in its navigation bar, kept for as long as it's still in FM's interface: FM builds the bar again
     /// on loading a save and after a match, and finding it searches FM's whole interface.
     private var tabGroup: IL2CPP.Handle?
+    /// When the tab has been in long enough to tell the launcher this start went well.
+    private var startMark = StartMarkDue()
 
     private func fmTabGroup(_ ui: FMElements) throws -> Pointer? {
         if let kept = tabGroup.flatMap(ui.il2cpp.target), ui.isAttached(kept) { return kept }
@@ -354,7 +356,10 @@ final class FMInterface {
 
     private func keepTab(_ ui: FMElements) throws {
         guard let group = try fmTabGroup(ui) else { return }
-        if let element = tab.flatMap(ui.il2cpp.target), ui.parent(of: element) == group { return }
+        if let element = tab.flatMap(ui.il2cpp.target), ui.parent(of: element) == group {
+            if startMark.tabStillIn() { StartMark.writeSoon() }
+            return
+        }
         // FM built its bar again, or this is the first time we've seen it with a career loaded.
         if screen != nil { leave(ui) }
         closeTabMenu("FM built its bar again")
@@ -370,6 +375,7 @@ final class FMInterface {
         tab = ui.il2cpp.pin(element)
         tabButton = ui.il2cpp.pin(button)
         tabArrow = ui.il2cpp.pin(arrow)
+        startMark.tabAdded()
         PluginLog.write("FM Starship tab added to FM's navigation bar")
     }
 
