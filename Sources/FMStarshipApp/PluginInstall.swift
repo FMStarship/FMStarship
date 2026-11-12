@@ -175,9 +175,9 @@ struct PluginFolder: Sendable {
     }
 
     /// Takes the plugin, the marker and FM's table files away, and leaves the launcher, so Steam still starts FM, without
-    /// the plugin, while its launch option names it. `Scripts/install-plugin.sh --uninstall` takes the whole folder. The
-    /// plugin goes first, so a removal that stops partway never leaves the app's plugin without its marker, which would
-    /// read as a developer's own build. The logs stay.
+    /// the plugin, while its launch option names it. `Scripts/install-plugin.sh --uninstall` does the same, and
+    /// `--uninstall-all` takes the whole folder. The plugin goes first, so a removal that stops partway never leaves the
+    /// app's plugin without its marker, which would read as a developer's own build. The logs stay.
     func remove() throws {
         let files = FileManager.default
         for item in [plugin, marker] + Self.tableFileNames.map({ url.appendingPathComponent($0) }) where files.fileExists(atPath: item.path) {

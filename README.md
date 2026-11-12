@@ -96,7 +96,9 @@ until you do, Steam still starts FM, without FM Starship.
 **To build the plugin yourself**, run `Scripts/install-plugin.sh` in a copy of the source. You need Xcode and Homebrew's `zstd`, as
 [CONTRIBUTING.md](CONTRIBUTING.md#getting-set-up) explains. It puts your own build in the same folder and prints the same launch
 option. The app leaves a build of your own alone when it starts, and asks before Add FM Starship to FM replaces it.
-`Scripts/install-plugin.sh --uninstall` removes the folder, once the launch option is cleared.
+`Scripts/install-plugin.sh --plugin-only` (with `--developer` if you want the developer tools) replaces only the plugin and leaves
+the launcher, for quick rounds after a full install. `Scripts/install-plugin.sh --uninstall` removes the plugin and keeps the
+launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes the whole folder, once the launch option is cleared.
 
 ### What to know
 
