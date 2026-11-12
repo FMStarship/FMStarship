@@ -103,10 +103,13 @@ launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes th
 ### What to know
 
 - **It's a preview.** It has only been tried on FM27 27.0.1.2503222 (12 November's update), 27.0.1.2494769 (the full release)
-  and the Launch Preview build before it, with FM in full screen. It finds FM's interface by the names
-  of FM's classes, methods and elements, so an FM patch can stop the tab appearing or a screen opening. Clear the launch option to play
-  without it.
-- **It runs inside FM**, so if the plugin crashes, FM closes with it. Save your career before you try something new.
+  and the Launch Preview build before it, with FM in full screen. It finds FM's interface by the names of FM's classes, methods and
+  elements, which an FM patch can change, so it only starts on the builds of FM it has been checked on. **After an FM patch**, FM
+  starts as normal without the tab, and the app tells you once. The tab comes back with the FM Starship update that lists the new
+  build. Clear the launch option to play without it altogether.
+- **It runs inside FM**, so if the plugin crashes, FM closes with it. Save your career before you try something new. If FM closes
+  twice in a row before the tab has settled in, FM starts without it until the next FM Starship update, and the app tells you why.
+  Add FM Starship to FM lets it try again sooner.
 - **It never writes your save, and it doesn't patch FM's code.** It adds its screens to FM's interface through the IL2CPP API that
   FM's game code exports. But FM's own right-click menu on our rows acts in the game, as it does in FM's lists, so an offer or an
   approach made from it is real.
