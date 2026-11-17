@@ -3,7 +3,7 @@
 What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 [Releases](https://github.com/FMStarship/FMStarship/releases) page.
 
-## Unreleased
+## 27.0.8
 
 - **Works with FM's 27.1.0 update (27.1.0.2505117, 17 November).** FM's rules (role stars, "would join you" and the other answers
   FM gives) are back on, the Squad planner reads your tactic from FM's tactics screen again, and FM Starship's tab inside FM comes
