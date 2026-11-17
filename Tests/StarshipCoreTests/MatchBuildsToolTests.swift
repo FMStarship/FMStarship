@@ -11,12 +11,13 @@ final class MatchBuildsToolTests: XCTestCase {
     private func mac27Values(in file: URL) throws -> (output: String, status: Int32) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        // -B: no __pycache__ beside the tool, which would leave the checkout untracked files that release.sh refuses.
         let script = """
             import sys; sys.path.insert(0, sys.argv[1]); import match_builds
             values = match_builds.mac27_values(sys.argv[2])
             print(len(values)); print(values.get('fingerprint', ''))
             """
-        process.arguments = ["python3", "-I", "-c", script, root.appendingPathComponent("tools").path, file.path]
+        process.arguments = ["python3", "-I", "-B", "-c", script, root.appendingPathComponent("tools").path, file.path]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
