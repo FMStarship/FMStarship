@@ -206,3 +206,21 @@ final class FollowFMTests: XCTestCase {
         XCTAssertNotEqual(FMInterface.visible(shown), FMInterface.visible(["0x1 false", "0x3 true"]))
     }
 }
+
+/// FM 27.1.0 changed two things FM's tables are made of: a column's settings lost the constructor that took whether
+/// the column is required, and each row gained a third item. These guard the choices the plugin makes; reading FM's rows
+/// and making the settings need IL2CPP, so FM itself (and the patch-day harness) is their test.
+@MainActor
+final class FMTableShapeTests: XCTestCase {
+    func testColumnSettingsAreMadeWithWhicheverConstructorFMHas() {
+        XCTAssertEqual(FMTable.metadataConstructor(hasRequired: true, hasPlain: false), .required, "27.0.1 and before")
+        XCTAssertEqual(FMTable.metadataConstructor(hasRequired: false, hasPlain: true), .plain, "27.1.0")
+        XCTAssertEqual(FMTable.metadataConstructor(hasRequired: true, hasPlain: true), .required)
+        XCTAssertNil(FMTable.metadataConstructor(hasRequired: false, hasPlain: false), "Neither: a plain column instead")
+    }
+
+    func testTheRowSizesTriedAreTheTwoFMHasUsed() {
+        // A BindingRoot and an element until 27.0.1; and the row's menu manipulator from 27.1.0.
+        XCTAssertEqual(FMTable.rowSizes, [16, 24])
+    }
+}

@@ -102,8 +102,8 @@ launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes th
 
 ### What to know
 
-- **It's a preview.** It has only been tried on FM27 27.0.1.2503222 (12 November's update), 27.0.1.2494769 (the full release)
-  and the Launch Preview build before it, with FM in full screen. It finds FM's interface by the names of FM's classes, methods and
+- **It's a preview.** It has only been tried on FM27 27.1.0.2505117 (17 November's update) and on the 27.0.1 and Launch Preview
+  builds before it, with FM in full screen. It finds FM's interface by the names of FM's classes, methods and
   elements, which an FM patch can change, so it only starts on the builds of FM it has been checked on. **After an FM patch**, FM
   starts as normal without the tab, and the app tells you once. The tab comes back with the FM Starship update that lists the new
   build. Clear the launch option to play without it altogether.

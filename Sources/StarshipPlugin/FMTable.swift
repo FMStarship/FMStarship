@@ -271,6 +271,18 @@ struct FMTable {
         return view
     }
 
+    enum MetadataConstructor: Equatable { case required, plain }
+
+    /// How a column's settings are made: until 27.0.1 FM's constructor took whether the column is required; from
+    /// 27.1.0 it takes nothing, and that's a field. Nil if FM has neither.
+    static func metadataConstructor(hasRequired: Bool, hasPlain: Bool) -> MetadataConstructor? {
+        hasRequired ? .required : hasPlain ? .plain : nil
+    }
+
+    /// The sizes of the struct FM keeps each table row in: a BindingRoot and an element until 27.0.1, and from 27.1.0
+    /// the row's right-click menu manipulator too. Any other size means the rows have changed in a way not yet checked.
+    static let rowSizes = [16, 24]
+
     /// A column's settings, as FM's own views have them, for one holding FM Starship's values: its width, and no
     /// sorting by its header, which would sort by what FM keeps in it.
     private func ownMetadata(_ configClass: Pointer, width: Float, stars: Bool = false) throws -> Pointer {
@@ -278,9 +290,20 @@ struct FMTable {
               let metadataClass = il2cpp.klass(of: il2cpp.methodParameter(withMetadata, 1)) else {
             throw IL2CPP.Failure("FM's column settings aren't as expected")
         }
-        var required = false
-        let metadata = try withUnsafeMutablePointer(to: &required) {
-            try il2cpp.new(metadataClass, [Pointer($0)], firstParameter: "System.Boolean")
+        let hasRequired = il2cpp.method(metadataClass, ".ctor", parameters: 1, firstParameter: "System.Boolean", inherited: false) != nil
+        let hasPlain = il2cpp.method(metadataClass, ".ctor", parameters: 0, inherited: false) != nil
+        let metadata: Pointer
+        switch Self.metadataConstructor(hasRequired: hasRequired, hasPlain: hasPlain) {
+        case .required:
+            var required = false
+            metadata = try withUnsafeMutablePointer(to: &required) {
+                try il2cpp.new(metadataClass, [Pointer($0)], firstParameter: "System.Boolean")
+            }
+        case .plain:
+            metadata = try il2cpp.new(metadataClass)
+            try il2cpp.setField(metadata, "m_required", false)
+        case nil:
+            throw IL2CPP.Failure("FM's column settings have no constructor we know")
         }
         // Through IL2CPP, which refuses a field that's no longer the size of the value.
         try il2cpp.setField(metadata, "m_sortingDisabled", true)
@@ -572,10 +595,11 @@ struct FMTable {
     /// scrolls or sorts, so this runs again and again while the table is up.
     func refreshRows(_ table: Pointer, _ extras: [Extra], shown: Shown, sort: Sort?, onSort: @escaping @MainActor (String) -> Void) {
         guard let bindings = il2cpp.fieldObject(table, "m_bindings"), let rowList = il2cpp.fieldObject(table, "m_rows") else { return }
-        // FM keeps each row as a 16-byte pair: the row's BindingRoot, which has its key and its cells, and an element.
-        // The BindingRoot is found by its type. If it isn't there, or the pair has changed size, our values are off.
+        // FM keeps each row as a struct of one of `rowSizes`: the row's BindingRoot, which has its key and its cells, then
+        // an element. The BindingRoot is found by its type. If it isn't there, or the struct is another size, our
+        // values are off.
         let rowOffset = il2cpp.findClass("SI.Bindable", "BindingRoot").flatMap { il2cpp.offset(of: $0, inStructsOf: rowList) }
-        let rows = rowOffset == nil ? [] : il2cpp.structItems(of: rowList, size: 16)
+        let rows = rowOffset == nil ? [] : Self.rowSizes.lazy.map { il2cpp.structItems(of: rowList, size: $0) }.first { !$0.isEmpty } ?? []
         if rows.isEmpty, (il2cpp.value(rowList, "_size", as: Int32.self) ?? 0) > 0, !Self.rowsUnreadable {
             PluginLog.write("FM's table rows aren't as expected on this build of FM, so our values are off")
             Self.rowsUnreadable = true
