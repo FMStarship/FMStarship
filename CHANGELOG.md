@@ -3,6 +3,13 @@
 What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 [Releases](https://github.com/FMStarship/FMStarship/releases) page.
 
+## Unreleased
+
+- **Works with FM's 27.1.0 update (27.1.0.2505117, 17 November).** FM's rules (role stars, "would join you" and the other answers
+  FM gives) are back on, the Squad planner reads your tactic from FM's tactics screen again, and FM Starship's tab inside FM comes
+  back. FM 27.1.0 changed how its tables hold their rows and their column settings, and FM Starship reads both again, so its
+  values show in FM's tables, at their own width. The tab has been checked on this build, and is listed for it.
+
 ## 27.0.7
 
 - **Works with FM's update of 12 November (27.0.1.2503222).** FM's rules (role stars, "would join you" and the other answers

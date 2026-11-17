@@ -126,7 +126,7 @@ enum MacLayout {
     /// user's first and second elevens. Each lists its players and points at a TACTICS_CREATOR.
     enum Tactic {
         static let sessionOwner = 8
-        static let sessionArrays: [Int64] = [0x1008, 0x21d8, 0x3390]
+        static let sessionArrays: [Int64] = [0x1010, 0x21e8, 0x33a8]
         static let arrayCreators: Int64 = 8
         static let arrayPlayers: Int64 = 0x28
         static let slots = 11

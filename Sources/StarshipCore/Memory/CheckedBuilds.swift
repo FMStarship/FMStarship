@@ -33,6 +33,7 @@ public enum CheckedBuilds {
         FMBuild(version: "27.0.0.2493426", gameAssembly: "18C040AA-177A-3278-8CBD-E5289254D4FA"),
         FMBuild(version: "27.0.1.2494769", gameAssembly: "94BE5439-0807-3A78-8C32-E1F12FE5E7BB"),
         FMBuild(version: "27.0.1.2503222", gameAssembly: "61843D56-DEEF-3A03-A86C-3C92DA3E2455"),
+        FMBuild(version: "27.1.0.2505117", gameAssembly: "2CED398B-6A21-3CF4-968B-8DC97CE246C5"),
     ]
 
     public static func contains(_ build: FMBuild, in list: [FMBuild] = list) -> Bool { list.contains(build) }
