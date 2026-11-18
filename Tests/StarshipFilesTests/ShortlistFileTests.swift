@@ -86,20 +86,26 @@ final class ShortlistFileTests: XCTestCase {
         XCTAssertEqual(moved, [url])
     }
 
-    /// Inside FM only folders under ~/Library are looked in: not Documents, and not a last save that went there.
-    func testLibraryRootsLeaveOutDocuments() throws {
+    /// Inside FM only Sports Interactive's own folder is looked in: not Documents, not iCloud Drive, and not a last save that
+    /// went to either.
+    func testFMFolderRootsLeaveOutEverythingElse() throws {
         let home = folder.appendingPathComponent("home", isDirectory: true)
         let support = home.appendingPathComponent("Library/Application Support/Sports Interactive/Football Manager 27")
-        let preferences = support.appendingPathComponent("Preferences/profile", isDirectory: true)
-        try FileManager.default.createDirectory(at: preferences, withIntermediateDirectories: true)
-        let savedInDocuments = home.appendingPathComponent("Documents/FM saves")
-        try #"<record><string id="last_saved_game" value="\#(savedInDocuments.path)/games/Molde.fm"/></record>"#
-            .write(to: preferences.appendingPathComponent("last_saved_game.xml"), atomically: true, encoding: .utf8)
-
         let documents = home.appendingPathComponent("Documents/Sports Interactive/Football Manager 27")
-        let all = ShortlistFile.gameRoots(home: home).map(\.standardizedFileURL.path)
-        XCTAssertEqual(all, [savedInDocuments, support, documents].map(\.standardizedFileURL.path))
-        XCTAssertEqual(ShortlistFile.libraryRoots(home: home).map(\.standardizedFileURL.path), [support.standardizedFileURL.path])
+        let iCloud = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/FM saves")
+        let siLibrary2 = home.appendingPathComponent("Library/Application Support/Sports Interactive2/FM")
+        let ownSaves = support.appendingPathComponent("saves elsewhere")
+        for (profile, root) in [("a", iCloud), ("b", home.appendingPathComponent("Documents/FM saves")), ("c", siLibrary2), ("d", ownSaves)] {
+            let preferences = support.appendingPathComponent("Preferences/\(profile)", isDirectory: true)
+            try FileManager.default.createDirectory(at: preferences, withIntermediateDirectories: true)
+            try #"<record><string id="last_saved_game" value="\#(root.path)/games/Molde.fm"/></record>"#
+                .write(to: preferences.appendingPathComponent("last_saved_game.xml"), atomically: true, encoding: .utf8)
+        }
+
+        let all = Set(ShortlistFile.gameRoots(home: home).map(\.standardizedFileURL.path))
+        XCTAssertTrue(all.isSuperset(of: [iCloud, documents, siLibrary2, ownSaves, support].map(\.standardizedFileURL.path)))
+        XCTAssertEqual(Set(ShortlistFile.fmFolderRoots(home: home).map(\.standardizedFileURL.path)),
+                       Set([ownSaves, support].map(\.standardizedFileURL.path)))
     }
 
     func testFileNamesStayLegalOnWindows() {

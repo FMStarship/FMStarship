@@ -1,4 +1,5 @@
 @testable import FMStarshipUI
+import StarshipFiles
 import StarshipSearch
 import XCTest
 
@@ -11,5 +12,13 @@ final class ShortlistRootsTests: XCTestCase {
         Settings.current = Settings()
         XCTAssertFalse(AppModel.isInsideGame)
         XCTAssertNil(AppModel().shortlistRoots)
+    }
+
+    func testInsideFMOnlyFMsOwnFolderIsLookedIn() {
+        let home = URL(fileURLWithPath: "/Users/someone")
+        let roots = AppModel.shortlistRoots(insideGame: true, home: home)
+        XCTAssertEqual(roots, ShortlistFile.fmFolderRoots(home: home))
+        XCTAssertFalse(roots?.contains { $0.path.contains("/Documents/") } ?? true)
+        XCTAssertNil(AppModel.shortlistRoots(insideGame: false, home: home))
     }
 }

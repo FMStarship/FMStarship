@@ -7,9 +7,13 @@ import UniformTypeIdentifiers
 extension AppModel {
     private static var shortlistType: UTType { UTType(filenameExtension: ShortlistFile.fileExtension) ?? .data }
 
-    /// Where to look for FM's shortlists: everywhere FM keeps them, but inside FM only under `~/Library`, as the plugin's own
-    /// Shortlists tab does, so macOS never asks the player whether FM may look in Documents. Nil is every folder.
-    var shortlistRoots: [URL]? { Self.isInsideGame ? ShortlistFile.libraryRoots() : nil }
+    /// Where to look for FM's shortlists: everywhere FM keeps them, but inside FM only in Sports Interactive's own folder, as
+    /// the plugin's own Shortlists tab does, so macOS never asks the player whether FM may look somewhere. Nil is every folder.
+    var shortlistRoots: [URL]? { Self.shortlistRoots(insideGame: Self.isInsideGame) }
+
+    static func shortlistRoots(insideGame: Bool, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL]? {
+        insideGame ? ShortlistFile.fmFolderRoots(home: home) : nil
+    }
 
     /// "Add ... to shortlist": `PersonMenu.FillShortlists`.
     func shortlistEntries(_ people: [Person], isStaff: Bool) -> [MenuEntry] {
