@@ -985,6 +985,12 @@ package final class AppModel: ObservableObject {
 
     func showShortlist(_ shortlist: OpenShortlist?) {
         openShortlist = shortlist
+        // Nothing open: its rows go too, so the list's menus can't act on a shortlist that's gone.
+        if shortlist == nil, screen == .shortlists {
+            selection = []
+            players = []
+            staff = []
+        }
         // The original starts from a clean filter too: a shortlist should show everyone on it.
         if shortlist?.isStaff == true {
             listStaffFilter = StaffFilter(showHidden: showHidden, showAbility: showsAbility)
@@ -999,9 +1005,11 @@ package final class AppModel: ObservableObject {
 
     func shortlistsChanged() { shortlistsVersion += 1 }
 
+    /// The open shortlist's file changed: show who's on it now, keeping the filters the player has on it.
     func refreshOpenShortlist(_ url: URL, uids: [UInt32]) {
         guard let open = openShortlist, open.url == url else { return }
-        showShortlist(OpenShortlist(url: url, name: open.name, isStaff: open.isStaff, uids: uids))
+        openShortlist = OpenShortlist(url: url, name: open.name, isStaff: open.isStaff, uids: uids)
+        if screen == .shortlists { search() }
     }
 }
 

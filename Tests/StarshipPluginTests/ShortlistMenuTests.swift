@@ -52,6 +52,37 @@ final class ShortlistMenuTests: XCTestCase {
         XCTAssertEqual(try ShortlistFile.read(ShortlistFile.backupURL(for: url)).uids, [1, 2, 3])
     }
 
+    /// The review's case: a player filters the shortlist, then takes someone off it. The filter stays.
+    func testRemovingKeepsTheShortlistsFilters() throws {
+        let url = try ShortlistFile.create(name: "Targets", isStaff: false, uids: [1, 2], in: folder)
+        let model = AppModel()
+        model.go(to: .shortlists)
+        model.showShortlist(OpenShortlist(url: url, name: "Targets", isStaff: false, uids: [1, 2]))
+        model.listPlayerFilter.ageMax = "23"
+        model.removeFromOpenShortlist([player(2, "Kari Nordmann")])
+        XCTAssertEqual(model.openShortlist?.uids, [1])
+        XCTAssertEqual(model.listPlayerFilter.ageMax, "23")
+    }
+
+    func testClosingTheShortlistTakesItsRowsAndSelectionWithIt() throws {
+        let url = try ShortlistFile.create(name: "Targets", isStaff: false, uids: [2], in: folder)
+        let model = AppModel()
+        model.go(to: .shortlists)
+        model.showShortlist(OpenShortlist(url: url, name: "Targets", isStaff: false, uids: [2]))
+        let kari = player(2, "Kari Nordmann")
+        model.players = [kari]
+        model.selection = [kari]
+        model.showShortlist(nil)
+        XCTAssertTrue(model.players.isEmpty)
+        XCTAssertTrue(model.selection.isEmpty)
+    }
+
+    /// Inside FM, macOS could ask the player whether FM may use the Trash, so it's only offered in the app.
+    func testTheAppOffersMoveToTrash() {
+        XCTAssertFalse(AppModel.isInsideGame)
+        XCTAssertTrue(AppModel().canTrashShortlists)
+    }
+
     func testOnlyTheShortlistsScreenOffersIt() throws {
         let url = try ShortlistFile.create(name: "Targets", isStaff: false, uids: [2], in: folder)
         let model = AppModel()
