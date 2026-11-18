@@ -935,6 +935,13 @@ package final class AppModel: ObservableObject {
         let isStaff = first is Staff
         let comparable = Self.canCompare(people)
         let who = people.count == 1 ? first.name : "\(people.count) \(isStaff ? "staff" : "players")"
+        var removal: [MenuEntry] = []
+        if screen == .shortlists, let open = openShortlist, open.isStaff == isStaff {
+            let onIt = people.filter { open.uids.contains($0.uid) }
+            removal = [MenuEntry("Remove \(who) from \"\(open.name)\"", enabled: !onIt.isEmpty) { [weak self] in
+                self?.removeFromOpenShortlist(onIt)
+            }]
+        }
         return [
             MenuEntry(people.count == 1 ? "Open \(first.name)'s profile" : "Open \(first.name)'s profile (first selected)") { [weak self] in
                 self?.openProfile(first)
@@ -944,6 +951,7 @@ package final class AppModel: ObservableObject {
             },
             .separator,
             MenuEntry("Add \(who) to shortlist", submenu: { [weak self] in self?.shortlistEntries(people, isStaff: isStaff) ?? [] }),
+        ] + removal + [
             MenuEntry(first.clubFull.isEmpty ? "Open club" : "Open \(first.clubFull)", enabled: !first.clubFull.isEmpty) { [weak self] in
                 self?.openClub(first.clubFull)
             },

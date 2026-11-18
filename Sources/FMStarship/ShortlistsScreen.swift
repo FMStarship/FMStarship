@@ -71,6 +71,9 @@ struct ShortlistsScreen: View {
                     .foregroundStyle(.secondary)
             }
             .tag(entry.url)
+            .contextMenu {
+                Button("Move to Trash...") { model.trashShortlist(entry) }
+            }
         }
     }
 

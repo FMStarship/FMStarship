@@ -38,6 +38,38 @@ extension AppModel {
         }
     }
 
+    /// "Remove ... from" the shortlist open on the Shortlists screen. Keeps the previous version as `.bak`.
+    func removeFromOpenShortlist(_ people: [Person]) {
+        guard let open = openShortlist else { return }
+        do {
+            let (shortlist, removed) = try ShortlistFile.remove(people.map(\.uid), from: open.url)
+            status = "Removed \(removed) from shortlist \"\(shortlist.name)\" (now \(shortlist.uids.count)). FM's copy in your save is its own."
+            shortlistsChanged()
+            refreshOpenShortlist(open.url, uids: shortlist.uids)
+        } catch {
+            Dialogs.inform("FM shortlist", "Couldn't remove from the shortlist: \(error.localizedDescription)")
+        }
+    }
+
+    /// Moves a shortlist file, and its `.bak`, to the Trash, after asking.
+    func trashShortlist(_ entry: ShortlistEntry) {
+        let name = entry.shortlist.name
+        let message = "Move the shortlist \"\(name)\" to the Trash? FM won't offer it under Shortlist > Load any more. If you've already "
+            + "loaded it into a save, that save keeps its own copy."
+        Dialogs.confirm("FM shortlist", message, yes: "Move to Trash", no: "Cancel") { [weak self] in
+            guard let self else { return }
+            do {
+                try ShortlistFile.trash(entry.url)
+            } catch {
+                Dialogs.inform("FM shortlist", "Couldn't move the shortlist to the Trash: \(error.localizedDescription)")
+                return
+            }
+            if self.openShortlist?.url == entry.url { self.showShortlist(nil) }
+            self.status = "Moved shortlist \"\(name)\" to the Trash."
+            self.shortlistsChanged()
+        }
+    }
+
     func newShortlist(_ people: [Person], isStaff: Bool) {
         guard let folder = ShortlistFile.folder(isStaff: isStaff) else {
             saveAsShortlist(people, isStaff: isStaff, name: isStaff ? "FM Starship staff" : "FM Starship players")
