@@ -86,6 +86,22 @@ final class ShortlistFileTests: XCTestCase {
         XCTAssertEqual(moved, [url])
     }
 
+    /// Inside FM only folders under ~/Library are looked in: not Documents, and not a last save that went there.
+    func testLibraryRootsLeaveOutDocuments() throws {
+        let home = folder.appendingPathComponent("home", isDirectory: true)
+        let support = home.appendingPathComponent("Library/Application Support/Sports Interactive/Football Manager 27")
+        let preferences = support.appendingPathComponent("Preferences/profile", isDirectory: true)
+        try FileManager.default.createDirectory(at: preferences, withIntermediateDirectories: true)
+        let savedInDocuments = home.appendingPathComponent("Documents/FM saves")
+        try #"<record><string id="last_saved_game" value="\#(savedInDocuments.path)/games/Molde.fm"/></record>"#
+            .write(to: preferences.appendingPathComponent("last_saved_game.xml"), atomically: true, encoding: .utf8)
+
+        let documents = home.appendingPathComponent("Documents/Sports Interactive/Football Manager 27")
+        let all = ShortlistFile.gameRoots(home: home).map(\.standardizedFileURL.path)
+        XCTAssertEqual(all, [savedInDocuments, support, documents].map(\.standardizedFileURL.path))
+        XCTAssertEqual(ShortlistFile.libraryRoots(home: home).map(\.standardizedFileURL.path), [support.standardizedFileURL.path])
+    }
+
     func testFileNamesStayLegalOnWindows() {
         XCTAssertEqual(ShortlistFile.sanitizedFileName("a/b:c*d?\"e<f>g|h\\i"), "abcdefghi")
     }

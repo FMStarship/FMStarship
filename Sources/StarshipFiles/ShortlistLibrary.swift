@@ -27,6 +27,13 @@ extension ShortlistFile {
         return roots.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
+    /// `gameRoots` under `~/Library` only, for inside FM: looking in Documents, where the Windows game keeps them, or in a
+    /// last save that went there, would make macOS ask the player whether FM may, which FM never does itself.
+    public static func libraryRoots(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
+        let library = home.appendingPathComponent("Library").standardizedFileURL.path + "/"
+        return gameRoots(home: home).filter { $0.standardizedFileURL.path.hasPrefix(library) }
+    }
+
     private static func lastSaveRoots(in preferences: URL) -> [URL] {
         guard let files = FileManager.default.enumerator(at: preferences, includingPropertiesForKeys: nil) else { return [] }
         let value = try? NSRegularExpression(pattern: "value=\"([^\"]+)\"")
