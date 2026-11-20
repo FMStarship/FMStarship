@@ -46,8 +46,9 @@ final class ProfileFacts: ObservableObject {
     @Published var preferredJob: String?
 
     /// FM's stats scopes: 2 is the domestic cup and 3 the continental competitions, as a player with six Champions League
-    /// matches and no cup matches shows in FM.
-    nonisolated static let scopes = [(1, "League"), (2, "Cup"), (3, "Continental"), (4, "International"), (0, "Friendlies"), (GameScope.clubTotal, "Club total")]
+    /// matches and no cup matches shows in FM. Internationals are left out: for a player FM showed with 6 this season, scope 4
+    /// gave 8 and scope 7 gave 4.
+    nonisolated static let scopes = [(1, "League"), (2, "Cup"), (3, "Continental"), (0, "Friendlies"), (GameScope.clubTotal, "Club total")]
 
     func load(_ person: Person, session: AnalysisSession?) async {
         guard let session else { return }

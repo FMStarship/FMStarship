@@ -10,4 +10,9 @@ final class SeasonScopeTests: XCTestCase {
         XCTAssertEqual(scopes["Continental"], 3)
         XCTAssertEqual(scopes["League"], 1)
     }
+
+    /// Checked the same day: FM showed 6 internationals this season for a player whose scope 4 gave 8 and scope 7 gave 4.
+    func testInternationalsAreLeftOutSinceNeitherScopeMatchesFM() {
+        XCTAssertFalse(ProfileFacts.scopes.contains { $0.0 == 4 || $0.0 == 7 || $0.1 == "International" })
+    }
 }
