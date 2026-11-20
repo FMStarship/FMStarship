@@ -3,7 +3,8 @@ import StarshipCore
 import XCTest
 
 /// The lists' side of Hidden attributes being off, beyond CA and PA: consistency, important matches, injury proneness,
-/// the other hidden attributes and the personality numbers are gone from columns and filters. Off means gone.
+/// the other hidden attributes and the personality numbers are gone from columns and filters. Off means gone. A member of
+/// staff's Adaptability is the exception: FM shows it with their other attributes.
 final class HiddenOffTests: XCTestCase {
     /// Every hidden attribute a rule can pick for players: the hidden ones and the personality numbers.
     private let hiddenPlayerAttributes = Names.hidden + Names.personality
@@ -49,19 +50,19 @@ final class HiddenOffTests: XCTestCase {
             XCTAssertEqual(players[name]?.hidden, true, "\(name) is a hidden player column")
         }
         let staff = Dictionary(uniqueKeysWithValues: Columns.forStaff().map { ($0.name, $0) })
-        for name in Columns.hiddenStaffAttributes.filter({ !$0.hasPrefix("Unnamed") }) + Names.personality {
+        for name in Columns.hiddenStaffAttributes.filter({ !$0.hasPrefix("Unnamed") }) + Names.staffHiddenPersonality {
             XCTAssertEqual(staff[name]?.hidden, true, "\(name) is a hidden staff column")
         }
     }
 
     func testNoHiddenColumnCanBeShownWhileHiddenAttributesIsOff() {
-        for all in [Columns.forPlayers(), Columns.forStaff()] {
+        for (all, hiddenNames) in [(Columns.forPlayers(), hiddenPlayerAttributes), (Columns.forStaff(), Columns.hiddenStaffAttributes + Names.staffHiddenPersonality)] {
             var everyColumn = all
             for index in everyColumn.indices { everyColumn[index].visible = true }
             let shown = Columns.shown(everyColumn, showHidden: false, showAbility: false)
             XCTAssertFalse(shown.contains { $0.hidden || $0.ability }, shown.filter { $0.hidden || $0.ability }.map(\.name).joined(separator: ", "))
             XCTAssertFalse(all.contains { ($0.hidden || $0.ability) && Columns.allowed($0, showHidden: false, showAbility: false) })
-            for name in hiddenPlayerAttributes { XCTAssertFalse(shown.contains { $0.name == name }, name) }
+            for name in hiddenNames { XCTAssertFalse(shown.contains { $0.name == name }, name) }
         }
     }
 
@@ -98,7 +99,7 @@ final class HiddenOffTests: XCTestCase {
         let choices = playerFilter(hidden: false).ruleChoices
         for name in hiddenPlayerAttributes { XCTAssertFalse(choices.contains(name), name) }
         let staffChoices = staffFilter(hidden: false).ruleChoices
-        for name in Columns.hiddenStaffAttributes + Names.personality { XCTAssertFalse(staffChoices.contains(name), name) }
+        for name in Columns.hiddenStaffAttributes + Names.staffHiddenPersonality { XCTAssertFalse(staffChoices.contains(name), name) }
     }
 
     func testARuleOnAHiddenAttributeDoesNothingWhileHiddenAttributesIsOff() {
@@ -132,7 +133,7 @@ final class HiddenOffTests: XCTestCase {
 
     func testAStaffRuleOnAHiddenAttributeDoesNothingWhileHiddenAttributesIsOff() {
         let weak = staff()
-        for name in Columns.hiddenStaffAttributes.filter({ !$0.hasPrefix("Unnamed") }) + Names.personality {
+        for name in Columns.hiddenStaffAttributes.filter({ !$0.hasPrefix("Unnamed") }) + Names.staffHiddenPersonality {
             var rule = AttrRule()
             rule.attribute = name
             rule.value = "15"
@@ -149,6 +150,52 @@ final class HiddenOffTests: XCTestCase {
             on.showHidden = false
             XCTAssertEqual(on.rules[0].attribute, AttrRule.noAttribute, name)
         }
+    }
+
+    // MARK: Staff Adaptability
+
+    /// FM shows a member of staff's Adaptability with Determination and the other staff attributes, so it's no hidden value
+    /// for staff. A player's stays hidden.
+    func testStaffAdaptabilityIsAShownStaffAttribute() throws {
+        XCTAssertEqual(Names.staffHiddenPersonality, Names.personality.filter { $0 != "Adaptability" })
+
+        let adaptability = try XCTUnwrap(Columns.forStaff().first { $0.name == "Adaptability" })
+        XCTAssertFalse(adaptability.hidden)
+        XCTAssertEqual(adaptability.group, "Attributes")
+        XCTAssertEqual(Columns.forStaff().filter { $0.name == "Adaptability" }.count, 1, "One Adaptability column for staff")
+        XCTAssertEqual(try XCTUnwrap(Columns.forPlayers().first { $0.name == "Adaptability" }).hidden, true)
+
+        var everyColumn = Columns.forStaff()
+        for index in everyColumn.indices { everyColumn[index].visible = true }
+        XCTAssertTrue(Columns.shown(everyColumn, showHidden: false, showAbility: false).contains { $0.name == "Adaptability" })
+
+        let someone = staff()
+        someone.pers[Names.personalityIndex["Adaptability"]!] = 16
+        XCTAssertEqual(someone.a("Adaptability"), 16, "Read from the personality bytes")
+        XCTAssertEqual(adaptability.cell(someone, reveal: .hidden).text, "16")
+    }
+
+    func testAStaffRuleOnAdaptabilityWorksWhileHiddenAttributesIsOff() {
+        XCTAssertTrue(staffFilter(hidden: false).ruleChoices.contains("Adaptability"))
+        XCTAssertFalse(playerFilter(hidden: false).ruleChoices.contains("Adaptability"))
+
+        let adaptable = staff()
+        adaptable.pers[Names.personalityIndex["Adaptability"]!] = 16
+        var rule = AttrRule()
+        rule.attribute = "Adaptability"
+        rule.value = "15"
+
+        var off = staffFilter(hidden: false)
+        off.rules[0] = rule
+        XCTAssertFalse(off.matches(staff()), "A rule on staff Adaptability filters while off")
+        XCTAssertTrue(off.matches(adaptable))
+        XCTAssertTrue(off.describe().contains("Adaptability"))
+
+        // Switching Hidden attributes off keeps it, as it does Determination.
+        var on = staffFilter(hidden: true)
+        on.rules[0] = rule
+        on.showHidden = false
+        XCTAssertEqual(on.rules[0].attribute, "Adaptability")
     }
 
     // MARK: Cells

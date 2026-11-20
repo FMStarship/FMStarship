@@ -50,6 +50,7 @@ final class HiddenExportTests: XCTestCase {
         staff.attr = [UInt8](repeating: 3, count: staff.attr.count)
         for name in Names.staffShown { staff.attr[Names.staffIndex[name]!] = 17 }
         staff.pers = [UInt8](repeating: 3, count: staff.pers.count)
+        staff.pers[Names.personalityIndex["Adaptability"]!] = 16
         staff.prepare()
         return staff
     }
@@ -94,8 +95,11 @@ final class HiddenExportTests: XCTestCase {
         let row = try XCTUnwrap(lines.last)
         XCTAssertFalse(header.contains("CA"))
         XCTAssertFalse(header.contains("PA"))
-        for name in Columns.forStaff().filter(\.hidden).map(\.name) + Names.personality { XCTAssertFalse(header.contains(name), name) }
+        for name in Columns.forStaff().filter(\.hidden).map(\.name) + Names.staffHiddenPersonality {
+            XCTAssertFalse(header.contains(name), name)
+        }
         XCTAssertTrue(row.contains("Ola Nordmann"))
+        XCTAssertEqual(row[try XCTUnwrap(header.firstIndex(of: "Adaptability"))], "16", "Staff Adaptability is a shown attribute")
         XCTAssertFalse(row.contains("187"))
         XCTAssertFalse(row.contains("193"))
         XCTAssertFalse(row.contains("3"), "No hidden attribute or personality number")

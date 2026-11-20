@@ -7,6 +7,18 @@ extension Names {
     public static let staffIndex = index(staffAttrs)
     public static let personalityIndex = index(personality)
 
+    /// The personality numbers FM shows as a member of staff's attributes: Adaptability sits with Determination and
+    /// Motivating on a staff profile. A player's stays hidden, and so does the rest of staff personality.
+    public static let staffShownPersonality = ["Adaptability"]
+    public static let staffHiddenPersonality = personality.filter { !staffShownPersonality.contains($0) }
+
+    /// Every attribute FM shows for staff: `staffShown`, with Adaptability before Determination.
+    public static let staffVisible: [String] = {
+        var names = staffShown
+        names.insert(contentsOf: staffShownPersonality, at: names.firstIndex(of: "Determination") ?? names.count)
+        return names
+    }()
+
     /// FM Starship matches anchors by English nation name, which fails in a translated game.
     /// Nation codes are the same in every language.
     static let areaAnchorCodes: [String: String] = [

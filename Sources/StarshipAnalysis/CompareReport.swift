@@ -249,7 +249,7 @@ public struct CompareReport {
                 "Coaching Possession", "Coaching Set Pieces", "Coaching Tactical", "Coaching Technical", "Working With Youngsters",
             ])
             staffGroup("Mental & knowledge", [
-                "Determination", "Level Of Discipline", "Motivating", "Man Management", "Judging Player Ability",
+                "Adaptability", "Determination", "Level Of Discipline", "Motivating", "Man Management", "Judging Player Ability",
                 "Judging Player Potential", "Judging Staff Ability", "Tactical Knowledge", "Analysing Data", "Negotiating",
             ])
             staffGroup("Medical", ["Physiotherapy", "Sports Science"])
@@ -264,7 +264,7 @@ public struct CompareReport {
                 for name in Names.staffAttrs where seen.insert(name).inserted && !name.hasPrefix("Unnamed") {
                     number(name, eachStaff { .int($0.a(name)) }, hidden: true)
                 }
-                for name in Names.personality { number(name, each { .int($0.p(name)) }, hidden: true) }
+                for name in Names.staffHiddenPersonality { number(name, each { .int($0.p(name)) }, hidden: true) }
             }
         }
         return rows

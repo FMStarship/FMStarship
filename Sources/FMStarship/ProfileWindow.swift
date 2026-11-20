@@ -545,7 +545,7 @@ private struct StaffBody: View {
                         "Working With Youngsters",
                     ]))
                     AttributeColumn(title: "Mental & knowledge", rows: rows([
-                        "Determination", "Level Of Discipline", "Motivating", "Man Management", "Judging Player Ability",
+                        "Adaptability", "Determination", "Level Of Discipline", "Motivating", "Man Management", "Judging Player Ability",
                         "Judging Player Potential", "Judging Staff Ability", "Tactical Knowledge", "Analysing Data", "Negotiating",
                     ]))
                     AttributeColumn(title: "Medical", rows: rows(["Physiotherapy", "Sports Science"]))
@@ -554,7 +554,7 @@ private struct StaffBody: View {
                             AttributeColumn(title: "Hidden", rows: hiddenAttributes.map {
                                 AttributeRow(name: $0, value: staff.a($0), hidden: true)
                             })
-                            AttributeColumn(title: "Personality", rows: Names.personality.map {
+                            AttributeColumn(title: "Personality", rows: Names.staffHiddenPersonality.map {
                                 AttributeRow(name: $0, value: staff.p($0), hidden: true)
                             })
                         }
