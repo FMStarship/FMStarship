@@ -63,10 +63,11 @@ extension Toolbox {
 
     static let seasonNote = "Starts, Sub appearances, Goals, Assists, Average rating and the cards are FM's club total for this season: "
         + "league, cup and continental matches together, at the club he plays for now (his loan club while on loan). League stats, "
-        + "Cup stats and Continental stats give each apart. Friendlies and internationals aren't in either."
+        + "Cup stats and Continental stats give each apart; empty means he hasn't played in it. That was checked on a Norwegian "
+        + "save with its league, its cup and the Champions League; other cups and continental competitions are expected in the "
+        + "same split but weren't checked. Friendlies and internationals aren't in either."
 
-    /// FM's own split of the club total, as it keeps a player's season: the league, the domestic cups and the continental
-    /// club competitions.
+    /// FM's own split of the club total, as it keeps a player's season: the league, the cup and the continental competitions.
     static let competitions = [("League", RulesEngine.league), ("Cup", RulesEngine.cup), ("Continental", RulesEngine.continental)]
 
     /// FM can play a match without the date moving, so a row's season stats and form are asked for again when it's answered,
@@ -78,17 +79,21 @@ extension Toolbox {
     }
 
     /// His season in each of FM's competitions apart, in a few words, so a cup goal isn't read as a league one. Empty where he
-    /// hasn't played in it. None when FM's rules are off, since season stats come with them.
+    /// hasn't played in it, and "not available" where FM's stats didn't answer, which mustn't read as no matches. None when
+    /// FM's rules are off, since season stats come with them.
     static func competitionFields(_ engine: GameRulesEngine?) -> [Output.Field] {
         guard let engine else { return [] }
         // "League" alone is the club's league elsewhere in these answers.
         return competitions.map { name, scope in
             Output.Field(name: name + " stats") { person in
-                guard let player = person as? Player, let stats = engine.seasonStats(player: player, season: scope) else { return nil }
+                guard let player = person as? Player else { return nil }
+                guard let stats = engine.seasonStats(player: player, season: scope) else { return .string(notAvailable) }
                 return seasonLine(stats)
             }
         }
     }
+
+    static let notAvailable = "not available"
 
     /// "6 (2) apps, 540 min, 3 goals, 1 assist, 7.25 rating", FM's way of writing starts and sub appearances.
     static func seasonLine(_ stats: SeasonStats) -> JSON? {
@@ -98,11 +103,13 @@ extension Toolbox {
                        + "\(count(stats.assists, "assist")), " + String(format: "%.2f", stats.rating) + " rating")
     }
 
-    /// The same split in full, for `person`: only the competitions he's played in.
+    /// The same split in full, for `person`: the competitions he's played in, and "not available" for any FM's stats didn't
+    /// answer for.
     static func seasonByCompetition(_ player: Player, _ engine: GameRulesEngine?) -> JSON? {
         guard let engine else { return nil }
         let split: [(String, JSON)] = competitions.compactMap { name, scope in
-            guard let s = engine.seasonStats(player: player, season: scope), s.apps > 0 else { return nil }
+            guard let s = engine.seasonStats(player: player, season: scope) else { return (name, .string(notAvailable)) }
+            guard s.apps > 0 else { return nil }
             return (name, .object([("Starts", .int(s.starts)), ("Sub appearances", .int(s.subs)), ("Minutes", .int(s.minutes)),
                                    ("Goals", .int(s.goals)), ("Assists", .int(s.assists)),
                                    ("Average rating", .double((s.rating * 100).rounded() / 100)), ("Yellow cards", .int(s.yellow)),

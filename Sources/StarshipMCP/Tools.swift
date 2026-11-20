@@ -79,7 +79,8 @@ extension Toolbox {
         Tool(name: "squad", title: "Squad",
              description: "One squad of a club, one compact row per player with uid: first team, reserves or B team, a youth team, "
                 + "those out on loan, or all. Says which squads the club has. The season columns are the club total; League stats, "
-                + "Cup stats and Continental stats give each competition's apps, minutes, goals, assists and average rating apart. Last match is each "
+                + "Cup stats and Continental stats give each competition's apps, minutes, goals, assists and average rating apart "
+                + "(empty: none; \"not available\": FM's stats didn't answer). Last match is each "
                 + "player's latest match in FM's record of his form, with its competition and opponent and his minutes and rating "
                 + "(both empty if he didn't play: on the bench, left out or suspended), which shows rotation. "
                 + "Condition and Sharpness are percentages, Morale 1-20, Playing time his happiness with it from -100 to 100, "

@@ -37,6 +37,7 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     func roleRows(player: Player, team: Int64) -> [RoleRow]? { nil }
     /// Ten appearances this season: seven in the league, two in the cup and one in Europe, where Rivals FC aren't.
     func seasonStats(player: Player, season: Int) -> SeasonStats? {
+        if failingScopes.contains(season) { return nil }
         var stats = SeasonStats()
         switch season {
         case RulesEngine.clubTotal:
@@ -56,6 +57,8 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
         return stats
     }
     var goalSinceRead = false
+    /// Scopes FM's stats function fails for, as when the sandbox can't run it.
+    var failingScopes: Set<Int> = []
     /// More matches in a player's record, ahead of the league ones, newest first.
     var moreMatches: [UInt32: [PlayerMatch]] = [:]
     func form(player: Player) -> String? { "7.1 6.8 7.4" }

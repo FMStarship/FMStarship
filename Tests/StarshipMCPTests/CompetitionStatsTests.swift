@@ -71,6 +71,19 @@ final class CompetitionStatsTests: XCTestCase {
         XCTAssertEqual(Set(Self.keys(rival["Season stats by competition"])), ["League", "Cup"])
     }
 
+    /// A stats call that fails mustn't read as no matches in that competition.
+    func testAFailedCompetitionSaysNotAvailable() throws {
+        let harness = Harness()
+        let engine = try XCTUnwrap(harness.source.engine as? FakeEngine)
+        engine.failingScopes = [RulesEngine.cup]
+        let first = try XCTUnwrap(Self.rows(try harness.answer("squad"))[9])
+        XCTAssertEqual(first["Cup stats"], "not available")
+        XCTAssertEqual(first["League stats"], "6 (1) apps, 630 min, 0 goals, 1 assist, 6.80 rating")
+        let split = try XCTUnwrap(try harness.answer("person", ["uid": 9])["Season stats by competition"])
+        XCTAssertEqual(split["Cup"], "not available")
+        XCTAssertEqual(split["League"]?["Goals"], 0)
+    }
+
     func testLastMatchSaysWhichCompetitionAndOpponent() throws {
         let first = try XCTUnwrap(Self.rows(try Harness().answer("squad"))[9])
         XCTAssertEqual(first["Last match competition"], "Mock League")

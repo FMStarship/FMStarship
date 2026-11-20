@@ -41,9 +41,10 @@ public final class RulesEngine: GameRulesEngine {
     public static let loan: UInt64 = 3
     /// The stats scope that totals a player's season for his club.
     public static let clubTotal = 5
-    /// The scopes that keep the club total's league, domestic cup and continental matches apart, at the club he plays for
-    /// now (his loan club while he's on loan). Checked in FM 27.1.0 on 20 Nov 2026 against the matches FM keeps for each of
-    /// Molde's players: the cup's and the Champions League's matched them, and the three add up to the club total.
+    /// The scopes that keep the club total's league, cup and continental matches apart, at the club he plays for now (his
+    /// loan club while he's on loan). Checked in FM 27.1.0 on 20 Nov 2026 against the matches FM keeps for each of Molde's
+    /// players: the Norwegian cup's and the Champions League's matched them, and the three add up to the club total. Other
+    /// cups and continental competitions are expected in the same scopes but weren't checked.
     public static let league = 1, cup = 2, continental = 3
     /// First team, reserves, youth.
     public static let staffLevels = [1, 3, 4]

@@ -407,6 +407,7 @@ public final class FixturesReader {
     }
 
     private func compIndex(_ comp: Int64) -> UInt32 {
+        // The sweep reads `comp` from any fixture-like object, freed copies too, so it's only added to with &+.
         guard let b = game.read(comp &+ MacLayout.Comp.index, count: 4) else { return 0 }
         return le32(b, 0)
     }

@@ -55,8 +55,11 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **Season stats** are FM's club total for this season: league, cup and continental matches added up, at the club he plays
   for now (a loanee's are his loan club's). FM keeps the three apart, and so do `squad`'s `League stats`, `Cup stats` and
   `Continental stats` and `person`'s `Season stats by competition`. Look at those before you judge goals, assists or ratings:
-  three goals in the cup against a lower-league side aren't league goals. Friendlies and internationals aren't in any of them,
-  and a youth player's matches for a reserve or B team may be missing too. **Starts** and **Sub appearances** are separate,
+  three goals in the cup against a lower-league side aren't league goals. Empty means he hasn't played in it; "not
+  available" means FM's stats didn't answer, so don't read it as no matches. The split was checked on a Norwegian save
+  (its league, its cup and the Champions League); other cups and continental competitions are expected in it but weren't
+  checked, so if a split looks short, look at Recent matches. Friendlies and internationals aren't in any of them, and a
+  youth player's matches for a reserve or B team may be missing too. **Starts** and **Sub appearances** are separate,
   as FM's "3 (2)" means 3 starts and 2 as a substitute. **Form** is the last five match ratings, in any competition.
 - **Recent matches** in `person` are the player's latest matches for every team he played for, friendlies, youth and
   international matches too: date, team, competition, opponent, minutes, rating, goals, assists and cards. Use them to say
