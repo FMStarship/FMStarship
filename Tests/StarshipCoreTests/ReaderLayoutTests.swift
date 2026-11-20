@@ -321,6 +321,27 @@ final class ReaderLayoutTests: XCTestCase {
 
     /// FM keeps a club's men and women as two clubs, often with one name. Who is a woman and which clubs are women's are
     /// both read, and where the names clash, the women's side gets a name of its own.
+    func testTheGameDateCanBeReadAgainWithoutReadingEverything() throws {
+        let world = World()
+        world.game.player(FakeGame.PlayerValues())
+        let manager = world.game.transferManager(day: 200, year: 2027)
+
+        let database = try world.game.read()
+        let read = try XCTUnwrap(GameDate.checked(year: 2027, dayOfYear: 200))
+        XCTAssertEqual(database.gameDate, read)
+        XCTAssertEqual(GameReader.gameDate(of: database, in: world.game.process()), read)
+
+        // FM moves on a day: the same records give the new date.
+        world.game.setDate(manager, day: 201, year: 2027)
+        XCTAssertEqual(GameReader.gameDate(of: database, in: world.game.process()), GameDate.checked(year: 2027, dayOfYear: 201))
+
+        // A save that's gone leaves no date there.
+        world.game.setDate(manager, day: 0, year: 0)
+        XCTAssertNil(GameReader.gameDate(of: database, in: world.game.process()))
+        // And a database with nowhere to look says nothing.
+        XCTAssertNil(GameReader.gameDate(of: Database(), in: world.game.process()))
+    }
+
     func testTellsWomenAndWomensClubsApart() throws {
         let world = World()
         let womens = world.game.club(full: "Mockport Rovers FC", short: "Mockport", nation: world.mockovia, womens: true)

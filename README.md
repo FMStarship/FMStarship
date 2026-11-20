@@ -130,6 +130,65 @@ launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes th
 - The plugin never goes online, and it doesn't update itself. The app updates it, from its own copy.
 - It writes what it does to `~/Library/Logs/FM Starship/plugin.log`. Please attach that file to a bug report about the plugin.
 
+## Connecting an AI agent
+
+FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI agent you
+use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
+screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
+shortlists, and FM Starship's club, squad and staff overviews, recommended signings and bargains.
+
+- **It only reads.** It has no way to change anything in FM or your save, and it writes no files.
+- **It stays on your Mac.** Your agent's app starts it and talks to it through stdin and stdout. It opens no network connection and
+  listens on no port. Whatever your agent does with the answers is up to the agent and the AI service behind it.
+- **It follows Hidden attributes.** With Hidden attributes off, the agent gets no CA, PA, hidden attributes or personality numbers,
+  and can't search or order by them. It follows the setting as you last set it, in the app's toolbar or in FM Starship's tab inside
+  FM, on every question.
+- FM has to be running with FM Starship, from the app or with its launch option in Steam, with your save loaded. Otherwise it tells
+  the agent what to do.
+
+It's in the app, at `/Applications/FM Starship.app/Contents/MacOS/fmstarship-mcp`, and it updates with the app. If the app is
+somewhere else, change the path below to match. The app also carries a skill, which tells an agent how to use the tools and read
+FM's numbers: copy the `fm-starship` folder out of `/Applications/FM Starship.app/Contents/Resources/skills` to where your agent
+keeps skills. Copy it rather than pointing your agent into the app, because an agent that edits its skills would break the app's
+signature. Copy it again after an update to get any changes.
+
+**Hermes Agent**: add this to `~/.hermes/config.yaml`, then restart Hermes.
+
+```yaml
+mcp_servers:
+  fmstarship:
+    command: "/Applications/FM Starship.app/Contents/MacOS/fmstarship-mcp"
+```
+
+For the skill: `cp -R "/Applications/FM Starship.app/Contents/Resources/skills/fm-starship" ~/.hermes/skills/`
+
+**Claude Desktop**: add this to `~/Library/Application Support/Claude/claude_desktop_config.json`, inside `mcpServers` if the file
+already has one, then restart Claude Desktop.
+
+```json
+{
+  "mcpServers": {
+    "fmstarship": {
+      "command": "/Applications/FM Starship.app/Contents/MacOS/fmstarship-mcp"
+    }
+  }
+}
+```
+
+For the skill, add the `fm-starship` folder as a ZIP file in Claude Desktop's skills settings.
+
+**Claude Code**: run this once.
+
+```bash
+claude mcp add --scope user fmstarship -- "/Applications/FM Starship.app/Contents/MacOS/fmstarship-mcp"
+```
+
+For the skill: `cp -R "/Applications/FM Starship.app/Contents/Resources/skills/fm-starship" ~/.claude/skills/`
+
+The first question after FM starts takes a few seconds, while the save is read. After that, answers are quick, and the save is
+read again when the game date moves on. It doesn't know fixtures, results, the league table, team stats, condition, morale,
+suspensions or registration status yet.
+
 ## Updates
 
 FM Starship asks before it starts looking for updates, then checks GitHub about once a day, and you can check yourself with
@@ -379,6 +438,9 @@ FM Starship's own parts, and how to check them after a patch:
 | `Sources/StarshipPlugin` | The plugin: the IL2CPP bridge, FM's tables, and the screens inside FM |
 | `Sources/StarshipPluginStart` | Starts the plugin, only inside FM |
 | `Sources/fmprobe` | Developer probe |
+| `Sources/StarshipMCP` | The MCP server for AI agents: the protocol and its tools |
+| `Sources/fmstarship-mcp` | The MCP server's entry point, which the app carries |
+| `skills/fm-starship` | The skill for AI agents that the app carries |
 | `Assets` | The app icon and the README's screenshots. `Scripts/make-icon.py` draws the icon, and needs `rsvg-convert` |
 
 Building needs Xcode and Homebrew's `zstd` (`brew install zstd`). It is linked statically, so the finished app has no
