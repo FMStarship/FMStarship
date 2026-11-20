@@ -1,9 +1,13 @@
 import StarshipCore
 
-/// One of the eight "attribute at least / at most" rows in the filter window.
+/// One of the "attribute at least / at most" rows in the filter window.
 public struct AttrRule: Equatable {
     public static let noAttribute = "(attribute)"
     public static let operators = ["≥", "≤"]
+    /// How many rows a filter starts with, and keeps after a reset.
+    public static let startCount = 8
+    /// How many rows "Add a rule" goes up to.
+    public static let maxCount = 20
 
     public var attribute = AttrRule.noAttribute
     public var atLeast = true
@@ -22,6 +26,9 @@ public struct AttrRule: Equatable {
         attribute = AttrRule.noAttribute
         value = ""
     }
+
+    /// No attribute picked and nothing typed: a row a reset can take away.
+    var isBlank: Bool { attribute == AttrRule.noAttribute && Net.trim(value).isEmpty }
 
     private func active(showHidden: Bool, hidden: Set<String>) -> (name: String, limit: Int)? {
         guard attribute != AttrRule.noAttribute, let limit = Net.int32(value) else { return nil }

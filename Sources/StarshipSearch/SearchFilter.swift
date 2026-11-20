@@ -143,6 +143,39 @@ extension SearchFilter {
         }
     }
 
+    /// The rule at a row, or a blank one past the end, so a row the filter doesn't have reads as unused.
+    public func rule(at index: Int) -> AttrRule {
+        rules.indices.contains(index) ? rules[index] : AttrRule()
+    }
+
+    /// Sets a row. One past the end grows the list, up to `AttrRule.maxCount`, unless it's blank.
+    public mutating func setRule(_ index: Int, _ rule: AttrRule) {
+        if rules.indices.contains(index) {
+            rules[index] = rule
+        } else if index >= 0, index < AttrRule.maxCount, !rule.isBlank {
+            while rules.count < index { rules.append(AttrRule()) }
+            rules.append(rule)
+        }
+    }
+
+    public var canAddRule: Bool { rules.count < AttrRule.maxCount }
+
+    /// Changes a row the filter has, and nothing else: what the filter window's controls write through. A control can
+    /// still hold a row that Reset tab has just taken away, and its last write mustn't bring the row back.
+    public mutating func updateRule(_ index: Int, _ rule: AttrRule) {
+        if rules.indices.contains(index) { rules[index] = rule }
+    }
+
+    /// "Add a rule": one more blank row.
+    public mutating func addRule() {
+        if canAddRule { rules.append(AttrRule()) }
+    }
+
+    /// Drops blank rows from the end, down to `AttrRule.startCount`.
+    public mutating func trimRules() {
+        while rules.count > AttrRule.startCount, rules.last?.isBlank == true { rules.removeLast() }
+    }
+
     /// A pick list's value for comparison with its default: "Any" and blank are the same thing.
     private func choiceValue(_ text: String) -> String { text.isEmpty || text == "Any" ? "" : text }
 
@@ -157,9 +190,10 @@ extension SearchFilter {
         case .toggle(let path):
             return [(field.id, self[keyPath: path] ? "1" : "")]
         case .rule(let index):
-            return [("\(field.id).attr", rules[index].attribute),
-                    ("\(field.id).op", rules[index].operatorText),
-                    ("\(field.id).value", Net.trim(rules[index].value))]
+            let rule = rule(at: index)
+            return [("\(field.id).attr", rule.attribute),
+                    ("\(field.id).op", rule.operatorText),
+                    ("\(field.id).value", Net.trim(rule.value))]
         case .note:
             return []
         }
@@ -192,6 +226,7 @@ extension SearchFilter {
     }
 
     public mutating func reset(section: FilterSection<Self>) {
+        var hasRules = false
         for field in section.fields where field.isFilter {
             switch field.kind {
             case .text(let path):
@@ -204,13 +239,17 @@ extension SearchFilter {
             case .toggle(let path):
                 if let value = defaults[field.id] { self[keyPath: path] = value == "1" }
             case .rule(let index):
-                if let value = defaults["\(field.id).attr"] { rules[index].attribute = value }
-                if let value = defaults["\(field.id).op"] { rules[index].operatorText = value }
-                if let value = defaults["\(field.id).value"] { rules[index].value = value }
+                hasRules = true
+                var rule = rule(at: index)
+                if let value = defaults["\(field.id).attr"] { rule.attribute = value }
+                if let value = defaults["\(field.id).op"] { rule.operatorText = value }
+                if let value = defaults["\(field.id).value"] { rule.value = value }
+                setRule(index, rule)
             case .note:
                 break
             }
         }
+        if hasRules { trimRules() }
     }
 
     /// Call with fresh options after loading a save. Typed choices stay as they are, but a region that's no
