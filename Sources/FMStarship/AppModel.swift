@@ -245,6 +245,16 @@ package final class AppModel: ObservableObject {
 
     func persist() { Settings.save() }
 
+    /// Hidden attributes and Ability as last set in the other window, the app's or FM Starship's tab inside FM, once the
+    /// settings file changes. Through the setters, so the screens follow and Off means gone in both. Their save doesn't
+    /// write these back, as what's taken from the file isn't this window's change.
+    func followSettingsFile() {
+        guard Settings.followFile() else { return }
+        if showHidden != Settings.current.showHidden { showHidden = Settings.current.showHidden }
+        let wanted = Reveal(setting: Settings.current.reveal)
+        if reveal != wanted { reveal = wanted }
+    }
+
     private func updateMenuState() {
         let state = MenuState.Values(hasData: database != nil, isList: screen.isList, canCompare: canCompare, loading: loading)
         if menuState.values != state { menuState.values = state }
@@ -514,7 +524,10 @@ package final class AppModel: ObservableObject {
     /// Every 2 s. A read held for the player is installed after the poll's own cost is measured, since that's a search
     /// and more, and has its own. The plugin logs both. `checkGame` has dropped it if FM has closed.
     func pollGame() {
-        checkGameCost.measure { checkGame() }
+        checkGameCost.measure {
+            followSettingsFile()
+            checkGame()
+        }
         if heldReadReady { heldReadCost.measure { useHeldRead() } }
     }
 

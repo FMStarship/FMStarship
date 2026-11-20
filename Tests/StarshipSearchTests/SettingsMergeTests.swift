@@ -8,19 +8,25 @@ final class SettingsMergeTests: XCTestCase {
     private struct Process {
         var current = Settings()
         var baseline: Settings?
+        var seenModified: Date?
 
         mutating func run(_ body: () -> Void) {
             Settings.current = current
             Settings.baseline = baseline
+            Settings.seenModified = seenModified
             body()
             current = Settings.current
             baseline = Settings.baseline
+            seenModified = Settings.seenModified
         }
     }
 
     private var folder: URL!
     private var saved = Settings()
     private var savedBaseline: Settings?
+    private var savedLoaded = false
+    private var savedSeen: Date?
+    private var savedWait: TimeInterval = 0
 
     private var file: URL { folder.appendingPathComponent("settings.json") }
 
@@ -29,6 +35,9 @@ final class SettingsMergeTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         saved = Settings.current
         savedBaseline = Settings.baseline
+        savedLoaded = Settings.loaded
+        savedSeen = Settings.seenModified
+        savedWait = Settings.lockWait
         Settings.pathOverride = file
     }
 
@@ -36,6 +45,9 @@ final class SettingsMergeTests: XCTestCase {
         Settings.pathOverride = nil
         Settings.current = saved
         Settings.baseline = savedBaseline
+        Settings.loaded = savedLoaded
+        Settings.seenModified = savedSeen
+        Settings.lockWait = savedWait
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -45,6 +57,21 @@ final class SettingsMergeTests: XCTestCase {
 
     private func write(_ settings: Settings) throws {
         try JSONEncoder().encode(settings).write(to: file)
+    }
+
+    private var log: URL { folder.appendingPathComponent("errors.log") }
+
+    /// What the file says, key by key, without decoding it as `Settings`.
+    private func keys() throws -> [String: Any] {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+    }
+
+    /// Writes the file as the other process's save would, and makes sure its modification date moves on.
+    private func writeAsOther(_ settings: Settings) throws {
+        let before = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
+        try write(settings)
+        let later = (before ?? Date()).addingTimeInterval(1)
+        try FileManager.default.setAttributes([.modificationDate: later], ofItemAtPath: file.path)
     }
 
     func testTwoWritersKeepEachOthersKeys() throws {
@@ -167,7 +194,7 @@ final class SettingsMergeTests: XCTestCase {
         XCTAssertEqual(result.theme, "Night", "With nothing to merge into, all of this process's settings are written")
     }
 
-    func testADamagedFileIsWrittenOverAndLogged() throws {
+    func testAFileThatIsntJSONIsWrittenOverAndLogged() throws {
         var start = Settings()
         start.theme = "Night"
         try write(start)
@@ -181,21 +208,41 @@ final class SettingsMergeTests: XCTestCase {
         let result = try onDisk()
         XCTAssertTrue(result.showHidden)
         XCTAssertEqual(result.theme, "Night")
-        let log = try String(contentsOf: folder.appendingPathComponent("errors.log"), encoding: .utf8)
-        XCTAssertTrue(log.contains("settings file damaged"))
+        XCTAssertTrue(try String(contentsOf: log, encoding: .utf8).contains("isn't JSON"))
     }
 
-    func testAFileOfTheWrongShapeIsWrittenOver() throws {
-        try Data(#"{"ShowHidden": "yes"}"#.utf8).write(to: file)
+    func testAFileThatDoesntDecodeKeepsItsGoodAndUnknownKeys() throws {
+        try Data(#"{"ShowHidden": "yes", "Theme": "Night", "SomethingNewer": [1, 2]}"#.utf8).write(to: file)
         var app = Process()
         app.run {
             Settings.load()
-            Settings.current.theme = "Night"
+            Settings.current.heightUnit = "in"
             Settings.save()
         }
-        let result = try onDisk()
-        XCTAssertEqual(result.theme, "Night")
-        XCTAssertFalse(result.showHidden)
+        let result = try keys()
+        XCTAssertEqual(result["HeightUnit"] as? String, "in")
+        XCTAssertEqual(result["Theme"] as? String, "Night", "A good key the save didn't change survives")
+        XCTAssertEqual(result["SomethingNewer"] as? [Int], [1, 2], "So does one this build doesn't know")
+        XCTAssertEqual(result["ShowHidden"] as? String, "yes", "A bad key this process didn't change is left as it is")
+    }
+
+    func testAFileThatCantBeReadIsntWrittenOver() throws {
+        var start = Settings()
+        start.theme = "Night"
+        try write(start)
+        var app = Process()
+        app.run { Settings.load() }
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: file.path)
+        app.run {
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        XCTAssertEqual(try onDisk(), start, "Not written over with this process's settings")
+        XCTAssertTrue(try String(contentsOf: log, encoding: .utf8).contains("settings not saved"))
+        app.run { Settings.save() }
+        XCTAssertTrue(try onDisk().showHidden, "Saved next time")
+        XCTAssertEqual(try onDisk().theme, "Night")
     }
 
     func testNothingChangedWritesNothing() throws {
@@ -228,5 +275,112 @@ final class SettingsMergeTests: XCTestCase {
         try write(Settings())
         plugin.run { Settings.save() }
         XCTAssertTrue(try onDisk().showHidden, "The change that failed to save is still this process's to write")
+    }
+
+    func testAMissingFileIsntLogged() throws {
+        var app = Process()
+        app.run {
+            Settings.load()
+            XCTAssertFalse(Settings.followFile())
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        XCTAssertTrue(try onDisk().showHidden)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: log.path))
+    }
+
+    func testASaveWaitsForTheLockThenGivesUpAndTriesAgainLater() throws {
+        try write(Settings())
+        var app = Process()
+        app.run { Settings.load() }
+        Settings.lockWait = 0.05
+        let other = open(folder.appendingPathComponent("settings.lock").path, O_RDWR | O_CREAT, 0o644)
+        XCTAssertGreaterThanOrEqual(other, 0)
+        XCTAssertEqual(flock(other, LOCK_EX | LOCK_NB), 0)
+        let started = Date()
+        app.run {
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1, "It doesn't wait for long")
+        XCTAssertFalse(try onDisk().showHidden, "Not saved while the other process holds the lock")
+        XCTAssertTrue(try String(contentsOf: log, encoding: .utf8).contains("settings not saved"))
+        flock(other, LOCK_UN)
+        close(other)
+        app.run { Settings.save() }
+        XCTAssertTrue(try onDisk().showHidden, "Saved once the lock is free")
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".tmp") }
+        XCTAssertEqual(left, [], "No temporary file is left behind")
+    }
+
+    func testFollowingTakesHiddenAttributesAndAbilityWithoutSavingThemBack() throws {
+        var start = Settings()
+        start.showHidden = true
+        start.reveal = 0
+        try write(start)
+        var app = Process()
+        app.run { Settings.load() }
+        app.run { XCTAssertFalse(Settings.followFile(), "Nothing has changed since loading") }
+
+        // The plugin switches Hidden attributes off and Ability to Stars.
+        var plugin = start
+        plugin.showHidden = false
+        plugin.reveal = 1
+        try writeAsOther(plugin)
+        app.run {
+            XCTAssertTrue(Settings.followFile())
+            XCTAssertFalse(Settings.current.showHidden)
+            XCTAssertEqual(Settings.current.reveal, 1)
+            XCTAssertFalse(Settings.followFile(), "Read once per change")
+        }
+
+        // The plugin switches them back, then the app saves a change of its own without having followed.
+        plugin.showHidden = true
+        plugin.reveal = 0
+        try writeAsOther(plugin)
+        app.run {
+            Settings.current.theme = "Night"
+            Settings.save()
+        }
+        let result = try onDisk()
+        XCTAssertEqual(result.theme, "Night")
+        XCTAssertTrue(result.showHidden, "What the app took from the file isn't its change to write back")
+        XCTAssertEqual(result.reveal, 0)
+    }
+
+    func testFollowingKeepsAChangeNotSavedYet() throws {
+        try write(Settings())
+        var app = Process()
+        app.run {
+            Settings.load()
+            Settings.current.showHidden = true
+        }
+        var plugin = Settings()
+        plugin.reveal = 2
+        try writeAsOther(plugin)
+        app.run {
+            XCTAssertTrue(Settings.followFile(), "Reveal is taken")
+            XCTAssertTrue(Settings.current.showHidden, "This process's own change stays")
+            XCTAssertEqual(Settings.current.reveal, 2)
+            Settings.save()
+        }
+        let result = try onDisk()
+        XCTAssertTrue(result.showHidden)
+        XCTAssertEqual(result.reveal, 2)
+    }
+
+    func testFollowingTakesTheDefaultForAMissingOrBadKey() throws {
+        var start = Settings()
+        start.showHidden = true
+        try write(start)
+        var app = Process()
+        app.run { Settings.load() }
+        try Data(#"{"ShowHidden": "yes", "Reveal": 7}"#.utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: file.path)
+        app.run {
+            XCTAssertTrue(Settings.followFile())
+            XCTAssertFalse(Settings.current.showHidden, "Off, as loading such a file would have it")
+            XCTAssertEqual(Settings.current.reveal, Reveal.hidden.rawValue, "Clamped, as loading would have it")
+        }
     }
 }
