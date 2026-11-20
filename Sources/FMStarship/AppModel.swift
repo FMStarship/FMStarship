@@ -935,6 +935,13 @@ package final class AppModel: ObservableObject {
         let isStaff = first is Staff
         let comparable = Self.canCompare(people)
         let who = people.count == 1 ? first.name : "\(people.count) \(isStaff ? "staff" : "players")"
+        var removal: [MenuEntry] = []
+        if screen == .shortlists, let open = openShortlist, open.isStaff == isStaff {
+            let onIt = people.filter { open.uids.contains($0.uid) }
+            removal = [MenuEntry("Remove \(who) from \"\(open.name)\"", enabled: !onIt.isEmpty) { [weak self] in
+                self?.removeFromOpenShortlist(onIt)
+            }]
+        }
         return [
             MenuEntry(people.count == 1 ? "Open \(first.name)'s profile" : "Open \(first.name)'s profile (first selected)") { [weak self] in
                 self?.openProfile(first)
@@ -944,6 +951,7 @@ package final class AppModel: ObservableObject {
             },
             .separator,
             MenuEntry("Add \(who) to shortlist", submenu: { [weak self] in self?.shortlistEntries(people, isStaff: isStaff) ?? [] }),
+        ] + removal + [
             MenuEntry(first.clubFull.isEmpty ? "Open club" : "Open \(first.clubFull)", enabled: !first.clubFull.isEmpty) { [weak self] in
                 self?.openClub(first.clubFull)
             },
@@ -977,6 +985,12 @@ package final class AppModel: ObservableObject {
 
     func showShortlist(_ shortlist: OpenShortlist?) {
         openShortlist = shortlist
+        // Nothing open: its rows go too, so the list's menus can't act on a shortlist that's gone.
+        if shortlist == nil, screen == .shortlists {
+            selection = []
+            players = []
+            staff = []
+        }
         // The original starts from a clean filter too: a shortlist should show everyone on it.
         if shortlist?.isStaff == true {
             listStaffFilter = StaffFilter(showHidden: showHidden, showAbility: showsAbility)
@@ -991,9 +1005,11 @@ package final class AppModel: ObservableObject {
 
     func shortlistsChanged() { shortlistsVersion += 1 }
 
+    /// The open shortlist's file changed: show who's on it now, keeping the filters the player has on it.
     func refreshOpenShortlist(_ url: URL, uids: [UInt32]) {
         guard let open = openShortlist, open.url == url else { return }
-        showShortlist(OpenShortlist(url: url, name: open.name, isStaff: open.isStaff, uids: uids))
+        openShortlist = OpenShortlist(url: url, name: open.name, isStaff: open.isStaff, uids: uids)
+        if screen == .shortlists { search() }
     }
 }
 

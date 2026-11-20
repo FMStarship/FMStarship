@@ -107,6 +107,30 @@ extension ShortlistFile {
         return (shortlist, new.count)
     }
 
+    /// Takes people off a shortlist, keeping the previous version as `<file>.bak`. Nobody to take off leaves the file alone.
+    @discardableResult
+    public static func remove(_ uids: some Sequence<UInt32>, from url: URL) throws -> (shortlist: Shortlist, removed: Int) {
+        var shortlist = try read(url)
+        let gone = Set(uids)
+        let kept = shortlist.uids.filter { !gone.contains($0) }
+        let removed = shortlist.uids.count - kept.count
+        guard removed > 0 else { return (shortlist, 0) }
+        shortlist.uids = kept
+
+        try Data(contentsOf: url).write(to: backupURL(for: url), options: .atomic)
+        try write(to: url, name: shortlist.name, isStaff: shortlist.isStaff, uids: kept)
+        return (shortlist, removed)
+    }
+
+    /// Moves a shortlist to the Trash, and its `.bak` with it, so both can still be put back from there.
+    public static func trash(_ url: URL, moveToTrash: (URL) throws -> Void = {
+        try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
+    }) throws {
+        try moveToTrash(url)
+        let backup = backupURL(for: url)
+        if FileManager.default.fileExists(atPath: backup.path) { try moveToTrash(backup) }
+    }
+
     public static func backupURL(for url: URL) -> URL {
         url.deletingLastPathComponent().appendingPathComponent(url.lastPathComponent + backupSuffix)
     }

@@ -51,6 +51,11 @@ With that on, Ability chooses whether CA and PA show as numbers, as stars or not
 If FM is already running when you open FM Starship, the app asks you to save and quit it first. It never closes the
 game for you.
 
+**Shortlists** are FM's own shortlist files, in FM's shortlists folder. FM loads them with Shortlist > Load, and FM Starship
+shows the ones FM saves there. A shortlist loaded into a save is FM's own copy, so a change you make to it in FM only reaches
+the file when you save that shortlist again from FM. In FM Starship, right-click people in an open shortlist to take them off
+it, or right-click a shortlist in the list to move it to the Trash.
+
 ## Inside FM (preview)
 
 FM Starship can also run inside FM27, as an **FM STARSHIP** tab at the end of FM's own tabs in the top bar. Its screens are made of

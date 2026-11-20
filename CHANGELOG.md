@@ -3,6 +3,13 @@
 What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 [Releases](https://github.com/FMStarship/FMStarship/releases) page.
 
+## Unreleased
+
+- **Take people off a shortlist, and delete shortlists.** On the Shortlists screen, right-click people in an open shortlist and
+  choose Remove … from "<shortlist>", or right-click a shortlist and choose Move to Trash. The previous version is kept as a
+  backup, as when you add people. A change made to a shortlist inside FM reaches FM Starship once you save that shortlist again
+  from FM, because FM Starship shows FM's shortlist files.
+
 ## 27.0.8
 
 - **Works with FM's 27.1.0 update (27.1.0.2505117, 17 November).** FM's rules (role stars, "would join you" and the other answers

@@ -43,6 +43,49 @@ final class ShortlistFileTests: XCTestCase {
         XCTAssertEqual(try ShortlistFile.read(ShortlistFile.backupURL(for: url)).uids, [1, 2])
     }
 
+    func testRemoveKeepsABackupAndTakesOffOnlyWhoIsThere() throws {
+        let url = try ShortlistFile.create(name: "Targets", isStaff: false, uids: [1, 2, 3], in: folder)
+        let (shortlist, removed) = try ShortlistFile.remove([2, 9], from: url)
+        XCTAssertEqual(removed, 1)
+        XCTAssertEqual(shortlist.uids, [1, 3])
+        XCTAssertEqual(try ShortlistFile.read(url), Shortlist(name: "Targets", isStaff: false, uids: [1, 3]))
+        XCTAssertEqual(try ShortlistFile.read(ShortlistFile.backupURL(for: url)).uids, [1, 2, 3])
+    }
+
+    func testRemovingNobodyLeavesTheFileAlone() throws {
+        let url = try ShortlistFile.create(name: "Targets", isStaff: true, uids: [1, 2], in: folder)
+        let before = try Data(contentsOf: url)
+        let (shortlist, removed) = try ShortlistFile.remove([7], from: url)
+        XCTAssertEqual(removed, 0)
+        XCTAssertEqual(shortlist.uids, [1, 2])
+        XCTAssertEqual(try Data(contentsOf: url), before)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ShortlistFile.backupURL(for: url).path), "No backup of an unchanged file")
+    }
+
+    /// The real Trash is left alone: the test moves files into a folder of its own instead.
+    func testTrashTakesTheBackupWithIt() throws {
+        let url = try ShortlistFile.create(name: "Targets", isStaff: false, uids: [1], in: folder)
+        try ShortlistFile.add([2], to: url)
+        let other = try ShortlistFile.create(name: "Others", isStaff: false, uids: [3], in: folder)
+        let trash = folder.appendingPathComponent("Trash", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        var moved: [String] = []
+        try ShortlistFile.trash(url) { file in
+            moved.append(file.lastPathComponent)
+            try FileManager.default.moveItem(at: file, to: trash.appendingPathComponent(file.lastPathComponent))
+        }
+        XCTAssertEqual(moved, ["Targets.fmf", "Targets.fmf.bak"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: other.path), "Other shortlists stay")
+        XCTAssertEqual(try ShortlistFile.read(trash.appendingPathComponent("Targets.fmf")).uids, [1, 2], "Whole, so it can be put back")
+    }
+
+    func testTrashWithoutABackupMovesJustTheFile() throws {
+        let url = try ShortlistFile.create(name: "Targets", isStaff: false, uids: [1], in: folder)
+        var moved: [URL] = []
+        try ShortlistFile.trash(url) { moved.append($0) }
+        XCTAssertEqual(moved, [url])
+    }
+
     func testFileNamesStayLegalOnWindows() {
         XCTAssertEqual(ShortlistFile.sanitizedFileName("a/b:c*d?\"e<f>g|h\\i"), "abcdefghi")
     }
