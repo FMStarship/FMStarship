@@ -78,7 +78,7 @@ extension Toolbox {
         Tool(name: "squad", title: "Squad",
              description: "One squad of a club, one compact row per player with uid: first team, reserves or B team, a youth team, "
                 + "those out on loan, or all. Says which squads the club has. Last match is each player's latest match in FM's "
-                + "record of his form, with his minutes (0 if he was an unused substitute) and rating, which shows rotation.",
+                + "record of his form, with his minutes and rating (both empty if he was an unused substitute), which shows rotation.",
              parameters: [ownOrAnyClub,
                           Parameter(name: "squad", type: "string",
                                     description: "\"First team\", \"Reserves\", \"U21\", \"U19\", \"On loan\", ... or \"all\". First team if left out.")],
@@ -195,7 +195,8 @@ extension Toolbox {
              run: { $0.results }),
         Tool(name: "league_table", title: "League table",
              description: Toolbox.matchNames + "The table of a club's league, as FM has it now: position, played, won, drawn, lost, "
-                + "goals for and against, goal difference, points, and the home and away records.",
+                + "goals for and against, goal difference, points, and the home and away records. Leagues with several stages, "
+                + "such as play-offs, a split or groups, aren't checked yet.",
              parameters: [Parameter(name: "club", type: "string",
                                     description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league.")],
              run: { $0.leagueTable }),

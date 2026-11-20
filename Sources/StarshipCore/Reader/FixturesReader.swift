@@ -160,7 +160,7 @@ public struct PlayerMatch: Sendable {
     public var opponentName = ""
     /// The competition's database index, as `MatchFixture.competitionIndex`.
     public var competitionIndex: UInt32 = 0
-    /// False when he was in the squad and didn't come on.
+    /// False when he was in the squad and didn't come on: FM keeps no record of his match then.
     public var played = false
     public var minutes = 0
     public var rating: Double?
@@ -201,9 +201,14 @@ public final class FixturesReader {
     private let fixtureVt: Int64
     private let resultVt: Int64
     private let leagueStageVt: Int64
+    /// Attendance, kick-off and aggregate aren't covered by the self-check, so they're only read on the build of
+    /// game_plugin they were found on, as FM's rules are.
+    private let checkedBuild: Bool
 
-    public init?(game: GameProcess, rtti: Rtti) {
+    /// `checkedBuild` stands in for the fingerprint, for tests.
+    public init?(game: GameProcess, rtti: Rtti, checkedBuild: Bool? = nil) {
         self.game = game
+        self.checkedBuild = checkedBuild ?? (GameBuild.fingerprint(pluginPath: game.pluginPath) == RulesEngine.Mac27.fingerprint)
         func vt(_ name: String) -> Int64 {
             guard let table = rtti.vtables(name).first(where: { $0.offsetToTop == 0 }) else { return 0 }
             return game.pluginBase + Int64(table.addressPoint)
@@ -295,7 +300,7 @@ public final class FixturesReader {
         guard let date = GameDate.checked(year: le16(b, F.year), dayOfYear: dateWord & 0x1ff) else { return nil }
         var fixture = MatchFixture(date: date, home: le64(b, F.home), away: le64(b, F.away))
         guard fixture.home != 0, fixture.away != 0 else { return nil }
-        fixture.kickOff = MatchFixture.kickOff(code: dateWord >> 9)
+        if checkedBuild { fixture.kickOff = MatchFixture.kickOff(code: dateWord >> 9) }
         fixture.season = le16(b, F.season)
         fixture.round = Int(b[F.round]) + 1
         for team in [fixture.home, fixture.away] where names[team] == nil { names[team] = GameReader.clubName(team: team, in: game) }
@@ -321,11 +326,13 @@ public final class FixturesReader {
         guard result, le32(b, R.matchNumber) != .max, b[R.homeGoals] != 0xff, b[R.awayGoals] != 0xff else { return fixture }
         fixture.homeGoals = Int(b[R.homeGoals])
         fixture.awayGoals = Int(b[R.awayGoals])
-        if b[R.homeAggregate] != 0xff, b[R.awayAggregate] != 0xff {
+        // A tie's aggregate includes this leg, so one below the leg's score isn't an aggregate.
+        if checkedBuild, b[R.homeAggregate] != 0xff, b[R.awayAggregate] != 0xff,
+           b[R.homeAggregate] >= b[R.homeGoals], b[R.awayAggregate] >= b[R.awayGoals] {
             fixture.homeAggregate = Int(b[R.homeAggregate])
             fixture.awayAggregate = Int(b[R.awayAggregate])
         }
-        fixture.attendance = Int(le32(b, R.attendance))
+        if checkedBuild { fixture.attendance = Int(le32(b, R.attendance)) }
         fixture.goals = goals(le64(b, R.goals), home: fixture.homeGoals ?? 0, away: fixture.awayGoals ?? 0)
         return fixture
     }
@@ -369,15 +376,19 @@ public final class FixturesReader {
         let stages = actual + MacLayout.ActualComp.stages
         let begin = game.readPointer(stages), end = game.readPointer(stages + 8)
         guard begin != 0, end > begin, end - begin <= 0x100 else { return nil }
-        var stage: Int64 = 0
+        // A competition can have more than one league stage, such as two groups: the table is the one the team is in.
         for slot in stride(from: begin, to: end, by: 8) {
-            let candidate = game.readPointer(slot)
-            if candidate != 0, game.readPointer(candidate) == leagueStageVt {
-                stage = candidate
-                break
-            }
+            let stage = game.readPointer(slot)
+            guard stage != 0, game.readPointer(stage) == leagueStageVt, let rows = tableRows(stage),
+                  rows.contains(where: { $0.team == team }) else { continue }
+            return LeagueTable(competition: game.lengthPrefixedString(game.readPointer(comp + Int64(MacLayout.competitionName))),
+                               competitionIndex: compIndex(comp), rows: rows)
         }
-        guard stage != 0 else { return nil }
+        return nil
+    }
+
+    /// A league stage's rows, in FM's order.
+    private func tableRows(_ stage: Int64) -> [LeagueTableRow]? {
         let rowList = stage + MacLayout.LeagueStage.rows
         let first = game.readPointer(rowList), last = game.readPointer(rowList + 8)
         guard first != 0, last > first, last - first <= 0x200 else { return nil }
@@ -396,22 +407,32 @@ public final class FixturesReader {
             rows.append(LeagueTableRow(team: teamObject, name: GameReader.clubName(team: teamObject, in: game), position: rows.count + 1,
                                        overall: record(T.overall), home: record(T.home), away: record(T.away)))
         }
-        return LeagueTable(competition: game.lengthPrefixedString(game.readPointer(comp + Int64(MacLayout.competitionName))),
-                           competitionIndex: compIndex(comp), rows: rows)
+        return rows
     }
 
     /// The self-check: the team's league results this season must add up to its row in the table, and every row's home
-    /// and away records to its overall one. Points are left out, since a deduction changes them without a match.
+    /// and away records to its overall one. Points are left out, since a deduction changes them without a match, but no
+    /// row may have more than its wins and draws give.
+    ///
+    /// A competition can have stages after its league, such as play-offs, under the same competition. Until it's known
+    /// how a fixture names its stage's table, only fixtures of the stage most of the team's league fixtures this season
+    /// have are counted.
     public static func check(_ fixtures: [MatchFixture], team: Int64, table: LeagueTable?) -> TeamMatches.Check {
         guard let table, let row = table.rows.first(where: { $0.team == team }) else { return .noTable }
         for other in table.rows where !(other.home + other.away).sameMatches(as: other.overall) {
             return .failed("\(other.name)'s home and away records, \((other.home + other.away).text), don't add up to its overall \(other.overall.text)")
         }
+        for other in table.rows where other.overall.points > 3 * other.overall.won + other.overall.drawn {
+            return .failed("\(other.name) has \(other.overall.points) points from \(other.overall.won) wins and \(other.overall.drawn) draws")
+        }
         guard row.overall.played > 0 else { return .nothingPlayed }
-        let league = fixtures.filter { $0.competitionIndex == table.competitionIndex && $0.played }
-        let season = league.map(\.season).max() ?? 0
+        let competition = fixtures.filter { $0.competitionIndex == table.competitionIndex }
+        let season = competition.filter(\.played).map(\.season).max() ?? 0
+        let thisSeason = competition.filter { $0.season == season }
+        let stages = Dictionary(grouping: thisSeason, by: \.stage)
+        let usual = stages.max { ($0.value.count, $1.key) < ($1.value.count, $0.key) }?.key ?? ""
         var sum = TableRecord()
-        for match in league where match.season == season {
+        for match in thisSeason where match.played && match.stage == usual {
             guard let h = match.homeGoals, let a = match.awayGoals else {
                 return .failed("the copies of \(match.homeName) v \(match.awayName) disagree on the score")
             }
@@ -452,7 +473,7 @@ public final class FixturesReader {
                 match.opponentName = name(match.opponent)
                 match.competitionIndex = le32(b, E.competition)
                 let stats = le64(b, E.record)
-                if stats != 0, let r = game.read(stats, count: M.size), r[M.minutes] > 0 {
+                if stats != 0, let r = game.read(stats, count: M.size) {
                     match.played = true
                     match.minutes = Int(r[M.minutes])
                     match.rating = r[M.rating] == 0 ? nil : Double(r[M.rating]) / 10

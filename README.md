@@ -189,7 +189,9 @@ For the skill: `cp -R "/Applications/FM Starship.app/Contents/Resources/skills/f
 The first question after FM starts takes about 5 seconds on a big save, while the save is read, and so does the first question
 after the game date moves on, when it's read again. The first question about a club's matches takes a couple of seconds more.
 Other answers are instant. Fixtures and results are only given once a club's league results add up to its row in the league
-table, and FM keeps each player's last 20 matches for a team, so an older match can miss players. It doesn't know a match's team
+table, and FM keeps each player's last 20 matches for a team, so an older match can miss players. That check has only been tried
+on a league with one stage: in a league with play-offs, a split or groups it's unverified, and may switch them off. It doesn't
+know a match's team
 stats, such as shots, possession or team xG, or condition, morale, suspensions or registration status yet.
 
 ## Updates
@@ -416,7 +418,11 @@ FM Starship's own parts, and how to check them after a patch:
 - **Fixtures, results and league tables** are read by `FixturesReader`, on the first question about a club, not with the save.
   It sweeps memory for the `sicomps::FIXTURE` and `FIXTURE_RESULT` objects naming the club's team, and reads the league's table
   through `TEAM → COMP → sicomps::ACTUAL_COMP → LEAGUE_STAGE`, with offsets in `MacLayout`. Its self-check is the table: the
-  club's league results this season must add up to its row, or fixtures, results and the table switch off. A player's matches
+  club's league results this season must add up to its row, or fixtures, results and the table switch off. The table is the
+  league stage whose rows hold the club, and only fixtures of the stage most of the club's league fixtures that season share are
+  added up, a stand-in until it's known which table a fixture's `STAGE_NAME` belongs to. Leagues with several stages (play-offs,
+  splits, groups) are unverified: one look with `fmprobe fx` on such a save would settle it. Attendance, kick-off and aggregate
+  aren't covered by the check, so they're only read on the build of `game_plugin` that `Mac27.fingerprint` names. A player's matches
   come from the same record as his form. `tools/match_builds.py` lists these classes among the reader's. To find them again,
   `fmprobe humanteams` gives each human club's team, and `fmprobe fx TEAM` reads that team's matches and table, and runs the
   self-check.

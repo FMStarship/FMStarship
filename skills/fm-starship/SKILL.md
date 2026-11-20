@@ -62,9 +62,11 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **Matches**: scores are home team first, as FM writes them, with `result` W, D or L for the club asked about. Competitions,
   stages ("kvartfinale") and clubs are FM's names in the game's language. The match tools work for the user's club, the clubs in
   its league and the clubs it plays, by their full names. FM keeps each player's last 20 matches for a team, so a player's stats
-  for an older match can be missing; `results` says when. Only players at the club now are listed for a match.
+  for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with
+  play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
+  Kick-off, attendance and aggregate are only there on builds of FM that FM Starship has been checked on.
 - **Last match** in `squad` is the player's latest match in FM's record, for any team: compare its date with the club's last
-  result to see who was left out. Minutes 0 means he was an unused substitute.
+  result to see who was left out. A date with no minutes or rating means he was an unused substitute.
 - Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars and injury days. On a build of FM that FM
   Starship hasn't been checked on, `game_status` says the rules are off, and those values aren't there. Don't fill them in.
 

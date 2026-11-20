@@ -168,6 +168,8 @@ final class MatchToolTests: XCTestCase {
         for tool in ["fixtures", "results", "league_table"] {
             let sentence = try harness.refusal(tool)
             XCTAssertTrue(sentence.hasPrefix("FM Starship's check of \(World.club)'s matches failed: its league results add up"), sentence)
+            XCTAssertTrue(sentence.contains("A league with play-offs or a split can do this"), sentence)
+            XCTAssertFalse(sentence.contains("build"), "a failed check isn't put down to FM's build")
             XCTAssertTrue(sentence.contains("switched off rather than guessed"), sentence)
         }
         let status = try harness.answer("game_status")
@@ -184,7 +186,7 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(rows(fixtures).first?["scorers"], .null)
         XCTAssertTrue(fixtures["note"]?.string?.contains("can't check its results") ?? false)
         XCTAssertNotNil(try harness.answer("game_status")["next_fixture"], "dates aren't scores")
-        XCTAssertEqual(try harness.answer("league_table")["note"], "No league match has been played yet this season.")
+        XCTAssertEqual(try harness.answer("league_table")["note"], .string("\(World.club) hasn't played a league match yet this season."))
 
         harness.source.matches?.teams[World.team]?.check = .noTable
         harness.source.current = false
@@ -201,6 +203,50 @@ final class MatchToolTests: XCTestCase {
         none.source.matches = nil
         XCTAssertTrue(try none.refusal("league_table").contains("can't read fixtures"))
         XCTAssertNil(try none.answer("game_status")["next_fixture"])
+    }
+
+    func testATableWithoutTheClubIsntShown() throws {
+        let harness = Harness()
+        harness.source.matches?.teams[World.team]?.table?.rows.removeFirst()
+        XCTAssertTrue(try harness.refusal("league_table").contains("no league table"))
+    }
+
+    // MARK: Match day
+
+    /// The game date doesn't move while FM plays a match, so the read stands, but the match tools must see the result.
+    func testAMatchPlayedTodayIsSeenWithinAMinute() throws {
+        let harness = Harness()
+        var now = Date(timeIntervalSinceReferenceDate: 0)
+        harness.toolbox.clock = { now }
+        let today = World.fixture(270, home: World.team, away: World.rivalsTeam)
+        harness.source.matches?.teams[World.team]?.fixtures.insert(today, at: 3)
+        XCTAssertEqual(try harness.answer("game_status")["next_fixture"]?["date"], "2026-09-27")
+        XCTAssertTrue(try harness.refusal("results", ["date": "2026-09-27"]).contains("no result on 2026-09-27"))
+        XCTAssertEqual(harness.source.matches?.sweeps, 1)
+
+        // Full time, on the same read.
+        harness.source.matches?.teams[World.team]?.fixtures[3].homeGoals = 3
+        harness.source.matches?.teams[World.team]?.fixtures[3].awayGoals = 1
+        now += 30
+        XCTAssertTrue(try harness.refusal("results", ["date": "2026-09-27"]).contains("no result"), "at most one sweep a minute")
+        XCTAssertEqual(harness.source.matches?.sweeps, 1)
+        now += 31
+        XCTAssertEqual(try harness.answer("results", ["date": "2026-09-27"])["score"], "3-1")
+        XCTAssertEqual(try harness.answer("game_status")["next_fixture"]?["date"], "2026-10-04")
+        XCTAssertEqual(harness.source.reads, 1)
+        now += 3600
+        _ = try harness.answer("fixtures")
+        XCTAssertEqual(harness.source.matches?.sweeps, 2, "once it's played, the sweep stands for the read again")
+    }
+
+    func testAFailedCheckIsntKept() throws {
+        let harness = Harness()
+        harness.source.matches?.teams[World.team]?.check = .failed("a match was half-made")
+        XCTAssertTrue(try harness.refusal("results").contains("failed"))
+        harness.source.matches?.teams[World.team]?.check = .passed
+        XCTAssertEqual(try harness.answer("results")["found"], 3)
+        XCTAssertEqual(harness.source.matches?.sweeps, 2)
+        XCTAssertEqual(harness.source.reads, 1)
     }
 
     // MARK: Elsewhere
@@ -247,7 +293,8 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(byUID[13]?["Last match"], .null)
         let all = try harness.answer("squad", ["squad": "all"])
         let youngster = try XCTUnwrap(rows(all).first { $0["uid"] == 12 })
-        XCTAssertEqual(youngster["Last match minutes"], 0, "an unused substitute")
+        XCTAssertEqual(youngster["Last match"], "2026-09-20")
+        XCTAssertEqual(youngster["Last match minutes"], .null, "an unused substitute")
         XCTAssertEqual(youngster["Last match rating"], .null)
 
         XCTAssertFalse(try Harness(engine: nil).answer("squad").columnNames.contains("Last match"))

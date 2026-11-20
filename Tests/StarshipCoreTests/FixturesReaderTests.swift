@@ -14,7 +14,8 @@ final class FixturesReaderTests: XCTestCase {
 
         /// `rows` makes the table from the game and the Rovers', Town's and United's teams, in table order; by default one
         /// that agrees with `playLeague`.
-        init(rows: ((FakeGame, Int64, Int64, Int64) -> [Int64])? = nil) {
+        /// `otherGroup` puts a table of another group of the league ahead of the clubs' own.
+        init(rows: ((FakeGame, Int64, Int64, Int64) -> [Int64])? = nil, otherGroup: Bool = false) {
             let game = FakeGame()
             self.game = game
             let nation = game.nation("Mockovia", code: "MCK", continent: game.continent("Made-up Continent"), area: game.allocate(16))
@@ -26,8 +27,12 @@ final class FixturesReaderTests: XCTestCase {
             }
             let teams = ["Mockport Rovers", "Fixture Town", "Testing United", "Little Minnows"].map(team)
             (rovers, town, united, minnows) = (teams[0].address, teams[1].address, teams[2].address, teams[3].address)
-            let stage = game.leagueStage(rows: (rows ?? World.defaultRows)(game, rovers, town, united))
-            league = game.competition("Mock League", index: World.leagueIndex, table: stage)
+            var stages = [game.leagueStage(rows: (rows ?? World.defaultRows)(game, rovers, town, united))]
+            if otherGroup {
+                let row = game.tableRow(team: minnows, overall: (1, 1, 0, 0, 2, 0, 3), home: (1, 1, 0, 0, 2, 0, 3), away: (0, 0, 0, 0, 0, 0, 0))
+                stages.insert(game.leagueStage(rows: [row]), at: 0)
+            }
+            league = game.competition("Mock League", index: World.leagueIndex, tables: stages)
             cup = game.competition("Mock Cup", index: World.cupIndex)
             leagueName = game.fixtureName(competition: league)
             cupName = game.fixtureName(competition: cup, stage: "kvartfinale")
@@ -66,7 +71,7 @@ final class FixturesReaderTests: XCTestCase {
         }
 
         func reader() throws -> FixturesReader {
-            try XCTUnwrap(FixturesReader(game: game.process(), rtti: Rtti(game.process())))
+            try XCTUnwrap(FixturesReader(game: game.process(), rtti: Rtti(game.process()), checkedBuild: true))
         }
     }
 
@@ -161,7 +166,7 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(try world.reader().teamMatches(team: world.rovers).check, .passed)
     }
 
-    func testAMissingResultFailsTheCheck() throws {
+    func testAnExtraResultFailsTheCheck() throws {
         let world = World()
         world.playLeague()
         // Only half-made copies of a third league match the table doesn't know of either: still adds up.
@@ -175,6 +180,85 @@ final class FixturesReaderTests: XCTestCase {
         extra.score = (1, 0)
         world.game.match(extra)
         guard case .failed = try world.reader().teamMatches(team: world.rovers).check else { return XCTFail("should fail") }
+    }
+
+    /// The table counts a league match the sweep didn't find, or found only as half-made copies.
+    func testAMissingResultFailsTheCheck() throws {
+        let world = World { game, rovers, town, _ in
+            [game.tableRow(team: rovers, overall: (3, 2, 1, 0, 4, 1, 7), home: (1, 1, 0, 0, 2, 0, 3), away: (2, 1, 1, 0, 2, 1, 4)),
+             game.tableRow(team: town, overall: (2, 0, 0, 2, 0, 3, 0), home: (1, 0, 0, 1, 0, 1, 0), away: (1, 0, 0, 1, 0, 2, 0))]
+        }
+        world.playLeague()
+        var third = world.values(home: world.town, away: world.rovers, day: 114)
+        third.score = (0, 0)
+        third.matchNumber = .max
+        world.game.match(third)
+        guard case .failed(let why) = try world.reader().teamMatches(team: world.rovers).check else { return XCTFail("should fail") }
+        XCTAssertTrue(why.contains("add up to P2") && why.contains("says P3"), why)
+    }
+
+    /// A play-off in the league's own competition, which the table doesn't count, is left out of the sum.
+    func testAPlayOffInTheLeaguesCompetitionIsLeftOut() throws {
+        let world = World()
+        world.playLeague()
+        var playOff = world.values(home: world.rovers, away: world.town, day: 130)
+        playOff.name = world.game.fixtureName(competition: world.league, stage: "play-off")
+        playOff.score = (3, 1)
+        world.game.match(playOff)
+        let found = try world.reader().teamMatches(team: world.rovers)
+        XCTAssertEqual(found.check, .passed)
+        XCTAssertEqual(found.fixtures.last?.stage, "play-off")
+        XCTAssertEqual(found.fixtures.last?.homeGoals, 3, "it's still a result")
+    }
+
+    /// The league's first stage is another group's: the table is the club's own group.
+    func testTheTableIsTheGroupTheClubIsIn() throws {
+        let world = World(otherGroup: true)
+        world.playLeague()
+        let found = try world.reader().teamMatches(team: world.rovers)
+        XCTAssertEqual(found.table?.rows.map(\.name), ["Mockport Rovers", "Testing United", "Fixture Town"])
+        XCTAssertEqual(found.check, .passed)
+        let other = try world.reader().leagueTable(team: world.minnows)
+        XCTAssertNil(other, "the Minnows' own league has no table here, and another competition's group isn't it")
+    }
+
+    func testMorePointsThanWinsAndDrawsGiveFails() throws {
+        let world = World { game, rovers, _, _ in
+            [game.tableRow(team: rovers, overall: (2, 1, 1, 0, 3, 1, 5), home: (1, 1, 0, 0, 2, 0, 3), away: (1, 0, 1, 0, 1, 1, 1))]
+        }
+        world.playLeague()
+        guard case .failed(let why) = try world.reader().teamMatches(team: world.rovers).check else { return XCTFail("should fail") }
+        XCTAssertTrue(why.contains("5 points"), why)
+    }
+
+    /// Kick-off, attendance and aggregate aren't covered by the check, so a build of game_plugin nobody has checked doesn't
+    /// get them. The made-up game's isn't FM's.
+    func testUncheckedFieldsNeedTheCheckedBuild() throws {
+        let world = World()
+        world.playLeague()
+        var leg = world.values(home: world.rovers, away: world.minnows, day: 110, league: false)
+        leg.score = (4, 2)
+        leg.aggregate = (6, 2)
+        leg.attendance = 5_000
+        world.game.match(leg)
+        let unchecked = try XCTUnwrap(FixturesReader(game: world.game.process(), rtti: Rtti(world.game.process())))
+        let found = unchecked.teamMatches(team: world.rovers)
+        XCTAssertEqual(found.check, .passed)
+        XCTAssertEqual(found.fixtures.compactMap(\.homeGoals), [2, 1, 4], "scores are covered by the check")
+        XCTAssertTrue(found.fixtures.allSatisfy { $0.kickOff == nil && $0.attendance == nil && $0.homeAggregate == nil })
+        XCTAssertEqual(try world.reader().teamMatches(team: world.rovers).fixtures.last?.attendance, 5_000)
+    }
+
+    func testAnAggregateBelowTheLegsScoreIsLeftOut() throws {
+        let world = World()
+        var leg = world.values(home: world.rovers, away: world.minnows, day: 110, league: false)
+        leg.score = (4, 2)
+        leg.aggregate = (3, 2)
+        world.game.match(leg)
+        let match = try XCTUnwrap(try world.reader().teamMatches(team: world.rovers).fixtures.first)
+        XCTAssertEqual(match.homeGoals, 4)
+        XCTAssertNil(match.homeAggregate)
+        XCTAssertNil(match.awayAggregate)
     }
 
     func testCopiesThatDisagreeLeaveTheScoreOut() throws {
@@ -299,6 +383,22 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(first.xG, 0.63)
         XCTAssertNil(found.fullFrom[world.rovers])
         XCTAssertEqual(found.fullFrom[world.minnows], GameDate.date(year: 2028, dayOfYear: 20), "only a full list loses matches")
+    }
+
+    /// A record of 0 minutes is an appearance: only no record at all is an unused substitute.
+    func testAZeroMinuteAppearanceIsPlayed() throws {
+        let world = World()
+        let history = world.game.history([(world.rovers, [
+            FakeGame.HistoryEntry(opponent: world.town, day: 100, competition: World.leagueIndex,
+                                  played: FakeGame.PlayedValues(minutes: 0, rating: 0)),
+        ])])
+        var values = FakeGame.PlayerValues()
+        values.history = history
+        let player = world.game.player(values)
+        let match = try XCTUnwrap(FixturesReader.history(player: player.address, in: world.game.process()) { _ in "" }.matches.first)
+        XCTAssertTrue(match.played)
+        XCTAssertEqual(match.minutes, 0)
+        XCTAssertNil(match.rating)
     }
 
     func testAPlayerWithNoHistoryHasNoMatches() {

@@ -15,16 +15,16 @@ extension FakeGame {
         return list.address
     }
 
-    /// A competition with its database index, and, for a league, the stage that holds its table.
-    func competition(_ name: String, index: UInt32, table: Int64 = 0) -> Int64 {
+    /// A competition with its database index, and, for a league, the stages that hold its tables.
+    func competition(_ name: String, index: UInt32, tables: [Int64] = []) -> Int64 {
         let record = self.record("Competition", size: Int(MacLayout.Comp.actual) + 8)
         record.set("index", Int(MacLayout.Comp.index), index)
         record.set("name", MacLayout.competitionName, string(name))
-        if table != 0 {
+        if !tables.isEmpty {
             let actual = self.record("Actual competition", size: Int(MacLayout.ActualComp.stages) + 24)
             // A league can have stages that aren't tables, so one comes first.
             let other = self.record("Other stage", size: 16)
-            actual.set("stages", Int(MacLayout.ActualComp.stages), bytes: vectorBytes([other.address, table]))
+            actual.set("stages", Int(MacLayout.ActualComp.stages), bytes: vectorBytes([other.address] + tables))
             record.set("actual", Int(MacLayout.Comp.actual), actual.address)
         }
         return record.address

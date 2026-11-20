@@ -54,7 +54,8 @@ extension Toolbox {
                        + Output.rows(players, columns + Self.lastMatch(context.read.engine)))
     }
 
-    /// Each player's latest match in FM's record of his form: when, his minutes, 0 as an unused substitute, and his rating.
+    /// Each player's latest match in FM's record of his form: when, his minutes and his rating, both empty when he was an
+    /// unused substitute.
     /// None when FM's rules are off, since the record comes with them.
     static func lastMatch(_ engine: GameRulesEngine?) -> [Output.Field] {
         guard let engine else { return [] }
@@ -69,7 +70,7 @@ extension Toolbox {
             return found
         }
         return [Output.Field(name: "Last match") { match($0).map { .string(Output.iso($0.date)) } },
-                Output.Field(name: "Last match minutes") { match($0).map { .int($0.minutes) } },
+                Output.Field(name: "Last match minutes") { match($0).flatMap { $0.played ? .int($0.minutes) : nil } },
                 Output.Field(name: "Last match rating") { match($0)?.rating.map { .double($0) } }]
     }
 

@@ -50,8 +50,8 @@ extension Toolbox {
     }
 
     static func failedSentence(_ club: String, _ why: String) -> String {
-        "FM Starship's check of \(club)'s matches failed: \(why). This build of FM may keep them differently, so fixtures, "
-            + "results and the league table are switched off rather than guessed."
+        "FM Starship's check of \(club)'s matches failed: \(why). A league with play-offs or a split can do this, since FM "
+            + "Starship doesn't follow those yet, so fixtures, results and the league table are switched off rather than guessed."
     }
 
     /// Why results can't be given when there's nothing to check them against.
@@ -148,7 +148,9 @@ extension Toolbox {
     func leagueTable(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let (club, matches) = try matchTeam(try args.string("club"), context)
         if case .failed(let why) = matches.check { throw ToolError(Self.failedSentence(club, why)) }
-        guard let table = matches.table else { throw ToolError(Self.uncheckedSentence(club, .noTable)) }
+        guard let table = matches.table, table.rows.contains(where: { $0.team == matches.team }) else {
+            throw ToolError(Self.uncheckedSentence(club, .noTable))
+        }
         func record(_ r: TableRecord) -> JSON {
             .string("P\(r.played) W\(r.won) D\(r.drawn) L\(r.lost) \(r.goalsFor)-\(r.goalsAgainst) \(r.points)pts")
         }
@@ -161,7 +163,7 @@ extension Toolbox {
         var pairs: [(String, JSON?)] = [("competition", Output.text(table.competition)), ("club", .string(club)),
                                         ("position", table.rows.first { $0.team == matches.team }.map { .int($0.position) }),
                                         ("columns", .array(Self.tableColumns.map { .string($0) })), ("rows", .array(rows))]
-        if matches.check == .nothingPlayed { pairs.append(("note", "No league match has been played yet this season.")) }
+        if matches.check == .nothingPlayed { pairs.append(("note", .string("\(club) hasn't played a league match yet this season."))) }
         return .object(dropping: pairs)
     }
 

@@ -138,7 +138,9 @@ public final class Toolbox: ToolProvider {
     private var indexRead: Int?
     private var peopleByIndex: [UInt32: Player] = [:]
     private var matchesRead: Int?
-    private var matchesByTeam: [Int64: TeamMatches?] = [:]
+    private var matchesByTeam: [Int64: (matches: TeamMatches?, at: Date)] = [:]
+    /// The time now, which a test can move on.
+    var clock: () -> Date = Date.init
 
     /// `settings` gives the settings as they are now: the live server reads FM Starship's settings file each call.
     public init(source: GameSource, settings: @escaping () -> Settings, shortlistRoots: @escaping () -> [URL]) {
@@ -211,16 +213,35 @@ public final class Toolbox: ToolProvider {
         return peopleByIndex
     }
 
-    /// A team's matches, swept for once for each read of the save.
+    /// A team's matches, swept for once for each read of the save, except on match day, and never kept after a failed check,
+    /// which a sweep part way through a match can give.
     func cachedMatches(_ read: GameRead, team: Int64, source: MatchSource) -> TeamMatches? {
         if matchesRead != read.number {
             matchesByTeam = [:]
             matchesRead = read.number
         }
-        if let known = matchesByTeam[team] { return known }
+        let now = clock()
+        if let known = matchesByTeam[team],
+           Self.stillStands(known.matches, today: read.database.gameDate, age: now.timeIntervalSince(known.at)) {
+            return known.matches
+        }
         let found = source.matches(team: team)
-        matchesByTeam[team] = .some(found)
+        if case .failed = found?.check {
+            matchesByTeam[team] = nil
+        } else {
+            matchesByTeam[team] = (found, now)
+        }
         return found
+    }
+
+    /// How long a sweep stands while it holds a match due today or earlier that isn't played yet.
+    static let matchDayWait: TimeInterval = 60
+
+    /// A sweep stands as long as the read, unless it holds a match that's due and not played: the game date doesn't move
+    /// while FM plays it, so the user may have played it since. Then it stands for `matchDayWait`.
+    static func stillStands(_ matches: TeamMatches?, today: Date?, age: TimeInterval) -> Bool {
+        guard let matches, let today, matches.fixtures.contains(where: { !$0.played && $0.date <= today }) else { return true }
+        return age < matchDayWait
     }
 
     // MARK: Game status
