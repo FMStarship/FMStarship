@@ -12,11 +12,16 @@ Scripts/build-agent.sh
 swift build -c release --product FMStarship
 # Without -DSTARSHIP_DEVELOPER, so the developer tools stay out.
 swift build -c release --product StarshipPlugin
+swift build -c release --product fmstarship-mcp
 BIN="$(swift build -c release --show-bin-path)"
 APP="build/FM Starship.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks" "$APP/Contents/Helpers"
 cp "$BIN/FMStarship" "$APP/Contents/MacOS/FMStarship"
+# The MCP server for AI agents beside the app, so it's signed, notarized and updated with it. Agents start it themselves.
+cp "$BIN/fmstarship-mcp" "$APP/Contents/MacOS/fmstarship-mcp"
+mkdir -p "$APP/Contents/Resources/skills"
+cp -R skills/fm-starship "$APP/Contents/Resources/skills/"
 cp build/libStarshipAgent.dylib Assets/AppIcon.icns "$APP/Contents/Resources/"
 # ditto keeps the framework's symlinks, which its signature depends on.
 ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
@@ -60,6 +65,7 @@ else
 fi
 codesign "${SIGN[@]}" "$APP/Contents/Resources/libStarshipAgent.dylib"
 codesign "${SIGN[@]}" "$APP/Contents/Frameworks/libStarshipPlugin.dylib"
+codesign "${SIGN[@]}" "$APP/Contents/MacOS/fmstarship-mcp"
 # Under the hardened runtime, dyld strips DYLD_ variables from the launcher's environment unless it claims this
 # entitlement, so FM would lose a library Steam inserts, such as its overlay. Library validation still keeps such a
 # library out of the launcher itself.
