@@ -38,14 +38,13 @@ extension FakeGame {
         return [begin, end, end].flatMap { withUnsafeBytes(of: $0) { Array($0) } }
     }
 
-    /// One club's row: overall, home, away and last five, as (played, won, drawn, lost, for, against, points).
+    /// One club's row: overall, home and away, as (played, won, drawn, lost, for, against, points).
     typealias Record = (p: UInt8, w: UInt8, d: UInt8, l: UInt8, f: UInt16, a: UInt16, pts: UInt16)
 
-    func tableRow(team: Int64, overall: Record, home: Record, away: Record, lastFive: Record) -> Int64 {
+    func tableRow(team: Int64, overall: Record, home: Record, away: Record) -> Int64 {
         typealias T = MacLayout.TableRow
         let row = record("Table row", size: T.size)
-        for (name, offset, values) in [("overall", T.overall, overall), ("home", T.home, home), ("away", T.away, away),
-                                       ("lastFive", T.lastFive, lastFive)] {
+        for (name, offset, values) in [("overall", T.overall, overall), ("home", T.home, home), ("away", T.away, away)] {
             typealias R = T.Record
             row.set("\(name).for", offset + R.goalsFor, values.f)
             row.set("\(name).against", offset + R.goalsAgainst, values.a)

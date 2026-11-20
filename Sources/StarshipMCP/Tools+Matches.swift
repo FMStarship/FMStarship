@@ -10,7 +10,7 @@ extension Toolbox {
                                  "aggregate", "attendance", "scorers", "opponent_scorers"]
     static let resultColumns = fixtureColumns.filter { $0 != "kick_off" }
     static let tableColumns = ["position", "club", "played", "won", "drawn", "lost", "goals_for", "goals_against",
-                               "goal_difference", "points", "home", "away", "last_five"]
+                               "goal_difference", "points", "home", "away"]
     static let matchPlayerColumns = ["Name", "Minutes", "Rating", "Goals", "Assists", "Yellow cards", "Red cards", "xG"]
 
     /// The team a match tool is about, and its matches: a human manager's club, or a club in the user's league or one the
@@ -156,7 +156,7 @@ extension Toolbox {
             let o = row.overall
             return .array([.int(row.position), .string(row.name), .int(o.played), .int(o.won), .int(o.drawn), .int(o.lost),
                            .int(o.goalsFor), .int(o.goalsAgainst), .int(o.goalsFor - o.goalsAgainst), .int(o.points),
-                           record(row.home), record(row.away), record(row.lastFive)])
+                           record(row.home), record(row.away)])
         }
         var pairs: [(String, JSON?)] = [("competition", Output.text(table.competition)), ("club", .string(club)),
                                         ("position", table.rows.first { $0.team == matches.team }.map { .int($0.position) }),
@@ -229,7 +229,7 @@ extension Toolbox {
 
     /// A goal's scorer or assister, by the index FM's goal list keeps.
     private func playerName(_ index: UInt32, _ context: CallContext) -> String {
-        playersByIndex(context.read)[index]?.name ?? "a player FM Starship didn't read"
+        playersByIndex(context.read)[index]?.name ?? "a player not in FM Starship's read"
     }
 
     /// A date argument, as YYYY-MM-DD.

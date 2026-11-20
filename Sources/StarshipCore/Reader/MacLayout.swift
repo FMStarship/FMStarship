@@ -199,12 +199,13 @@ enum MacLayout {
 
     /// One club's row in a league table, 0x100 bytes. Each record is 0x18 bytes: u16 goals for, u16 against,
     /// u16 points, u8 played, then won, drawn and lost at +8, +9 and +10.
+    /// +0x50 and +0x68 hold two more records whose meaning isn't known (+0x68 isn't the last five: P6 for a club on 21
+    /// played), so they aren't read.
     enum TableRow {
         static let size = 0x100
         static let overall = 0x08
         static let home = 0x20
         static let away = 0x38
-        static let lastFive = 0x68
         static let team = 0x88
         enum Record {
             static let goalsFor = 0, goalsAgainst = 2, points = 4, played = 6, won = 8, drawn = 9, lost = 10

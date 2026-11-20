@@ -49,7 +49,7 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(list[1]["score"], "1-1", "home team first")
         XCTAssertEqual(list[1]["result"], "D")
         XCTAssertEqual(list[1]["scorers"], ["80' First 9"])
-        XCTAssertEqual(list[1]["opponent_scorers"], ["60' a player FM Starship didn't read"])
+        XCTAssertEqual(list[1]["opponent_scorers"], ["60' a player not in FM Starship's read"])
         XCTAssertEqual(list[2]["score"], "2-4")
         XCTAssertEqual(list[2]["result"], "W")
         XCTAssertEqual(list[2]["aggregate"], "3-6")

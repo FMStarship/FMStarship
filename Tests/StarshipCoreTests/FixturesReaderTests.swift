@@ -37,12 +37,9 @@ final class FixturesReaderTests: XCTestCase {
 
         /// Rovers P2 W1 D1 3-1, United P1 D1 1-1, Town P1 L1 0-2, after `playLeague`.
         static func defaultRows(_ game: FakeGame, _ rovers: Int64, _ town: Int64, _ united: Int64) -> [Int64] {
-            [game.tableRow(team: rovers, overall: (2, 1, 1, 0, 3, 1, 4), home: (1, 1, 0, 0, 2, 0, 3), away: (1, 0, 1, 0, 1, 1, 1),
-                           lastFive: (2, 1, 1, 0, 3, 1, 4)),
-             game.tableRow(team: united, overall: (1, 0, 1, 0, 1, 1, 1), home: (1, 0, 1, 0, 1, 1, 1), away: (0, 0, 0, 0, 0, 0, 0),
-                           lastFive: (1, 0, 1, 0, 1, 1, 1)),
-             game.tableRow(team: town, overall: (1, 0, 0, 1, 0, 2, 0), home: (0, 0, 0, 0, 0, 0, 0), away: (1, 0, 0, 1, 0, 2, 0),
-                           lastFive: (1, 0, 0, 1, 0, 2, 0))]
+            [game.tableRow(team: rovers, overall: (2, 1, 1, 0, 3, 1, 4), home: (1, 1, 0, 0, 2, 0, 3), away: (1, 0, 1, 0, 1, 1, 1)),
+             game.tableRow(team: united, overall: (1, 0, 1, 0, 1, 1, 1), home: (1, 0, 1, 0, 1, 1, 1), away: (0, 0, 0, 0, 0, 0, 0)),
+             game.tableRow(team: town, overall: (1, 0, 0, 1, 0, 2, 0), home: (0, 0, 0, 0, 0, 0, 0), away: (1, 0, 0, 1, 0, 2, 0))]
         }
 
         func values(home: Int64, away: Int64, day: UInt16, league: Bool = true) -> FakeGame.MatchValues {
@@ -135,7 +132,6 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(table.rows[0].overall, TableRecord(played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 3, goalsAgainst: 1, points: 4))
         XCTAssertEqual(table.rows[0].home, TableRecord(played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 2, goalsAgainst: 0, points: 3))
         XCTAssertEqual(table.rows[0].away.drawn, 1)
-        XCTAssertEqual(table.rows[0].lastFive.points, 4)
     }
 
     func testAnotherTeamChecksAgainstItsOwnRow() throws {
@@ -149,7 +145,7 @@ final class FixturesReaderTests: XCTestCase {
     func testResultsThatDontAddUpToTheTableSwitchItOff() throws {
         let world = World { game, rovers, town, _ in
             [game.tableRow(team: rovers, overall: (2, 2, 0, 0, 3, 1, 6), home: (1, 1, 0, 0, 2, 0, 3),
-                                 away: (1, 1, 0, 0, 1, 1, 3), lastFive: (2, 2, 0, 0, 3, 1, 6))]
+                                 away: (1, 1, 0, 0, 1, 1, 3))]
         }
         world.playLeague()
         guard case .failed(let why) = try world.reader().teamMatches(team: world.rovers).check else { return XCTFail("should fail") }
@@ -159,7 +155,7 @@ final class FixturesReaderTests: XCTestCase {
     func testAPointsDeductionDoesntFailTheCheck() throws {
         let world = World { game, rovers, town, _ in
             [game.tableRow(team: rovers, overall: (2, 1, 1, 0, 3, 1, 1), home: (1, 1, 0, 0, 2, 0, 3),
-                                 away: (1, 0, 1, 0, 1, 1, 1), lastFive: (2, 1, 1, 0, 3, 1, 4))]
+                                 away: (1, 0, 1, 0, 1, 1, 1))]
         }
         world.playLeague()
         XCTAssertEqual(try world.reader().teamMatches(team: world.rovers).check, .passed)
@@ -222,7 +218,7 @@ final class FixturesReaderTests: XCTestCase {
     func testNothingToCheckAgainst() throws {
         let fresh = World { game, rovers, town, _ in
             [game.tableRow(team: rovers, overall: (0, 0, 0, 0, 0, 0, 0), home: (0, 0, 0, 0, 0, 0, 0),
-                                 away: (0, 0, 0, 0, 0, 0, 0), lastFive: (0, 0, 0, 0, 0, 0, 0))]
+                                 away: (0, 0, 0, 0, 0, 0, 0))]
         }
         fresh.game.match(fresh.values(home: fresh.rovers, away: fresh.town, day: 100))
         XCTAssertEqual(try fresh.reader().teamMatches(team: fresh.rovers).check, .nothingPlayed)
@@ -237,9 +233,9 @@ final class FixturesReaderTests: XCTestCase {
     func testATableWhoseHomeAndAwayDontAddUpFails() throws {
         let world = World { game, rovers, town, _ in
             [game.tableRow(team: rovers, overall: (2, 1, 1, 0, 3, 1, 4), home: (1, 1, 0, 0, 2, 0, 3),
-                                 away: (1, 0, 1, 0, 1, 1, 1), lastFive: (2, 1, 1, 0, 3, 1, 4)),
+                                 away: (1, 0, 1, 0, 1, 1, 1)),
              game.tableRow(team: town, overall: (1, 0, 0, 1, 0, 2, 0), home: (1, 0, 0, 1, 0, 2, 0),
-                                 away: (1, 0, 0, 1, 0, 2, 0), lastFive: (1, 0, 0, 1, 0, 2, 0))]
+                                 away: (1, 0, 0, 1, 0, 2, 0))]
         }
         world.playLeague()
         guard case .failed(let why) = try world.reader().teamMatches(team: world.rovers).check else { return XCTFail("should fail") }
@@ -256,7 +252,7 @@ final class FixturesReaderTests: XCTestCase {
         }
         let row = LeagueTableRow(team: 1, name: "Us", position: 1,
                                  overall: TableRecord(played: 1, won: 1, goalsFor: 1, points: 3),
-                                 home: TableRecord(played: 1, won: 1, goalsFor: 1, points: 3), away: TableRecord(), lastFive: TableRecord())
+                                 home: TableRecord(played: 1, won: 1, goalsFor: 1, points: 3), away: TableRecord())
         let table = LeagueTable(competition: "League", competitionIndex: 9, rows: [row])
         XCTAssertEqual(FixturesReader.check([match(2028, 0, 4), match(2029, 1, 0)], team: 1, table: table), .passed)
         XCTAssertNotEqual(FixturesReader.check([match(2029, 0, 4), match(2029, 1, 0)], team: 1, table: table), .passed)

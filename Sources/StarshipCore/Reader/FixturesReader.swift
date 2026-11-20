@@ -99,16 +99,14 @@ public struct LeagueTableRow: Sendable {
     public var overall: TableRecord
     public var home: TableRecord
     public var away: TableRecord
-    public var lastFive: TableRecord
 
-    public init(team: Int64, name: String, position: Int, overall: TableRecord, home: TableRecord, away: TableRecord, lastFive: TableRecord) {
+    public init(team: Int64, name: String, position: Int, overall: TableRecord, home: TableRecord, away: TableRecord) {
         self.team = team
         self.name = name
         self.position = position
         self.overall = overall
         self.home = home
         self.away = away
-        self.lastFive = lastFive
     }
 }
 
@@ -396,7 +394,7 @@ public final class FixturesReader {
             }
             let teamObject = le64(b, T.team)
             rows.append(LeagueTableRow(team: teamObject, name: GameReader.clubName(team: teamObject, in: game), position: rows.count + 1,
-                                       overall: record(T.overall), home: record(T.home), away: record(T.away), lastFive: record(T.lastFive)))
+                                       overall: record(T.overall), home: record(T.home), away: record(T.away)))
         }
         return LeagueTable(competition: game.lengthPrefixedString(game.readPointer(comp + Int64(MacLayout.competitionName))),
                            competitionIndex: compIndex(comp), rows: rows)

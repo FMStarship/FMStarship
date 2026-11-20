@@ -195,7 +195,7 @@ extension Toolbox {
              run: { $0.results }),
         Tool(name: "league_table", title: "League table",
              description: Toolbox.matchNames + "The table of a club's league, as FM has it now: position, played, won, drawn, lost, "
-                + "goals for and against, goal difference, points, and the home, away and last-five records.",
+                + "goals for and against, goal difference, points, and the home and away records.",
              parameters: [Parameter(name: "club", type: "string",
                                     description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league.")],
              run: { $0.leagueTable }),

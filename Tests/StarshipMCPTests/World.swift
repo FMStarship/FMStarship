@@ -277,11 +277,11 @@ enum World {
         let none = record(0, 0, 0, 0, 0, 0)
         let table = LeagueTable(competition: "Mock League", competitionIndex: leagueIndex, rows: [
             LeagueTableRow(team: team, name: club, position: 1, overall: record(2, 1, 1, 0, 3, 1), home: record(1, 1, 0, 0, 2, 0),
-                           away: record(1, 0, 1, 0, 1, 1), lastFive: record(2, 1, 1, 0, 3, 1)),
+                           away: record(1, 0, 1, 0, 1, 1)),
             LeagueTableRow(team: otherTeam, name: otherTown, position: 2, overall: record(1, 0, 1, 0, 1, 1), home: record(1, 0, 1, 0, 1, 1),
-                           away: none, lastFive: record(1, 0, 1, 0, 1, 1)),
+                           away: none),
             LeagueTableRow(team: rivalsTeam, name: rivals, position: 3, overall: record(1, 0, 0, 1, 0, 2), home: none,
-                           away: record(1, 0, 0, 1, 0, 2), lastFive: record(1, 0, 0, 1, 0, 2)),
+                           away: record(1, 0, 0, 1, 0, 2)),
         ])
         let ours = [first, second, cupTie, next, later]
         return FakeMatches([

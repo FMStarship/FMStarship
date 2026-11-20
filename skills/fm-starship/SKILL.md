@@ -26,7 +26,7 @@ chosen in FM Starship.
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
 | `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG |
-| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home, away and last-five records |
+| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
 YYYY-MM-DD. Money is text in the user's own currency, such as "£4.2M", and wages are per the period `wages` names, such as "p/w".
