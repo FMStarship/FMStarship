@@ -87,11 +87,11 @@ public final class RulesEngine: GameRulesEngine {
     }
 
     private func status(_ player: Player, team: Int64) throws -> UInt64 {
-        try sandbox.call(statusFunction, [UInt64(player.block), UInt64(team), 0, 0, 0, 0, 1, 0], stack: [0]) { a64_get_x($0, 0) & 255 }
+        try sandbox.call(statusFunction, [UInt64(bitPattern: player.block), UInt64(bitPattern: team), 0, 0, 0, 0, 1, 0], stack: [0]) { a64_get_x($0, 0) & 255 }
     }
 
     private func score(_ player: Player, club: Int64, type: UInt64, status: UInt64) throws -> Int32 {
-        try sandbox.call(interestFunction, [UInt64(manager), UInt64(player.block), UInt64(club), type, status, 0, 0, 0]) {
+        try sandbox.call(interestFunction, [UInt64(bitPattern: manager), UInt64(bitPattern: player.block), UInt64(bitPattern: club), type, status, 0, 0, 0]) {
             Int32(truncatingIfNeeded: a64_get_x($0, 0))
         }
     }
@@ -103,7 +103,7 @@ public final class RulesEngine: GameRulesEngine {
     }
 
     private func askInterest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? {
-        let club = game.readPointer(team + Int64(MacLayout.Team.club))
+        let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
         guard let status = try? status(player, team: team), club != 0,
               let transfer = try? score(player, club: club, type: RulesEngine.transfer, status: status) else { return nil }
         if player.loanUnavailable { return (JoinInterest(score: transfer), .notInterested) }
@@ -120,8 +120,8 @@ public final class RulesEngine: GameRulesEngine {
                 a64_write(cpu, rule + 24, UInt64(level), 1)
                 a64_write(cpu, rule + 25, 1, 1)
                 a64_write(cpu, person + 8, UInt64(staff.block + Int64(MacLayout.Staff.identity)), 8)
-                a64_write(cpu, context + 8, UInt64(manager), 8)
-                a64_write(cpu, context + 16, UInt64(team), 8)
+                a64_write(cpu, context + 8, UInt64(bitPattern: manager), 8)
+                a64_write(cpu, context + 16, UInt64(bitPattern: team), 8)
                 a64_write(cpu, context + 24, UInt64(manager + Int64(MacLayout.Human.managerIdentity)), 8)
             }, result: { a64_get_x($0, 0) & 255 != 0 })
         } catch {
@@ -135,12 +135,12 @@ public final class RulesEngine: GameRulesEngine {
     public var supportsInjuryDays: Bool { true }
 
     public func preferredJob(staff: Staff) -> Int? {
-        let block = game.readPointer(staff.block + Int64(MacLayout.Staff.jobPreferences))
+        let block = game.readPointer(staff.block &+ Int64(MacLayout.Staff.jobPreferences))
         guard block != 0 else { return nil }
-        return try? sandbox.call(game.pluginBase + Mac27.preferredJob, [UInt64(block), UInt64(staff.block)]) { Int(a64_get_x($0, 0) & 255) }
+        return try? sandbox.call(game.pluginBase + Mac27.preferredJob, [UInt64(bitPattern: block), UInt64(bitPattern: staff.block)]) { Int(a64_get_x($0, 0) & 255) }
     }
     public func jobPreferences(staff: Staff) -> [UInt8]? {
-        let block = game.readPointer(staff.block + Int64(MacLayout.Staff.jobPreferences))
+        let block = game.readPointer(staff.block &+ Int64(MacLayout.Staff.jobPreferences))
         return block == 0 ? nil : game.read(block, count: 15)
     }
 
@@ -164,16 +164,16 @@ public final class RulesEngine: GameRulesEngine {
         let positions = UInt64(1) << UInt64(position), roles = UInt64(1) << UInt64(role)
         if outOfPossession {
             return try sandbox.call(game.pluginBase + Mac27.roleOutOfPossession,
-                                    [UInt64(player.block), positions, roles, 2, UInt64(viewer), 0, 1, 0]) { Int32(truncatingIfNeeded: a64_get_x($0, 0)) }
+                                    [UInt64(bitPattern: player.block), positions, roles, 2, UInt64(bitPattern: viewer), 0, 1, 0]) { Int32(truncatingIfNeeded: a64_get_x($0, 0)) }
         }
         return try sandbox.call(game.pluginBase + Mac27.roleInPossession,
-                                [UInt64(player.block), positions, roles, 0, 0, 2, UInt64(viewer), 0], stack: [1, 0]) { Int32(truncatingIfNeeded: a64_get_x($0, 0)) }
+                                [UInt64(bitPattern: player.block), positions, roles, 0, 0, 2, UInt64(bitPattern: viewer), 0], stack: [1, 0]) { Int32(truncatingIfNeeded: a64_get_x($0, 0)) }
     }
 
     /// Half-stars as (lowest, highest): a scout's view of a player is a band, not a point.
     private func band(_ player: Player, rating: Int32, team: Int64) throws -> (Int, Int) {
         let out = UInt64(A64_SCRATCH) + 0xc14
-        return try sandbox.call(game.pluginBase + Mac27.roleBand, [UInt64(player.block), UInt64(UInt32(bitPattern: rating)), UInt64(team), out, 0]) { cpu in
+        return try sandbox.call(game.pluginBase + Mac27.roleBand, [UInt64(bitPattern: player.block), UInt64(UInt32(bitPattern: rating)), UInt64(bitPattern: team), out, 0]) { cpu in
             (min(10, max(0, Int(a64_read(cpu, out, 1)) - 10)), min(10, max(0, Int(a64_read(cpu, out + 1, 1)) - 10)))
         }
     }
@@ -205,12 +205,14 @@ public final class RulesEngine: GameRulesEngine {
     private func statsContainer(_ player: Player) throws -> UInt64 {
         let vtable = game.readPointer(player.block)
         guard vtable != 0 else { return 0 }
-        let identity = player.block + game.readPointer(vtable - 0x18)
-        let method = game.readPointer(game.readPointer(identity) + Int64(Mac27.personStatsSlot * 8))
-        guard method != 0 else { return 0 }
-        let holder: UInt64 = try sandbox.call(method, [UInt64(identity)]) { a64_get_x($0, 0) }
+        // A leftover copy of a player can hold anything here, so values read are only added to with &+, and the method has
+        // to be FM's own code before it's run: a garbage one trapped converting it on the Molde save (Oct 2029).
+        let identity = player.block &+ game.readPointer(vtable &- 0x18)
+        let method = game.readPointer(game.readPointer(identity) &+ Int64(Mac27.personStatsSlot * 8))
+        guard method > game.pluginBase, method < game.pluginBase &+ game.pluginSize else { return 0 }
+        let holder: UInt64 = try sandbox.call(method, [UInt64(bitPattern: identity)]) { a64_get_x($0, 0) }
         guard holder != 0 else { return 0 }
-        return try sandbox.call(statsContainerFunction, [UInt64(manager), holder, 1]) { a64_get_x($0, 0) }
+        return try sandbox.call(statsContainerFunction, [UInt64(bitPattern: manager), holder, 1]) { a64_get_x($0, 0) }
     }
 
     /// FM27 inserted eight new stats at 60, so everything from there up moved.
@@ -272,9 +274,9 @@ public final class RulesEngine: GameRulesEngine {
     /// One of the game's staff tables: a row of totals, plus one row per team at the club.
     private func staffTable(slot: Int, mode: UInt64, club: Int64) throws -> (totals: [UInt8], teams: [[UInt8]]) {
         let object = game.readPointer(game.pluginBase + Mac27.staffNumbersGlobal)
-        let function = game.readPointer(game.readPointer(object) + Int64(slot * 8))
+        let function = game.readPointer(game.readPointer(object) &+ Int64(slot * 8))
         let out = UInt64(A64_SCRATCH) + 0x800
-        return try sandbox.call(function, [UInt64(object), out, UInt64(club), mode]) { cpu in
+        return try sandbox.call(function, [UInt64(bitPattern: object), out, UInt64(bitPattern: club), mode]) { cpu in
             var head = [UInt8](repeating: 0, count: 24)
             a64_read_bytes(cpu, out, &head, 24)
             let list = head.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 16, as: UInt64.self) }
@@ -294,14 +296,14 @@ public final class RulesEngine: GameRulesEngine {
     /// Board limits and who is in post, as raw tables. `team` is any team at the club.
     public func staffNumbers(team: Int64) -> (allowed: [UInt8], current: [UInt8], teams: [(object: Int64, type: Int)],
                                               teamAllowed: [[UInt8]], teamCurrent: [[UInt8]], modeA: Int, modeB: Int)? {
-        let club = game.readPointer(team + Int64(MacLayout.Team.club))
+        let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
         guard club != 0, game.readPointer(game.pluginBase + Mac27.staffNumbersGlobal) != 0,
               let allowed = try? staffTable(slot: Mac27.staffAllowedSlot, mode: 0, club: club),
               let current = try? staffTable(slot: Mac27.staffCurrentSlot, mode: 3, club: club),
               let flags = game.read(game.pluginBase + Mac27.staffModeFlags, count: 2) else { return nil }
-        let end = game.readPointer(club + 32)
+        let end = game.readPointer(club &+ 32)
         var teams: [(object: Int64, type: Int)] = []
-        var slot = game.readPointer(club + 24)
+        var slot = game.readPointer(club &+ 24)
         while slot != 0, slot < end, teams.count < 32 {
             let object = game.readPointer(slot)
             teams.append((object, Int(game.read(object + Int64(MacLayout.Team.type), count: 1)?.first ?? 0)))
@@ -340,21 +342,21 @@ public final class RulesEngine: GameRulesEngine {
     /// The last five ratings, oldest first. Plain data, so this needs no emulation.
     public func form(player: Player) -> String? {
         typealias H = MacLayout.History
-        let history = game.readPointer(player.block + Int64(MacLayout.Player.injuries))
+        let history = game.readPointer(player.block &+ Int64(MacLayout.Player.injuries))
         guard history != 0 else { return "" }
-        let list = game.readPointer(history + Int64(H.matches))
+        let list = game.readPointer(history &+ Int64(H.matches))
         guard list != 0 else { return "" }
-        let begin = game.readPointer(list), end = game.readPointer(list + 8)
+        let begin = game.readPointer(list), end = game.readPointer(list &+ 8)
         guard begin != 0, end >= begin else { return "" }
         var matches: [(year: Int, day: Int, rating: Int)] = []
-        for slot in stride(from: begin, to: min(end, begin + 0x200), by: 8) {
+        for slot in stride(from: begin, to: min(end, begin &+ 0x200), by: 8) {
             let games = game.readPointer(slot)
-            guard games != 0, let count = game.read(games + 16, count: 1)?.first else { continue }
+            guard games != 0, let count = game.read(games &+ 16, count: 1)?.first else { continue }
             for i in 0..<min(Int(count), 20) {
-                let entry = game.readPointer(games + 24 + Int64(8 * i))
+                let entry = game.readPointer(games &+ 24 &+ Int64(8 * i))
                 guard entry != 0, let b = game.read(entry, count: 24) else { continue }
                 let result = b.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 8, as: Int64.self) }
-                guard result != 0, let rating = game.read(result + 21, count: 2), rating[0] != 0, rating[1] != 0 else { continue }
+                guard result != 0, let rating = game.read(result &+ 21, count: 2), rating[0] != 0, rating[1] != 0 else { continue }
                 matches.append((Int(b[18]) | Int(b[19]) << 8, (Int(b[16]) | Int(b[17]) << 8) & 0x1ff, Int(rating[1])))
             }
         }
@@ -371,7 +373,7 @@ public final class RulesEngine: GameRulesEngine {
         let bag = UInt64(A64_SCRATCH) + 0x400
         let context = Unmanaged.passUnretained(found).toOpaque()
         do {
-            try sandbox.call(game.pluginBase + Mac27.injuryInfo, [UInt64(injury.record), UInt64(player.block), 0, bag],
+            try sandbox.call(game.pluginBase + Mac27.injuryInfo, [UInt64(bitPattern: injury.record), UInt64(bitPattern: player.block), 0, bag],
                              maxSteps: 5_000_000, prepare: { cpu in
                 a64_set_watch(cpu, 0, UInt64(self.game.pluginBase + Mac27.bagSet))
                 a64_set_watch(cpu, 1, UInt64(self.game.pluginBase + Mac27.bagClear))

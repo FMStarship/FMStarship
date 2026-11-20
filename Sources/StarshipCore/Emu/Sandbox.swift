@@ -56,7 +56,7 @@ public final class Sandbox {
         for (i, value) in arguments.enumerated() { a64_set_x(cpu, Int32(i), value) }
         for (i, value) in stack.enumerated() { a64_write(cpu, sp + UInt64(i * 8), value, 8) }
         prepare?(cpu)
-        let status = a64_run(cpu, UInt64(function), maxSteps)
+        let status = a64_run(cpu, UInt64(bitPattern: function), maxSteps)
         guard status == A64_OK else {
             throw Failure(status: Int(status.rawValue), pc: Int64(truncatingIfNeeded: a64_pc(cpu)), instruction: a64_last_instruction(cpu),
                           steps: a64_steps(cpu), plugin: game.pluginBase,
