@@ -207,4 +207,77 @@ final class SettingsFollowTests: XCTestCase {
         model.followSettingsFile()
         XCTAssertTrue(try onDisk().showHidden, "The poll saves it")
     }
+
+    /// The model holds the lock out of a switch's save, as the other process's save would.
+    private func holdLock() throws -> Int32 {
+        let other = open(folder.appendingPathComponent("settings.lock").path, O_RDWR | O_CREAT, 0o644)
+        XCTAssertGreaterThanOrEqual(other, 0)
+        XCTAssertEqual(flock(other, LOCK_EX | LOCK_NB), 0)
+        return other
+    }
+
+    private func release(_ lock: Int32) {
+        flock(lock, LOCK_UN)
+        close(lock)
+    }
+
+    /// The fourth review's repro, through the model: the switch to on fails to save, the other window goes on and off,
+    /// and the player picks a theme here before the poll. Nothing goes back on, in the file or here.
+    func testAThemePickedBeforeThePollDoesntPutHiddenAttributesBackOn() throws {
+        let model = try startModel(Settings())
+        Settings.lockWait = 0.05
+        let lock = try holdLock()
+        model.showHidden = true
+        release(lock)
+        var other = Settings()
+        other.showHidden = true
+        try writeAsOther(other)
+        other.showHidden = false
+        try writeAsOther(other)
+        model.setTheme("Night")
+        XCTAssertFalse(try onDisk().showHidden, "The theme's save didn't write the stale on")
+        model.followSettingsFile()
+        XCTAssertFalse(model.showHidden)
+        let result = try onDisk()
+        XCTAssertFalse(result.showHidden)
+        XCTAssertEqual(result.theme, "Night")
+    }
+
+    /// The third review's repro, through the model's poll.
+    func testThePollDoesntWriteAFailedOnOverALaterOff() throws {
+        let model = try startModel(Settings())
+        Settings.lockWait = 0.05
+        let lock = try holdLock()
+        model.showHidden = true
+        release(lock)
+        var other = Settings()
+        other.showHidden = true
+        try writeAsOther(other)
+        other.showHidden = false
+        try writeAsOther(other)
+        model.followSettingsFile()
+        XCTAssertFalse(try onDisk().showHidden)
+        XCTAssertFalse(model.showHidden)
+    }
+
+    /// The poll follows before it saves what a failed save left: switched off here with the save failing, then another
+    /// setting written in the other window, off reaches the file in that same poll. Saving first would hold it back, as
+    /// the file changed unseen, until the poll after.
+    func testThePollFollowsBeforeItSaves() throws {
+        var start = Settings()
+        start.showHidden = true
+        let model = try startModel(start)
+        Settings.lockWait = 0.05
+        let lock = try holdLock()
+        model.showHidden = false
+        release(lock)
+        var other = start
+        other.heightUnit = "in"
+        try writeAsOther(other)
+        model.followSettingsFile()
+        let result = try onDisk()
+        XCTAssertFalse(result.showHidden, "Off is written in the same poll")
+        XCTAssertEqual(result.heightUnit, "in")
+        XCTAssertFalse(model.showHidden)
+    }
 }

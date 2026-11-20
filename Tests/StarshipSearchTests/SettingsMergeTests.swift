@@ -287,13 +287,13 @@ final class SettingsMergeTests: XCTestCase {
         try FileManager.default.removeItem(at: file)
         try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
         plugin.run {
-            Settings.current.showHidden = true
+            Settings.current.theme = "Night"
             Settings.save()
         }
         try FileManager.default.removeItem(at: file)
         try write(Settings())
         plugin.run { Settings.save() }
-        XCTAssertTrue(try onDisk().showHidden, "The change that failed to save is still this process's to write")
+        XCTAssertEqual(try onDisk().theme, "Night", "The change that failed to save is still this process's to write")
     }
 
     func testAMissingFileIsntLogged() throws {
@@ -459,7 +459,7 @@ final class SettingsMergeTests: XCTestCase {
             Settings.save()
         }
         XCTAssertFalse(try onDisk().showHidden)
-        // The app's poll: follow first, then save what's pending.
+        // As the app's poll does it: follow first, then save what's pending.
         app.run {
             XCTAssertTrue(Settings.followFile())
             XCTAssertFalse(Settings.current.showHidden, "Settled off")
@@ -629,5 +629,87 @@ final class SettingsMergeTests: XCTestCase {
         XCTAssertEqual(result.heightUnit, "in")
         let logged = try String(contentsOf: log, encoding: .utf8)
         XCTAssertEqual(logged.components(separatedBy: "settings not saved").count - 1, 1, "The same failure is logged once")
+    }
+
+    /// The fourth review's repro: the app's switch to on fails to save, the plugin then goes on and off, and before the
+    /// app's poll the player saves something else in the app. That save doesn't write the stale on; the poll settles it.
+    func testAPlayersSaveDoesntWriteAStalePendingValueOverALaterChoice() throws {
+        try write(Settings())
+        var app = Process(), plugin = Process()
+        app.run { Settings.load() }
+        plugin.run { Settings.load() }
+        let lock = try holdLock()
+        app.run {
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        release(lock)
+        plugin.run {
+            Settings.current.showHidden = true
+            Settings.save()
+            Settings.current.showHidden = false
+            Settings.save()
+        }
+        let before = try Data(contentsOf: file)
+        app.run {
+            Settings.current.theme = "Night"
+            Settings.save()
+        }
+        XCTAssertEqual(try Data(contentsOf: file), before, "Nothing written until the app has followed")
+        let logged = try String(contentsOf: log, encoding: .utf8)
+        XCTAssertEqual(logged.components(separatedBy: "settings not").count - 1, 1, "Only the lock failure is logged")
+        app.run {
+            XCTAssertTrue(Settings.followFile())
+            XCTAssertFalse(Settings.current.showHidden)
+            Settings.saveIfPending()
+        }
+        let result = try onDisk()
+        XCTAssertFalse(result.showHidden)
+        XCTAssertEqual(result.theme, "Night", "The player's other change follows within the poll")
+    }
+
+    /// With nothing left from an earlier failed save, a choice made in this call is written, though the file changed
+    /// since this process last looked, and the other process's keys are kept.
+    func testAChoiceMadeInThisCallIsWrittenThoughTheFileChangedUnseen() throws {
+        try write(Settings())
+        var app = Process(), plugin = Process()
+        app.run { Settings.load() }
+        plugin.run {
+            Settings.load()
+            Settings.current.heightUnit = "in"
+            Settings.save()
+        }
+        app.run {
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        let result = try onDisk()
+        XCTAssertTrue(result.showHidden)
+        XCTAssertEqual(result.heightUnit, "in")
+    }
+
+    /// A pending Reveal from a failed save, changed again by the player: the new choice is this call's, so it's written.
+    func testAPendingValueChangedAgainInThisCallIsWritten() throws {
+        var start = Settings()
+        start.showHidden = true
+        try write(start)
+        var app = Process()
+        app.run { Settings.load() }
+        let lock = try holdLock()
+        app.run {
+            Settings.current.reveal = 1
+            Settings.save()
+        }
+        release(lock)
+        var plugin = start
+        plugin.theme = "Night"
+        try writeAsOther(plugin)
+        app.run {
+            Settings.current.reveal = 2
+            Settings.save()
+        }
+        let result = try onDisk()
+        XCTAssertEqual(result.reveal, 2)
+        XCTAssertEqual(result.theme, "Night")
     }
 }
