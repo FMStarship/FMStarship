@@ -76,6 +76,7 @@ enum Output {
     /// FM shows appearances as starts with sub appearances in brackets, "3 (2)". The catalogue's Appearances is the two
     /// added up, which reads as starts, so it goes out as the two numbers.
     static func starts(_ person: Person) -> JSON? { (person as? Player)?.season.map { .int($0.starts) } }
+    static let startsName = "Starts"
 
     /// The columns of `catalogue` named in `names`, in that order, that may go out now.
     static func columns(_ names: [String], in catalogue: [Col], _ visibility: Visibility) -> [Field] {
@@ -83,8 +84,8 @@ enum Output {
         for name in names {
             guard let col = catalogue.first(where: { $0.name == name }), visibility.allows(col) else { continue }
             if col.name == "Appearances" {
-                fields.append(Field(name: "Starts", value: starts))
-                if !names.contains("Sub appearances"), let subs = catalogue.first(where: { $0.name == "Sub appearances" }) {
+                fields.append(Field(name: startsName, value: starts))
+                if !names.contains("Sub appearances"), let subs = catalogue.first(where: { $0.name == "Sub appearances" }), visibility.allows(subs) {
                     fields.append(Field(name: subs.name) { value(subs, $0, visibility) })
                 }
                 continue
@@ -136,7 +137,11 @@ enum Output {
         if withHead, !table.head.isEmpty { pairs.append(("head", .string(prose(table.head)))) }
         if let limit, table.rows.count > limit { pairs += [("found", .int(table.rows.count)), ("shown", .int(limit))] }
         pairs += [("columns", .array(titles)), ("rows", .array(rows))]
-        let status = prose(table.status)
+        var status = prose(table.status)
+        // The finder's own sentence counts every row it found, so a cut list says how many came back.
+        if let limit, table.rows.count > limit {
+            status += (status.isEmpty ? "" : " ") + (limit == 1 ? "Showing the first." : "Showing the first \(limit).")
+        }
         if !status.isEmpty { pairs.append(("status", .string(status))) }
         return pairs
     }

@@ -232,13 +232,69 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(status["clubs"]?.array?.first?["transfer_budget"], "Kr 65M")
         XCTAssertEqual(try harness.answer("squad").rowsByName.first?["Value"], "Kr 1.3M")
 
-        // The call that reads again after a new day, and a money argument read in that same call.
+        // A read that brings other currencies, such as another save or new rates, with a money argument read in that same
+        // call. Before the read the server only knows the pound again, so only the read's own currencies can get this right.
+        harness.source.database.currencies = [Currency(name: "United Kingdom Pound", symbol: "£", rate: 1),
+                                              Currency(name: "Norwegian Krone", symbol: "", rate: 10)]
+        Units.currencies = [Units.pound]
         Units.money = Units.pound
         harness.source.current = false
-        let cheap = try harness.answer("search_players", ["value_max": 1_300_000])
-        XCTAssertEqual(cheap.rowsByName.map { $0["uid"] }, [1], "1.3M kroner is £100K")
-        XCTAssertEqual(cheap.rowsByName.first?["Value"], "Kr 1.3M")
+        let cheap = try harness.answer("search_players", ["value_max": 1_000_000])
+        XCTAssertEqual(cheap.rowsByName.map { $0["uid"] }, [1], "1M kroner at the new rate is £100K")
+        XCTAssertEqual(cheap.rowsByName.first?["Value"], "Kr 1M")
         XCTAssertEqual(harness.source.reads, 2)
+    }
+
+    func testSquadOverviewRefusesWhenFMGivesNoRoleRatings() throws {
+        let engine = FakeEngine()
+        engine.roleRatings = false
+        let sentence = try Harness(engine: engine).refusal("squad_overview")
+        XCTAssertTrue(sentence.contains("didn't give"), sentence)
+        XCTAssertFalse(sentence.contains("cover"), sentence)
+    }
+
+    func testSearchesOrderByStartsAndSayWhatAnAppearancesOrderMeans() throws {
+        let harness = Harness()
+        var many = SeasonStats()
+        many.apps = 21
+        many.starts = 20
+        many.subs = 1
+        var few = SeasonStats()
+        few.apps = 3
+        few.starts = 3
+        harness.source.database.players.first { $0.uid == 21 }?.season = many
+        harness.source.database.players.first { $0.uid == 22 }?.season = few
+
+        let most = try harness.answer("search_players", ["club": "Rivals", "sort": "starts", "limit": 1])
+        XCTAssertEqual(most["order"], "Starts")
+        XCTAssertEqual(most.rowsByName.first?["uid"], 21)
+        XCTAssertEqual(most.rowsByName.first?["Starts"], 20)
+        let fewest = try harness.answer("search_players", ["club": "Rivals", "sort": "Starts", "descending": false, "limit": 1])
+        XCTAssertEqual(fewest.rowsByName.first?["uid"], 22)
+        let subs = try harness.answer("search_players", ["club": "Rivals", "sort": "Sub appearances", "limit": 1])
+        XCTAssertEqual(subs["order"], "Sub appearances")
+        let total = try harness.answer("search_players", ["club": "Rivals", "sort": "Appearances", "limit": 1])
+        XCTAssertEqual(total["order"], "Appearances: starts and sub appearances together")
+        XCTAssertEqual(total.rowsByName.first?["uid"], 21)
+        XCTAssertTrue(try harness.refusal("search_staff", ["sort": "Starts"]).contains("Starts"))
+    }
+
+    func testACutListSaysSo() throws {
+        let harness = Harness()
+        let two = try harness.answer("recommend_signings", ["upgrades_only": false, "limit": 2])
+        XCTAssertTrue(two["status"]?.string?.hasSuffix("Showing the first 2.") ?? false, two["status"]?.text ?? "")
+        let all = try harness.answer("recommend_signings", ["upgrades_only": false])
+        XCTAssertFalse(all["status"]?.string?.contains("Showing") ?? true)
+    }
+
+    func testWithNoSaveTheCurrencyIsntGuessed() throws {
+        let harness = Harness()
+        harness.settings.currencyName = "Norwegian Krone"
+        harness.source.problem = .notRunning
+        let units = try XCTUnwrap(try harness.answer("game_status")["units"])
+        XCTAssertNil(units["currency"])
+        XCTAssertNil(units["symbol"])
+        XCTAssertEqual(units["wages"], "p/w")
     }
 
     func testNoAnswerTalksAboutTheAppsMouse() throws {

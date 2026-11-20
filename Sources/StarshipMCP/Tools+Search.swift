@@ -106,7 +106,10 @@ extension Toolbox {
         let rules = try Self.rules(args, known: PlayerFilter.ruleAttributes, hidden: PlayerFilter.hiddenRuleAttributes, visibility)
         filter.rules = rules
         let catalogue = Columns.forPlayers()
-        let sort = try Self.sortColumn(args, in: catalogue, visibility)
+        // Starts is the MCP's own column, from FM's "3 (2)", so it isn't in the catalogue to order by.
+        let byStarts = try args.string("sort").map { $0.caseInsensitiveCompare(Output.startsName) == .orderedSame } ?? false
+        let sort = byStarts ? nil : try Self.sortColumn(args, in: catalogue, visibility)
+        let descending = try args.bool("descending") ?? (byStarts || (sort?.numeric ?? true))
         let limit = try args.int("limit", in: 1...100) ?? 25
 
         var found = filter.criteria().filter(context.db.players)
@@ -120,15 +123,25 @@ extension Toolbox {
             }
             shownNames.append("Release clause")
         }
-        let ordered = Columns.ordered(players: found, sortBy: sort, descending: try args.bool("descending") ?? (sort?.numeric ?? true),
-                                      byAbility: visibility.showsAbility)
+        let ordered = byStarts ? Self.byStarts(found, descending: descending)
+            : Columns.ordered(players: found, sortBy: sort, descending: descending, byAbility: visibility.showsAbility)
         if let sort, !shownNames.contains(sort.name) { shownNames.append(sort.name) }
         for rule in rules where !shownNames.contains(rule.attribute) { shownNames.append(rule.attribute) }
         let columns = Output.columns(shownNames, in: catalogue, visibility)
-        let order = sort?.name ?? (visibility.showsAbility ? "CA" : "Value")
+        var order = byStarts ? Output.startsName : sort?.name ?? (visibility.showsAbility ? "CA" : "Value")
+        if sort?.name == "Appearances" { order = "Appearances: starts and sub appearances together" }
         return .object([("found", .int(found.count)), ("shown", .int(min(limit, found.count))), ("order", .string(order)),
                         ("wages", .string(Units.wageSuffix))]
                        + Output.rows(Array(ordered.prefix(limit)), columns))
+    }
+
+    /// By this season's starts, with players who have no season stats last either way, as the catalogue's columns sort.
+    static func byStarts(_ players: [Player], descending: Bool) -> [Player] {
+        players.stableSorted { a, b in
+            guard let x = a.season?.starts else { return false }
+            guard let y = b.season?.starts else { return true }
+            return descending ? x > y : x < y
+        }
     }
 
     /// The release clause a club from `buyerNation` would pay: the general one, or the one for buyers from home or abroad,
