@@ -101,12 +101,49 @@ public struct Settings: Codable, Equatable {
     /// The file's modification date when this process last loaded it or looked at it, so `followFile` reads it only once
     /// it changes.
     static var seenModified: Date?
-    /// How long a save waits for the other process to finish with the file. Inside FM a save runs on FM's main thread.
-    static var lockWait: TimeInterval = 0.5
+    /// How long a save waits for the other process to finish with the file. The plugin sets it to 0, as inside FM a save
+    /// runs on FM's main thread: a missed lock is left to the poll's `saveIfPending`.
+    public static var lockWait: TimeInterval = 0.5
     /// Tests point this at a temporary folder.
     static var pathOverride: URL?
-    /// The kinds of failure logged since a save or a follow last worked, so the poll's tries every 2 seconds log each once.
-    static var logged: Set<String> = []
+    /// When this process changed ShowHidden or Reveal to a value it hasn't saved yet, by key, so `followFile` can tell
+    /// whether the other window's change came later.
+    static var pending: [String: Pending] = [:]
+    /// Failures of saves and of follows, kept apart, so one working doesn't log the other's again.
+    static var saveFailures = Failures()
+    static var followFailures = Failures()
+    /// How long the poll waits before trying again once the same failure has come twice.
+    static var retryAfter: TimeInterval = 30
+    /// A pending value and its change closer together than this can't be told apart, so it's settled the safe way.
+    static let sameMoment: TimeInterval = 1
+
+    struct Pending: Equatable {
+        var value: AnyHashable
+        var since: Date
+    }
+
+    /// One kind of failure at a time, by the error's domain and code, as its description can differ every time. A new kind
+    /// is logged. The poll tries again every 2 seconds, and after two of its own tries fail the same way, every
+    /// `retryAfter`. A save the player makes always tries, and doesn't count towards that.
+    struct Failures {
+        var kind: String?
+        var polled = 0
+        var next = Date.distantPast
+        /// For follows: the modification date of the file that couldn't be read, so a newer one is tried at once.
+        var at: Date?
+
+        var allowsTry: Bool { Date() >= next }
+
+        /// Says whether to log it.
+        mutating func failed(_ kind: String, polled byPoll: Bool) -> Bool {
+            let new = kind != self.kind
+            self.kind = kind
+            if new { polled = 0 }
+            if byPoll { polled += 1 }
+            next = polled >= 2 ? Date().addingTimeInterval(Settings.retryAfter) : .distantPast
+            return new
+        }
+    }
 
     /// ~/Library/Application Support/FMStarship/settings.json
     public static var path: URL {
@@ -116,14 +153,22 @@ public struct Settings: Codable, Equatable {
         return support.appendingPathComponent("FMStarship").appendingPathComponent("settings.json")
     }
 
+    /// A file that doesn't decode gives the defaults, but ShowHidden and Reveal are taken as `followFile` takes them, so
+    /// the app, the plugin and the MCP server read the same file the same way.
     public static func load() {
         seenModified = modified()
-        if let data = try? Data(contentsOf: path), let saved = try? JSONDecoder().decode(Settings.self, from: data) {
+        let data = try? Data(contentsOf: path)
+        if let data, let saved = try? JSONDecoder().decode(Settings.self, from: data) {
             current = saved
         } else {
             current = Settings()
+            if let data, let shown = try? JSONDecoder().decode(Visibility.self, from: data) {
+                current.showHidden = shown.showHidden
+                current.reveal = shown.reveal
+            }
         }
         baseline = current
+        pending = [:]
         loaded = true
     }
 
@@ -133,15 +178,17 @@ public struct Settings: Codable, Equatable {
     /// can't be read or a lock not had in time, is logged, and `saveIfPending` tries it again.
     public static func save() { save(wait: lockWait) }
 
-    /// For the poll: saves a change a failed save left behind, so the file and the other window don't keep a setting the
-    /// player has changed. It doesn't wait for the lock, as the poll comes round again in 2 seconds.
+    /// For the poll, after `followFile`: saves a change a failed save left behind, so the file and the other window don't
+    /// keep a setting the player has changed. It doesn't wait for the lock, as the poll comes round again in 2 seconds, and
+    /// waits `retryAfter` once the same failure has come twice.
     public static func saveIfPending() {
-        guard loaded, current != baseline else { return }
-        save(wait: 0)
+        guard loaded, current != baseline, saveFailures.allowsTry else { return }
+        save(wait: 0, byPoll: true)
     }
 
-    private static func save(wait: TimeInterval) {
+    private static func save(wait: TimeInterval, byPoll: Bool = false) {
         guard loaded else { return }
+        notePending()
         do {
             let now = try fields(current)
             let before = try fields(baseline ?? Settings())
@@ -151,6 +198,8 @@ public struct Settings: Codable, Equatable {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let lock = try FileLock(folder.appendingPathComponent("settings.lock"), wait: wait)
             defer { lock.release() }
+            // Nothing the other process wrote is waiting to be followed, so this save's own write needn't be.
+            let allSeen = modified() == seenModified
             var output = now
             if let file = try readFile() {
                 output = file
@@ -171,51 +220,82 @@ public struct Settings: Codable, Equatable {
                 unlink(temporary.path)
                 throw error
             }
+            if allSeen { seenModified = modified() }
             baseline = current
-            logged = []
+            pending = [:]
+            saveFailures = Failures()
         } catch {
-            logFailure("settings not saved", error)
+            logFailure("settings not saved", error, &saveFailures, polled: byPoll)
         }
+    }
+
+    /// Stamps ShowHidden and Reveal when they first differ from the baseline, or change again while they do.
+    private static func notePending() {
+        let base = baseline ?? Settings()
+        func note(_ key: String, _ mine: AnyHashable, _ before: AnyHashable) {
+            if mine == before {
+                pending[key] = nil
+            } else if pending[key]?.value != mine {
+                pending[key] = Pending(value: mine, since: Date())
+            }
+        }
+        note("ShowHidden", current.showHidden, base.showHidden)
+        note("Reveal", current.reveal, base.reveal)
     }
 
     /// When the file has changed since this process loaded it or last looked, takes ShowHidden and Reveal from it, as the
     /// other process may have changed them, and says whether either changed here. What's taken becomes the baseline too, so
-    /// it isn't this process's change to save. A key this process has changed but not saved yet keeps its own value. A
-    /// missing file changes nothing. One that can't be read is read again at the next call, and logged once until it can.
+    /// it isn't this process's change to save. A missing file changes nothing. One that can't be read is read again at the
+    /// next call, or after `retryAfter` once it has failed twice, unless it changes again.
     public static func followFile() -> Bool {
         guard loaded, var base = baseline, let modified = modified(), modified != seenModified else { return false }
+        guard followFailures.allowsTry || modified != followFailures.at else { return false }
         let shown: Visibility
         do {
             shown = try JSONDecoder().decode(Visibility.self, from: Data(contentsOf: path))
         } catch {
-            logFailure("settings not followed", error)
+            logFailure("settings not followed", error, &followFailures, polled: true)
+            followFailures.at = modified
             return false
         }
         seenModified = modified
-        logged = []
-        let defaults = Settings()
-        let showHidden = shown.showHidden ?? defaults.showHidden
-        let reveal = Reveal(setting: shown.reveal ?? defaults.reveal).rawValue
-        var changed = false
-        if current.showHidden == base.showHidden, current.showHidden != showHidden {
-            current.showHidden = showHidden
-            changed = true
-        }
-        if current.reveal == base.reveal, current.reveal != reveal {
-            current.reveal = reveal
-            changed = true
-        }
-        if current.showHidden == showHidden { base.showHidden = showHidden }
-        if current.reveal == reveal { base.reveal = reveal }
+        followFailures = Failures()
+        var changed = follow(\.showHidden, "ShowHidden", theirs: shown.showHidden, safe: false, modified, &base)
+        changed = follow(\.reveal, "Reveal", theirs: shown.reveal, safe: Reveal.hidden.rawValue, modified, &base) || changed
         baseline = base
         return changed
     }
 
-    /// The two keys `followFile` takes. One that's missing, or not of its type, is the default: Hidden attributes off.
-    /// `load` reads a file with a key not of its type as all defaults, so it has Hidden attributes off too.
+    /// One key from the file. With nothing pending here, or the same value both sides, the file's is taken. A value this
+    /// process hasn't saved yet, which failed to save, stays when the file last changed clearly before it, and gives way
+    /// when the other window changed the key clearly after it. When that can't be told, as when the file changed after it
+    /// but the key reads as before (switched and back, or another key written), it's settled the safe way: Hidden
+    /// attributes off, Ability Off. Says whether `current` changed.
+    private static func follow<T: Hashable>(_ key: WritableKeyPath<Settings, T>, _ name: String, theirs: T, safe: T,
+                                            _ modified: Date, _ base: inout Settings) -> Bool {
+        let mine = current[keyPath: key], before = base[keyPath: key]
+        let since = pending[name]?.since
+        var value = theirs
+        if mine == before || mine == theirs {
+            value = theirs
+        } else if let since, modified < since.addingTimeInterval(-sameMoment) {
+            value = mine
+        } else if let since, modified > since.addingTimeInterval(sameMoment), theirs != before {
+            value = theirs
+        } else {
+            value = safe
+        }
+        base[keyPath: key] = theirs
+        if value != mine { pending[name] = nil }
+        current[keyPath: key] = value
+        return value != mine
+    }
+
+    /// The two keys `followFile` and a `load` that can't decode the whole file take. ShowHidden is on only for a JSON true;
+    /// Reveal is clamped as the picker clamps it. One that's missing, or not of its type, is the default.
     private struct Visibility: Decodable {
-        var showHidden: Bool?
-        var reveal: Int?
+        var showHidden: Bool
+        var reveal: Int
 
         private enum CodingKeys: String, CodingKey {
             case showHidden = "ShowHidden", reveal = "Reveal"
@@ -223,8 +303,9 @@ public struct Settings: Codable, Equatable {
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            showHidden = try? c.decodeIfPresent(Bool.self, forKey: .showHidden)
-            reveal = try? c.decodeIfPresent(Int.self, forKey: .reveal)
+            let defaults = Settings()
+            showHidden = (try? c.decodeIfPresent(Bool.self, forKey: .showHidden)) == true
+            reveal = Reveal(setting: (try? c.decodeIfPresent(Int.self, forKey: .reveal)) ?? defaults.reveal).rawValue
         }
     }
 
@@ -242,7 +323,7 @@ public struct Settings: Codable, Equatable {
             return nil
         }
         guard let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            logFailure("settings file isn't JSON, saved over")
+            writeLog("settings file isn't JSON, saved over")
             return nil
         }
         return file
@@ -284,11 +365,13 @@ public struct Settings: Codable, Equatable {
         }
     }
 
-    /// Once for each kind of failure, by its domain and code, as the error's description can differ every time.
-    private static func logFailure(_ what: String, _ error: Error? = nil) {
-        let kind = error.map { "\(what) \(($0 as NSError).domain) \(($0 as NSError).code)" } ?? what
-        guard logged.insert(kind).inserted else { return }
-        let message = error.map { "\(what): \($0)" } ?? what
+    private static func logFailure(_ what: String, _ error: Error, _ failures: inout Failures, polled: Bool) {
+        let nsError = error as NSError
+        guard failures.failed("\(nsError.domain) \(nsError.code)", polled: polled) else { return }
+        writeLog("\(what): \(error)")
+    }
+
+    private static func writeLog(_ message: String) {
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n\n"
         let log = path.deletingLastPathComponent().appendingPathComponent("errors.log")
         guard let data = line.data(using: .utf8) else { return }

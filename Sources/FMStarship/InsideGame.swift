@@ -41,6 +41,8 @@ extension AppModel {
 
     /// The model, with the settings it starts from. The same for the app and the plugin.
     package static func startUp() -> AppModel {
+        // Inside FM a save runs on FM's main thread, so it never waits for the lock. The poll saves what it misses.
+        if isInsideGame { StarshipSearch.Settings.lockWait = 0 }
         // Before the model, which reads its starting state from the settings.
         StarshipSearch.Settings.load()
         Units.apply()

@@ -25,7 +25,10 @@ final class SettingsFollowTests: XCTestCase {
         savedLoaded = Settings.loaded
         savedSeen = Settings.seenModified
         savedWait = Settings.lockWait
-        Settings.logged = []
+        Settings.pending = [:]
+        Settings.saveFailures = .init()
+        Settings.followFailures = .init()
+        Settings.retryAfter = 30
         Settings.pathOverride = file
     }
 
@@ -36,7 +39,10 @@ final class SettingsFollowTests: XCTestCase {
         Settings.loaded = savedLoaded
         Settings.seenModified = savedSeen
         Settings.lockWait = savedWait
-        Settings.logged = []
+        Settings.pending = [:]
+        Settings.saveFailures = .init()
+        Settings.followFailures = .init()
+        Settings.retryAfter = 30
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -65,13 +71,16 @@ final class SettingsFollowTests: XCTestCase {
         return model
     }
 
-    /// Follows as the poll does, and checks that the follow didn't write the file.
+    /// Follows as the poll does, twice, and checks that neither the follow nor the next poll wrote the file.
     private func follow(_ model: AppModel, file line: UInt = #line) throws {
         let bytes = try Data(contentsOf: file)
         let date = try modified()
         model.followSettingsFile()
         XCTAssertEqual(try Data(contentsOf: file), bytes, "The follow wrote the file", line: line)
         XCTAssertEqual(try modified(), date, "The follow wrote the file", line: line)
+        model.followSettingsFile()
+        XCTAssertEqual(try Data(contentsOf: file), bytes, "The next poll wrote the file", line: line)
+        XCTAssertEqual(try modified(), date, "The next poll wrote the file", line: line)
     }
 
     /// A player column layout other than the one the model would capture: the first column wider, and the first two
@@ -177,5 +186,25 @@ final class SettingsFollowTests: XCTestCase {
         XCTAssertFalse(model.showHidden, "And not followed back on")
         let log = try String(contentsOf: folder.appendingPathComponent("errors.log"), encoding: .utf8)
         XCTAssertEqual(log.components(separatedBy: "settings not saved").count - 1, 1, "Logged once, not on every poll")
+    }
+
+    func testInsideFMASaveNeverWaitsForTheLock() throws {
+        let edition = AppModel.editionInsideGame
+        defer { AppModel.editionInsideGame = edition }
+        AppModel.editionInsideGame = "test, inside Football Manager"
+        try JSONEncoder().encode(Settings()).write(to: file)
+        let model = AppModel.startUp()
+        model.applyAppearanceInsideGame = { _ in }
+        XCTAssertEqual(Settings.lockWait, 0)
+        let other = open(folder.appendingPathComponent("settings.lock").path, O_RDWR | O_CREAT, 0o644)
+        XCTAssertEqual(flock(other, LOCK_EX | LOCK_NB), 0)
+        let started = Date()
+        model.showHidden = true
+        XCTAssertLessThan(Date().timeIntervalSince(started), 0.2, "The switch inside FM doesn't wait for the app")
+        XCTAssertFalse(try onDisk().showHidden)
+        flock(other, LOCK_UN)
+        close(other)
+        model.followSettingsFile()
+        XCTAssertTrue(try onDisk().showHidden, "The poll saves it")
     }
 }

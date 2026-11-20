@@ -9,15 +9,24 @@ final class SettingsMergeTests: XCTestCase {
         var current = Settings()
         var baseline: Settings?
         var seenModified: Date?
+        var pending: [String: Settings.Pending] = [:]
+        var saveFailures = Settings.Failures()
+        var followFailures = Settings.Failures()
 
         mutating func run(_ body: () -> Void) {
             Settings.current = current
             Settings.baseline = baseline
             Settings.seenModified = seenModified
+            Settings.pending = pending
+            Settings.saveFailures = saveFailures
+            Settings.followFailures = followFailures
             body()
             current = Settings.current
             baseline = Settings.baseline
             seenModified = Settings.seenModified
+            pending = Settings.pending
+            saveFailures = Settings.saveFailures
+            followFailures = Settings.followFailures
         }
     }
 
@@ -38,7 +47,12 @@ final class SettingsMergeTests: XCTestCase {
         savedLoaded = Settings.loaded
         savedSeen = Settings.seenModified
         savedWait = Settings.lockWait
-        Settings.logged = []
+        // Tests that hold the lock needn't wait the half second.
+        Settings.lockWait = 0.05
+        Settings.pending = [:]
+        Settings.saveFailures = .init()
+        Settings.followFailures = .init()
+        Settings.retryAfter = 30
         Settings.pathOverride = file
     }
 
@@ -49,7 +63,10 @@ final class SettingsMergeTests: XCTestCase {
         Settings.loaded = savedLoaded
         Settings.seenModified = savedSeen
         Settings.lockWait = savedWait
-        Settings.logged = []
+        Settings.pending = [:]
+        Settings.saveFailures = .init()
+        Settings.followFailures = .init()
+        Settings.retryAfter = 30
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -350,25 +367,154 @@ final class SettingsMergeTests: XCTestCase {
         XCTAssertEqual(result.reveal, 0)
     }
 
-    func testFollowingKeepsAChangeNotSavedYet() throws {
+    /// The other process holds the lock, as when it's in the middle of a save of its own.
+    private func holdLock() throws -> Int32 {
+        let other = open(folder.appendingPathComponent("settings.lock").path, O_RDWR | O_CREAT, 0o644)
+        XCTAssertGreaterThanOrEqual(other, 0)
+        XCTAssertEqual(flock(other, LOCK_EX | LOCK_NB), 0)
+        return other
+    }
+
+    private func release(_ lock: Int32) {
+        flock(lock, LOCK_UN)
+        close(lock)
+    }
+
+    private func setModified(_ date: Date) throws {
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
+    }
+
+    /// The app switches Hidden attributes on and the save fails. The plugin's write came clearly before, so the app's
+    /// choice is the later one and stays.
+    func testAPendingChangeLaterThanTheOtherWindowsStays() throws {
         try write(Settings())
         var app = Process()
-        app.run {
-            Settings.load()
-            Settings.current.showHidden = true
-        }
+        app.run { Settings.load() }
         var plugin = Settings()
         plugin.reveal = 2
-        try writeAsOther(plugin)
+        try write(plugin)
+        try setModified(Date().addingTimeInterval(-10))
+        let lock = try holdLock()
+        app.run {
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        release(lock)
         app.run {
             XCTAssertTrue(Settings.followFile(), "Reveal is taken")
-            XCTAssertTrue(Settings.current.showHidden, "This process's own change stays")
+            XCTAssertTrue(Settings.current.showHidden, "This process's later change stays")
             XCTAssertEqual(Settings.current.reveal, 2)
-            Settings.save()
+            Settings.saveIfPending()
         }
         let result = try onDisk()
         XCTAssertTrue(result.showHidden)
         XCTAssertEqual(result.reveal, 2)
+    }
+
+    /// The app sets Ability to Stars and the save fails. The plugin then sets it to Off, clearly later: the plugin's
+    /// choice wins and the app's isn't written.
+    func testAPendingChangeGivesWayToALaterOneFromTheOtherWindow() throws {
+        var start = Settings()
+        start.showHidden = true
+        start.reveal = 0
+        try write(start)
+        var app = Process()
+        app.run { Settings.load() }
+        let lock = try holdLock()
+        app.run {
+            Settings.current.reveal = 1
+            Settings.save()
+        }
+        release(lock)
+        var plugin = start
+        plugin.reveal = 2
+        try write(plugin)
+        try setModified(Date().addingTimeInterval(10))
+        app.run {
+            XCTAssertTrue(Settings.followFile())
+            XCTAssertEqual(Settings.current.reveal, 2, "The other window's later choice")
+            Settings.saveIfPending()
+        }
+        XCTAssertEqual(try onDisk().reveal, 2)
+    }
+
+    /// The review's repro: the app's switch to on fails to save, then inside FM the player switches it on and off again,
+    /// so the file reads as the app loaded it. Which came later can't be told, so it's settled off, and both windows and
+    /// the file agree on off.
+    func testARetryDoesntWriteOverALaterChoiceInTheOtherWindow() throws {
+        try write(Settings())
+        var app = Process(), plugin = Process()
+        app.run { Settings.load() }
+        plugin.run { Settings.load() }
+        let lock = try holdLock()
+        app.run {
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        release(lock)
+        plugin.run {
+            Settings.current.showHidden = true
+            Settings.save()
+            Settings.current.showHidden = false
+            Settings.save()
+        }
+        XCTAssertFalse(try onDisk().showHidden)
+        // The app's poll: follow first, then save what's pending.
+        app.run {
+            XCTAssertTrue(Settings.followFile())
+            XCTAssertFalse(Settings.current.showHidden, "Settled off")
+            Settings.saveIfPending()
+        }
+        XCTAssertFalse(try onDisk().showHidden, "The retry didn't write on over the later off")
+        plugin.run {
+            _ = Settings.followFile()
+            XCTAssertFalse(Settings.current.showHidden, "And the plugin doesn't switch back on")
+        }
+    }
+
+    /// The same, with Ability: a change that can't be placed before or after the other window's settles to Off.
+    func testAnUnclearOrderSettlesAbilityToOff() throws {
+        var start = Settings()
+        start.showHidden = true
+        try write(start)
+        var app = Process()
+        app.run { Settings.load() }
+        let lock = try holdLock()
+        app.run {
+            Settings.current.reveal = 1
+            Settings.save()
+        }
+        release(lock)
+        var plugin = start
+        plugin.theme = "Night"
+        try writeAsOther(plugin)
+        try setModified(Date())
+        app.run {
+            XCTAssertTrue(Settings.followFile())
+            XCTAssertEqual(Settings.current.reveal, Reveal.hidden.rawValue)
+            Settings.saveIfPending()
+        }
+        let result = try onDisk()
+        XCTAssertEqual(result.reveal, Reveal.hidden.rawValue)
+        XCTAssertEqual(result.theme, "Night")
+    }
+
+    func testLoadingAFileThatDoesntDecodeStillTakesHiddenAttributesAndAbility() throws {
+        try Data(#"{"ShowHidden": true, "Reveal": 1, "Theme": 5}"#.utf8).write(to: file)
+        var app = Process()
+        app.run {
+            Settings.load()
+            XCTAssertTrue(Settings.current.showHidden, "As followFile and the file read it")
+            XCTAssertEqual(Settings.current.reveal, 1)
+            XCTAssertEqual(Settings.current.theme, Settings().theme)
+        }
+        for odd in [#"{"ShowHidden": 1, "Theme": 5}"#, #"{"ShowHidden": "true"}"#, #"{"ShowHidden": null}"#] {
+            try Data(odd.utf8).write(to: file)
+            app.run {
+                Settings.load()
+                XCTAssertFalse(Settings.current.showHidden, "Only a JSON true is on: \(odd)")
+            }
+        }
     }
 
     func testFollowingTakesTheDefaultForAMissingOrBadKey() throws {
@@ -400,13 +546,14 @@ final class SettingsMergeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: log.path))
     }
 
-    func testAFollowThatCantReadTheFileTriesAgainAndLogsOnce() throws {
+    func testAFollowThatCantReadTheFileTriesAgainThenBacksOffAndLogsOnce() throws {
         try write(Settings())
         var app = Process()
         app.run { Settings.load() }
         var plugin = Settings()
         plugin.showHidden = true
         try writeAsOther(plugin)
+        Settings.retryAfter = 0.2
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: file.path)
         app.run {
             XCTAssertFalse(Settings.followFile())
@@ -415,36 +562,71 @@ final class SettingsMergeTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
         let logged = try String(contentsOf: log, encoding: .utf8)
         XCTAssertEqual(logged.components(separatedBy: "settings not followed").count - 1, 1, "Logged once")
+        app.run { XCTAssertFalse(Settings.followFile(), "Backing off after failing twice the same way") }
+        Thread.sleep(forTimeInterval: 0.25)
         app.run {
             XCTAssertTrue(Settings.followFile(), "Read again, though its modification date hasn't changed since")
             XCTAssertTrue(Settings.current.showHidden)
         }
     }
 
-    func testSaveIfPendingSavesOnlyAChangeLeftBehind() throws {
+    func testANewerFileIsFollowedAtOnceWhileBackingOff() throws {
         try write(Settings())
         var app = Process()
         app.run { Settings.load() }
+        try writeAsOther(Settings())
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: file.path)
+        app.run {
+            XCTAssertFalse(Settings.followFile())
+            XCTAssertFalse(Settings.followFile())
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        var plugin = Settings()
+        plugin.showHidden = true
+        try writeAsOther(plugin)
+        app.run { XCTAssertTrue(Settings.followFile(), "A newer file isn't held back") }
+    }
+
+    func testSaveIfPendingSavesOnlyAChangeLeftBehindAndBacksOff() throws {
+        try write(Settings())
+        var app = Process(), plugin = Process()
+        app.run { Settings.load() }
+        plugin.run { Settings.load() }
         let date = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date
         app.run { Settings.saveIfPending() }
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date, date,
                        "Nothing pending, nothing written")
 
         Settings.lockWait = 0.05
-        let other = open(folder.appendingPathComponent("settings.lock").path, O_RDWR | O_CREAT, 0o644)
-        XCTAssertEqual(flock(other, LOCK_EX | LOCK_NB), 0)
+        Settings.retryAfter = 0.2
+        var lock = try holdLock()
         app.run {
-            Settings.current.showHidden = true
+            Settings.current.theme = "Night"
+            Settings.save()
             Settings.save()
             let started = Date()
             Settings.saveIfPending()
             XCTAssertLessThan(Date().timeIntervalSince(started), 0.04, "The poll's try doesn't wait for the lock")
         }
-        flock(other, LOCK_UN)
-        close(other)
-        XCTAssertFalse(try onDisk().showHidden)
+        // The other process writes once in between, and the app follows it: that doesn't log the save's failure again.
+        release(lock)
+        plugin.run {
+            Settings.current.heightUnit = "in"
+            Settings.save()
+        }
+        lock = try holdLock()
+        app.run {
+            XCTAssertFalse(Settings.followFile(), "Nothing it follows changed")
+            for _ in 0..<4 { Settings.saveIfPending() }
+        }
+        release(lock)
         app.run { Settings.saveIfPending() }
-        XCTAssertTrue(try onDisk().showHidden)
+        XCTAssertNotEqual(try onDisk().theme, "Night", "Backing off after the poll's tries failed twice the same way")
+        Thread.sleep(forTimeInterval: 0.25)
+        app.run { Settings.saveIfPending() }
+        let result = try onDisk()
+        XCTAssertEqual(result.theme, "Night")
+        XCTAssertEqual(result.heightUnit, "in")
         let logged = try String(contentsOf: log, encoding: .utf8)
         XCTAssertEqual(logged.components(separatedBy: "settings not saved").count - 1, 1, "The same failure is logged once")
     }
