@@ -42,6 +42,9 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .executableTarget(name: "fmprobe", dependencies: ["StarshipCore", "StarshipAnalysis", "CA64"]),
+        // FM Starship for AI agents: a local MCP server over stdio, read only. The library holds it all, so tests can drive it.
+        .target(name: "StarshipMCP", dependencies: ["StarshipCore", "StarshipSearch", "StarshipAnalysis", "StarshipFiles"]),
+        .executableTarget(name: "fmstarship-mcp", dependencies: ["StarshipMCP"]),
         .target(name: "StarshipPluginStart"),
         .target(name: "StarshipAgent", dependencies: ["CStarshipProtocol"], path: "agent", publicHeadersPath: "."),
         .target(name: "StarshipPlugin", dependencies: ["FMStarshipUI", "StarshipCore", "StarshipAnalysis", "StarshipFiles"]),
@@ -51,5 +54,6 @@ let package = Package(
         .testTarget(name: "StarshipAnalysisTests", dependencies: ["StarshipAnalysis", "StarshipSearch", "StarshipCore"]),
         .testTarget(name: "StarshipPluginTests", dependencies: ["StarshipPlugin", "StarshipAnalysis", "StarshipCore"]),
         .testTarget(name: "FMStarshipAppTests", dependencies: ["FMStarship"]),
+        .testTarget(name: "StarshipMCPTests", dependencies: ["StarshipMCP", "StarshipAnalysis", "StarshipSearch", "StarshipCore", "StarshipFiles"]),
     ]
 )

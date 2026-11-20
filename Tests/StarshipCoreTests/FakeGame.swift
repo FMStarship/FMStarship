@@ -7,7 +7,7 @@ import XCTest
 /// just enough RTTI for the reader to find the classes it sweeps for. Every name and number in it is made up.
 final class FakeGame {
     /// The classes whose records the reader finds by their vtables.
-    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "TEAM"]
+    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "TEAM", "TRANSFER_MANAGER"]
 
     private let image: UnsafeMutableRawPointer
     private let imageSize = 0x1000
@@ -161,6 +161,20 @@ final class FakeGame {
         record.set("club", T.club, club)
         record.set("competition", T.competition, competition)
         return record.address
+    }
+
+    /// One of FM's transfer managers, which is where the reader finds the game date.
+    func transferManager(day: UInt16, year: UInt16) -> FakeRecord {
+        let record = self.record("Transfer manager", size: MacLayout.gameDate + 8, vtable: "TRANSFER_MANAGER")
+        record.set("day", MacLayout.gameDate, day)
+        record.set("year", MacLayout.gameDate + 2, year)
+        return record
+    }
+
+    /// The date as FM moves it on, in a transfer manager made above: the day of the year, then the year.
+    func setDate(_ record: FakeRecord, day: UInt16, year: UInt16) {
+        store(day, record.address + Int64(MacLayout.gameDate))
+        store(year, record.address + Int64(MacLayout.gameDate + 2))
     }
 
     // MARK: People
