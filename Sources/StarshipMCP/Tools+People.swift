@@ -45,6 +45,8 @@ extension Toolbox {
         filter.openSquad(club: club, squad: shown)
         let players = filter.criteria().filter(context.db.players).stableSorted(by: Self.positionOrder)
         for player in players where player.injury != nil { _ = RulesState.shared.injuryCheck(player) }
+        // FM can play a match without the date moving, so each row's state is read again.
+        players.forEach { context.read.states?.refresh($0) }
         var names = Self.squadColumns
         if shown == nil, let at = names.firstIndex(of: "Position") { names.insert("Squad", at: at + 1) }
         let columns = Output.columns(names, in: Columns.forPlayers(), context.visibility)
@@ -52,7 +54,7 @@ extension Toolbox {
                         ("squads", .array(squads.map { .string($0) })), ("players", .int(players.count)),
                         ("wages", .string(Units.wageSuffix))]
                        + Output.rows(players, columns + Self.lastMatch(context.read.engine)
-                                     + Self.stateFields(context.db, context.read.engine)))
+                                     + Self.stateFields(context.db, context.read.engine, context.read.states)))
     }
 
     /// Each player's latest match in FM's record of his form: when, his minutes and his rating, both empty when he didn't
@@ -136,7 +138,10 @@ extension Toolbox {
             if !values.isEmpty { pairs.append((group, .object(values))) }
         }
         if let player = person as? Player {
-            if let state = Self.stateGroup(player, context.db, context.read.engine) { pairs.append(("Fitness and morale", state)) }
+            context.read.states?.refresh(player)
+            if let state = Self.stateGroup(player, context.db, context.read.engine, context.read.states) {
+                pairs.append(("Fitness and morale", state))
+            }
             let traits = player.traits.components(separatedBy: "; ").filter { !$0.isEmpty }
             if !traits.isEmpty { pairs.append(("Traits", .array(traits.map { .string($0) }))) }
         }

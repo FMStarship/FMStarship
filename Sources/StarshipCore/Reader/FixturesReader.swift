@@ -455,6 +455,7 @@ public final class FixturesReader {
         typealias E = MacLayout.FormEntry
         typealias M = MacLayout.MatchRecord
         var history = MatchHistory()
+        // Pointers read from FM's memory are only added to with &+, so a bad one can't trap.
         let record = game.readPointer(block &+ Int64(MacLayout.Player.injuries))
         guard record != 0 else { return history }
         let list = game.readPointer(record &+ Int64(MacLayout.History.matches))

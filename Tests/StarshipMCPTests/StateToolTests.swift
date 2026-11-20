@@ -141,4 +141,45 @@ final class StateToolTests: XCTestCase {
         XCTAssertEqual(Array(try harness.answer("squad").columnNames.suffix(Self.names.count)), Self.names)
         XCTAssertEqual(try harness.answer("person", ["uid": 1])["Fitness and morale"]?["Morale"], 2)
     }
+
+    /// FM can play a match without the date moving, so the read stands, but each row and each person is read again.
+    func testEachAnswerReadsThePlayersStateAgain() throws {
+        let harness = Harness()
+        XCTAssertEqual(try harness.answer("squad").rowsByName.first { $0["uid"] == 3 }?["Morale"], 12)
+        let states = try XCTUnwrap(harness.source.states)
+        states.now[3] = { player in
+            player.morale = 5
+            player.fitness = Fitness(condition: 6_400, sharpness: 9_650)
+        }
+        let row = try XCTUnwrap(try harness.answer("squad").rowsByName.first { $0["uid"] == 3 })
+        XCTAssertEqual(row["Morale"], 5)
+        XCTAssertEqual(row["Condition"], 64)
+        XCTAssertEqual(try harness.answer("person", ["uid": 3])["Fitness and morale"]?["Morale"], 5)
+        XCTAssertEqual(harness.source.reads, 1, "no new read of the save")
+        XCTAssertTrue(states.refreshed.contains(3))
+    }
+
+    /// Getters in the wrong slots give other values than FM stored for today's players: condition and sharpness go.
+    func testFMsGettersThatDisagreeSwitchConditionOff() throws {
+        let engine = FakeEngine()
+        engine.gettersDisagree = true
+        let harness = Harness(engine: engine)
+        let status = try XCTUnwrap(try harness.answer("game_status")["player_state"])
+        XCTAssertTrue(status["condition"]?.string?.hasPrefix("off: its check failed: FM's own getters") ?? false, status.text)
+        XCTAssertEqual(status["morale"], "on")
+        let columns = try harness.answer("squad").columnNames
+        XCTAssertFalse(columns.contains("Condition"))
+        XCTAssertFalse(columns.contains("Sharpness"))
+        XCTAssertTrue(columns.contains("Morale"))
+    }
+
+    /// Without a way to read players again, a player's state is the read's, and his bans aren't known.
+    func testWithoutReadingAgainBansAreNotKnown() throws {
+        let harness = Harness()
+        harness.source.states = nil
+        let row = try XCTUnwrap(try harness.answer("squad").rowsByName.first { $0["uid"] == 1 })
+        XCTAssertEqual(row["Suspended"], .null)
+        XCTAssertEqual(row["Morale"], 2)
+        XCTAssertNil(try harness.answer("person", ["uid": 1])["Fitness and morale"]?["Suspensions"])
+    }
 }

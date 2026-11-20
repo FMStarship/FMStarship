@@ -94,6 +94,9 @@ final class FakeGame {
         FakeGame.pointer(address).storeBytes(of: value, as: T.self)
     }
 
+    /// A value changed where FM keeps it, as FM changes it while the game runs: no check that it's a field of its own.
+    func poke<T>(_ value: T, at address: Int64) { store(value, address) }
+
     /// A record of this size, starting with the vtable of `vtable`'s class if it has one.
     func record(_ kind: String, size: Int, vtable: String? = nil) -> FakeRecord {
         let record = FakeRecord(address: allocate(size), size: size, kind: kind, game: self)

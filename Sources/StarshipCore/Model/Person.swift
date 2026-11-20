@@ -122,7 +122,24 @@ public enum HomeGrown: String, Sendable {
     case club, nation, no
 }
 
-/// One suspension a player hasn't finished serving.
+/// One suspension as FM keeps it in the player's history, before anything is worked out from it.
+public struct StoredBan: Sendable, Equatable {
+    /// The football association, by the index of its nation where it's a nation.
+    public var association: UInt32 = 0
+    /// Which of the association's rule sets it falls under, as FM numbers them. One rule set can cover several competitions.
+    public var scope = 0
+    /// The red card's match, 0 for a ban for bookings.
+    public var match: Int64 = 0
+    public var day = 0, year = 0
+    public var kind: UInt8 = 0
+    public var matches = 0, served = 0
+    public var issued: Date? { GameDate.checked(year: year, dayOfYear: day) }
+    public var isReal: Bool { issued != nil && matches > 0 && served <= matches }
+    public var left: Int { matches - served }
+    public init() {}
+}
+
+/// One suspension a player hasn't finished serving, with what FM Starship could work out about it.
 public struct Ban: Sendable {
     public enum Reason: String, Sendable {
         case bookings, redCard = "red card"
@@ -133,24 +150,24 @@ public struct Ban: Sendable {
     public var associationName = ""
     /// Which of the association's rule sets it falls under, as FM numbers them.
     public var scope = 0
-    /// The competition, where FM Starship can tell: a red card's match names it, and a ban for bookings takes it from
-    /// red cards under the same rule set in a competition the player plays in. "" when it can't.
+    /// The competition, where FM Starship can tell from FM's records: see `PlayerStateReader`. "" when it can't. A rule set
+    /// can cover more competitions than this one.
     public var competition = ""
     public var competitionIndex: UInt32?
     /// Nil for a kind of ban FM Starship doesn't know.
     public var reason: Reason?
     /// The red card's match: the other side's club, as FM names it. Only set when it was his club's match.
     public var opponent = ""
-    /// From the football association of his club's nation.
+    /// From the football association of his club's league, as FM's bans show it, else of his club's nation.
     public var domestic = false
     public var issued: Date
     public var matches: Int
     public var served: Int
     public var left: Int { matches - served }
-    /// Whether it keeps him out of his club's matches, as FM's squad screen counts them: a ban from his club's own
-    /// association, or a red card in his club's match, whose competition is known. A ban from another association is most
-    /// likely for his national team or a youth side, and FM's squad screen doesn't count it.
-    public var countsForClub: Bool { !competition.isEmpty && (domestic || !opponent.isEmpty) }
+    /// Whether it's for a competition his team plays in, which is what FM's squad screen counts. A ban from another
+    /// association is most likely for his national team or a youth side, and one whose competition isn't known can't be
+    /// counted.
+    public var countsForClub = false
 
     public init(issued: Date, matches: Int, served: Int) {
         self.issued = issued
@@ -184,8 +201,9 @@ public final class Player: Person {
     public var morale: Int?
     /// How happy he is with his playing time, −100 to 100, from his contract.
     public var playingTime: Int?
-    /// The suspensions he still has to serve, oldest first. Nil when they weren't read.
-    public var bans: [Ban]?
+    /// The suspensions he still has to serve, as FM keeps them. Nil when they weren't read. `PlayerStateReader` works out
+    /// what they're for, which takes more reads than the app needs.
+    public var storedBans: [StoredBan]?
 
     /// FM stores attributes 1-100; what players see is 1-20.
     public func attribute(at index: Int) -> Int { max(1, Int(Double(raw[index]) / 5.0 + 0.5)) }
@@ -315,6 +333,9 @@ public final class Database {
     /// Where the read found the game date, so it can be looked at again without reading everything. Only means
     /// something in the game it was read from, so it isn't kept in snapshots.
     public var dateRecords: [Int64] = []
+    /// The nation records the read found, for naming a ban's association when asked. Only means something in the game it
+    /// was read from, like `dateRecords`.
+    public var nationRecords: [Int64] = []
     public init() {}
 
     public func stateIsOn(_ field: PlayerStateField) -> Bool { stateOff[field] == nil }

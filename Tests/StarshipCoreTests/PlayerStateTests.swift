@@ -43,6 +43,8 @@ extension FakeGame {
 /// FM's getters as a test wants them: one answer for everyone, and a count of the questions.
 private final class StateEngine: GameRulesEngine {
     var answer: Fitness?
+    /// Answers with the stored values for a player brought up to date today, as FM's getters do.
+    var echo = false
     private(set) var asked = 0
     init(_ answer: Fitness?) { self.answer = answer }
     var supportsInjuryDays: Bool { false }
@@ -56,7 +58,7 @@ private final class StateEngine: GameRulesEngine {
     func injuryReturnDays(player: Player) -> Int? { nil }
     func fitness(player: Player) -> Fitness? {
         asked += 1
-        return answer
+        return echo ? player.fitness ?? answer : answer
     }
 }
 
@@ -70,15 +72,19 @@ final class PlayerStateTests: XCTestCase {
     /// Two clubs in two nations, a league with a second division under the same rule set, and a cup.
     private final class World {
         let game = FakeGame()
-        let mockovia: Int64, fixtureland: Int64
+        let mockovia: Int64, fixtureland: Int64, twin: Int64
         let rovers: Int64, town: Int64
         let roversFirst: Int64, townFirst: Int64
+        /// Fixture Town's team in Fixtureland's own league.
+        let townAtHome: Int64
         let league: Int64, secondDivision: Int64, cup: Int64
-        static let leagueIndex: UInt32 = 7, cupIndex: UInt32 = 8, secondDivisionIndex: UInt32 = 9
+        static let leagueIndex: UInt32 = 7, cupIndex: UInt32 = 8, secondDivisionIndex: UInt32 = 9, fixturelandIndex: UInt32 = 11
 
-        init(dated: Bool = true) {
+        /// `namelessTwin`: a nation record with Mockovia's index and no name, found before Mockovia's own.
+        init(dated: Bool = true, namelessTwin: Bool = false) {
             let continent = game.continent("Made-up Continent")
             let area = game.allocate(16)
+            twin = namelessTwin ? game.nation("", code: "", continent: continent, area: area, index: PlayerStateTests.mockoviaFA) : 0
             mockovia = game.nation("Mockovia", code: "MCK", continent: continent, area: area, index: PlayerStateTests.mockoviaFA)
             fixtureland = game.nation("Fixtureland", code: "FXL", continent: continent, area: area, index: PlayerStateTests.fixturelandFA)
             league = game.competition("Mock League One", index: World.leagueIndex)
@@ -88,6 +94,8 @@ final class PlayerStateTests: XCTestCase {
             town = game.club(full: "Fixture Town AFC", short: "Fixture Town", nation: fixtureland)
             roversFirst = game.team(club: rovers, index: 0x1267, type: 0, competition: league)
             townFirst = game.team(club: town, index: 0x2301, type: 0, competition: league)
+            townAtHome = game.team(club: town, index: 0x2302, type: 0,
+                                   competition: game.competition("Fixtureland Premier", index: World.fixturelandIndex))
             if dated { game.transferManager(day: PlayerStateTests.today.day, year: PlayerStateTests.today.year) }
         }
 
@@ -125,6 +133,13 @@ final class PlayerStateTests: XCTestCase {
             let database = try game.read()
             return Dictionary(uniqueKeysWithValues: database.players.map { ($0.uid, $0) })
         }
+
+        /// Each player's bans, as `PlayerStateReader` works them out when asked. Nil where they weren't read.
+        func bans() throws -> [UInt32: [Ban]?] {
+            let database = try game.read()
+            let reader = PlayerStateReader(game: game.process(), database: database)
+            return Dictionary(uniqueKeysWithValues: database.players.map { ($0.uid, reader.bans(of: $0)) })
+        }
     }
 
     // MARK: Every field
@@ -154,7 +169,8 @@ final class PlayerStateTests: XCTestCase {
         XCTAssertEqual(player.morale, 18)
         XCTAssertEqual(player.playingTime, -37)
 
-        let bans = try XCTUnwrap(player.bans)
+        XCTAssertEqual(player.storedBans?.count, 2)
+        let bans = try XCTUnwrap(PlayerStateReader(game: game.process(), database: database).bans(of: player))
         XCTAssertEqual(bans.count, 2)
         // A ban for bookings names no match. The red card below is under the cup's rule set, not the league's, and he
         // wasn't booked in either match he played, so nothing says which competition it's for.
@@ -213,19 +229,19 @@ final class PlayerStateTests: XCTestCase {
         ])
         game.player(abroad)
 
-        let players = try world.read()
-        let reds = try XCTUnwrap(players[1]?.bans)
+        let players = try world.bans()
+        let reds = try XCTUnwrap(players[1] ?? nil)
         XCTAssertEqual(reds.map(\.competition), ["Mock League One", "Mock League Two"])
         XCTAssertEqual(reds.map(\.left), [2, 1])
         XCTAssertEqual(reds.map(\.reason), [.redCard, .redCard], "both kinds of red card")
         XCTAssertEqual(reds.map(\.opponent), ["Fixture Town AFC", "Fixture Town AFC"])
 
-        XCTAssertEqual(players[2]?.bans?.map(\.competition), ["Mock League One"])
-        XCTAssertEqual(players[3]?.bans?.map(\.competition), ["Mock League One"])
-        XCTAssertEqual(players[5]?.bans?.map(\.competition), [""])
-        XCTAssertEqual(players[5]?.bans?.map(\.associationName), ["Mockovia"])
-        XCTAssertEqual(players[5]?.bans?.map(\.countsForClub), [false])
-        let foreign = try XCTUnwrap(players[4]?.bans)
+        XCTAssertEqual(players[2]??.map(\.competition), ["Mock League One"])
+        XCTAssertEqual(players[3]??.map(\.competition), ["Mock League One"])
+        XCTAssertEqual(players[5]??.map(\.competition), [""])
+        XCTAssertEqual(players[5]??.map(\.associationName), ["Mockovia"])
+        XCTAssertEqual(players[5]??.map(\.countsForClub), [false])
+        let foreign = try XCTUnwrap(players[4] ?? nil)
         XCTAssertEqual(foreign.map(\.competition), ["", ""])
         XCTAssertEqual(foreign.map(\.associationName), ["", "Fixtureland"])
         XCTAssertEqual(foreign.map(\.domestic), [false, false])
@@ -261,34 +277,44 @@ final class PlayerStateTests: XCTestCase {
         add(4, [(236, league, 1)], [FakeGame.BanValues(scope: 9, day: 244)])
         // A week before to the day is close enough, under another rule set, so as not to teach the one above.
         add(6, [(237, league, 1)], [FakeGame.BanValues(scope: 10, day: 244)])
-        // At a club in another nation: a ban from Mockovia's association isn't for his league.
-        add(5, [], [FakeGame.BanValues(day: 244)], at: world.townFirst)
+        // At a club in another nation's league: a ban from Mockovia's association isn't for his league.
+        add(5, [], [FakeGame.BanValues(day: 244)], at: world.townAtHome)
 
-        let players = try world.read()
-        XCTAssertEqual(players[1]?.bans?.map(\.competition), ["Mock League One", "Mock Cup"])
-        XCTAssertEqual(players[1]?.bans?.map(\.competitionIndex), [league, cup])
-        XCTAssertEqual(players[1]?.bans?.map(\.countsForClub), [true, true])
-        XCTAssertEqual(players[3]?.bans?.map(\.competition), ["Mock League One"])
-        XCTAssertEqual(players[4]?.bans?.map(\.competition), [""])
-        XCTAssertEqual(players[6]?.bans?.map(\.competition), ["Mock League One"])
-        let abroad = try XCTUnwrap(players[5]?.bans?.first)
+        let players = try world.bans()
+        XCTAssertEqual(players[1]??.map(\.competition), ["Mock League One", "Mock Cup"])
+        XCTAssertEqual(players[1]??.map(\.competitionIndex), [league, cup])
+        XCTAssertEqual(players[1]??.map(\.countsForClub), [true, true])
+        XCTAssertEqual(players[3]??.map(\.competition), ["Mock League One"])
+        XCTAssertEqual(players[4]??.map(\.competition), [""])
+        XCTAssertEqual(players[6]??.map(\.competition), ["Mock League One"])
+        let abroad = try XCTUnwrap(players[5]??.first)
         XCTAssertEqual(abroad.competition, "")
         XCTAssertFalse(abroad.domestic)
         XCTAssertFalse(abroad.countsForClub)
     }
 
-    /// What FM's squad screen counts: a ban whose competition is known, from his club's association or for a red card in
-    /// his club's match.
-    func testWhichBansCountForTheClub() {
-        var ban = Ban(issued: .distantPast, matches: 1, served: 0)
-        ban.domestic = true
-        XCTAssertFalse(ban.countsForClub, "no competition")
-        ban.competition = "Mock League One"
-        XCTAssertTrue(ban.countsForClub)
-        ban.domestic = false
-        XCTAssertFalse(ban.countsForClub, "another association's, as for his national team")
-        ban.opponent = "Fixture Town AFC"
-        XCTAssertTrue(ban.countsForClub, "a red card in his club's match abroad")
+    /// What FM's squad screen counts: a ban for a competition his team plays in, its league or one in his recent matches
+    /// for it. A red card for his country, or in a youth league, is named from its match but isn't counted.
+    func testOnlyBansInHisTeamsCompetitionsCount() throws {
+        let world = World()
+        let game = world.game
+        let europe = game.competition("Mock Continental Cup", index: 20), youth = game.competition("Mock Under-19 League", index: 21)
+        let otherClub = game.club(full: "Elsewhere United", short: "Elsewhere", nation: world.fixtureland)
+        let elsewhere = game.team(club: otherClub, index: 0x3001, type: 0, competition: world.league)
+        let continental = game.banMatch(competition: europe, home: world.roversFirst, away: elsewhere)
+        let youthMatch = game.banMatch(competition: youth, home: elsewhere, away: world.townFirst)
+        var values = world.values(1)
+        values.history = world.booked([(240, 20, 0)], bans: [
+            game.ban(FakeGame.BanValues(association: 3_000, scope: 1, match: continental, kind: 2)),
+            game.ban(FakeGame.BanValues(scope: 4, match: youthMatch, kind: 2)),
+        ])
+        game.player(values)
+
+        let bans = try XCTUnwrap(try world.bans()[1] ?? nil)
+        XCTAssertEqual(bans.map(\.competition), ["Mock Continental Cup", "Mock Under-19 League"])
+        XCTAssertEqual(bans.map(\.countsForClub), [true, false])
+        XCTAssertEqual(bans.map(\.opponent), ["Elsewhere United", ""])
+        XCTAssertEqual(bans.map(\.domestic), [false, true])
     }
 
     /// A ban already served is left out, a kind FM Starship doesn't know has no reason, and a red card in a match that
@@ -312,16 +338,16 @@ final class PlayerStateTests: XCTestCase {
         // No record of matches or bans at all.
         game.player(world.values(3))
 
-        let players = try world.read()
-        let bans = try XCTUnwrap(players[1]?.bans)
+        let players = try world.bans()
+        let bans = try XCTUnwrap(players[1] ?? nil)
         XCTAssertEqual(bans.count, 2, "the served one is gone")
         XCTAssertNil(bans[0].reason)
         XCTAssertEqual(bans[1].reason, .redCard)
         XCTAssertEqual(bans[1].competition, "Mock Cup")
         XCTAssertEqual(bans[1].opponent, "")
         XCTAssertEqual(bans[1].left, 3)
-        XCTAssertEqual(players[2]?.bans?.count, 0)
-        XCTAssertEqual(players[3]?.bans?.count, 0)
+        XCTAssertEqual(players[2]??.count, 0)
+        XCTAssertEqual(players[3]??.count, 0)
     }
 
     /// A free agent has no contract, so neither playing time nor the record holding his bans is read.
@@ -334,9 +360,9 @@ final class PlayerStateTests: XCTestCase {
 
         let players = try world.read()
         XCTAssertNil(players[2]?.playingTime)
-        XCTAssertNil(players[2]?.bans)
+        XCTAssertNil(players[2]?.storedBans)
         XCTAssertEqual(players[2]?.morale, 12)
-        XCTAssertEqual(players[1]?.bans?.count, 0)
+        XCTAssertEqual(players[1]?.storedBans?.count, 0)
     }
 
     // MARK: Another day
@@ -383,6 +409,97 @@ final class PlayerStateTests: XCTestCase {
         XCTAssertEqual(player.fitness(StateEngine(Fitness(condition: 7_000, sharpness: 7_100))), Fitness(condition: 7_000, sharpness: 7_100))
     }
 
+    // MARK: Read again
+
+    /// FM plays a match without the date moving. Read again, a player's state is what FM's memory holds now, while the
+    /// whole read's checks still decide which fields are on, and a record that's no longer his is left alone.
+    func testAPlayersStateIsReadAgainForAnAnswer() throws {
+        typealias L = MacLayout.Player
+        let world = World()
+        let game = world.game
+        let ban = game.ban(FakeGame.BanValues(matches: 2))
+        var values = world.values(1)
+        values.sharpness = 9_000
+        values.history = world.played([World.leagueIndex], bans: [ban])
+        let record = game.player(values)
+        let database = try game.read()
+        let player = try XCTUnwrap(database.players.first)
+        XCTAssertEqual(player.fitness, Fitness(condition: 10_000, sharpness: 9_000))
+        XCTAssertEqual(player.storedBans?.map(\.left), [2])
+
+        let process = game.process()
+        let contract = process.readPointer(record.address + Int64(L.person + MacLayout.Person.contract))
+        game.poke(Int16(6_500), at: record.address + Int64(L.condition))
+        game.poke(Int16(9_800), at: record.address + Int64(L.sharpness))
+        game.poke(Int8(15), at: record.address + Int64(L.morale))
+        game.poke(Int8(-5), at: contract + Int64(MacLayout.Contract.playingTime))
+        game.poke(UInt8(1), at: ban + Int64(MacLayout.Ban.served))
+        GameReader.refreshState(player, in: database, game: process)
+        XCTAssertEqual(player.fitness, Fitness(condition: 6_500, sharpness: 9_800))
+        XCTAssertEqual(player.morale, 15)
+        XCTAssertEqual(player.playingTime, -5)
+        XCTAssertEqual(player.storedBans?.map(\.left), [1])
+
+        // Served in full, FM drops it from the list; here it's still there, and isn't kept.
+        game.poke(UInt8(2), at: ban + Int64(MacLayout.Ban.served))
+        database.stateOff[.morale] = "its check failed: made up"
+        game.poke(Int8(16), at: record.address + Int64(L.morale))
+        GameReader.refreshState(player, in: database, game: process)
+        XCTAssertEqual(player.storedBans?.count, 0)
+        XCTAssertNil(player.morale, "off for the read stays off")
+
+        game.poke(UInt32(999), at: record.address + Int64(L.identity + MacLayout.Identity.uid))
+        game.poke(Int16(1_000), at: record.address + Int64(L.condition))
+        GameReader.refreshState(player, in: database, game: process)
+        XCTAssertEqual(player.fitness?.condition, 6_500, "no longer his record")
+    }
+
+    // MARK: FM's getters
+
+    /// For a player brought up to date today, FM's getters have nothing to catch up, so they must give what FM stored. If
+    /// they don't, a slot or an offset has moved, and condition and sharpness are off for everyone.
+    func testFMsGettersMustGiveTodaysStoredValues() throws {
+        func read() throws -> Database {
+            let world = World()
+            for uid in 1...3 {
+                var values = world.values(UInt32(uid))
+                values.condition = Int16(9_000 + uid)
+                world.game.player(values)
+            }
+            var stale = world.values(4)
+            stale.fitnessUpdated = (PlayerStateTests.today.day - 1, PlayerStateTests.today.year)
+            world.game.player(stale)
+            return try world.game.read()
+        }
+        let agreeing = StateEngine(nil)
+        agreeing.echo = true
+        let database = try read()
+        XCTAssertNil(GameReader.checkFitnessGetters(database, engine: agreeing))
+        XCTAssertEqual(agreeing.asked, 3, "only today's players")
+        XCTAssertTrue(database.stateIsOn(.fitness))
+
+        for engine in [StateEngine(Fitness(condition: 9_001, sharpness: 10_000)), StateEngine(nil)] {
+            let database = try read()
+            let reason = try XCTUnwrap(GameReader.checkFitnessGetters(database, engine: engine))
+            XCTAssertEqual(database.stateOff[.fitness], reason)
+            XCTAssertTrue(reason.hasPrefix("its check failed: FM's own getters"), reason)
+            XCTAssertTrue(database.players.allSatisfy { $0.fitness == nil && !$0.fitnessNeedsCatchUp })
+            XCTAssertTrue(database.stateIsOn(.morale))
+        }
+    }
+
+    // MARK: Names
+
+    /// A nation record that can't be read, with the same index, mustn't take the name's place.
+    func testAnAssociationsNameIsNeverLostToANamelessRecord() throws {
+        let world = World(namelessTwin: true)
+        var values = world.values(1)
+        values.person.nation = world.twin
+        values.history = world.played([], bans: [world.game.ban(FakeGame.BanValues())])
+        world.game.player(values)
+        XCTAssertEqual(try world.bans()[1]??.map(\.associationName), ["Mockovia"])
+    }
+
     // MARK: Self-checks
 
     /// A value a field can't have, for the only player at a club, is more than one in a hundred: that field is off for the
@@ -415,7 +532,7 @@ final class PlayerStateTests: XCTestCase {
             case .playingTime: XCTAssertNil(player.playingTime)
             case .bans: break
             }
-            XCTAssertNotNil(player.bans)
+            XCTAssertNotNil(player.storedBans)
         }
     }
 
@@ -467,7 +584,7 @@ final class PlayerStateTests: XCTestCase {
             let database = try game.read()
             XCTAssertEqual(Set(database.stateOff.keys), [.bans], spoil)
             XCTAssertTrue(database.stateOff[.bans]?.hasPrefix("its check failed") ?? false, spoil)
-            XCTAssertTrue(database.players.allSatisfy { $0.bans == nil }, spoil)
+            XCTAssertTrue(database.players.allSatisfy { $0.storedBans == nil }, spoil)
         }
     }
 
@@ -495,6 +612,48 @@ final class PlayerStateTests: XCTestCase {
         XCTAssertEqual(GameReader.checkState(varied), [:])
         // A small save can be all one value.
         XCTAssertEqual(GameReader.checkState(Array(repeating: state, count: 99)), [:])
+    }
+
+    /// A big read with no ban at all is a bans offset on empty lists: unserved old bans pile up in a real save.
+    func testABigReadWithNoBanAtAllSwitchesBansOff() {
+        var state = GameReader.RawState()
+        state.bansRead = true
+        state.condition = 10_000
+        state.fitnessDay = 255
+        state.fitnessYear = 2029
+        state.morale = 10
+        var states = (0..<GameReader.bigSave).map { i -> GameReader.RawState in
+            var varied = state
+            varied.sharpness = 9_000 + i % 1_000
+            varied.morale = 1 + i % 20
+            return varied
+        }
+        let off = GameReader.checkState(states)[.bans] ?? ""
+        XCTAssertTrue(off.hasPrefix("its check failed: none of ") && off.hasSuffix(" players at a club has a ban"), off)
+        XCTAssertNil(GameReader.checkState(Array(states.dropFirst()))[.bans], "a smaller read can have none")
+        var ban = StoredBan()
+        ban.day = 200
+        ban.year = 2029
+        ban.matches = 1
+        states[0].bans = [ban]
+        XCTAssertEqual(GameReader.checkState(states), [:])
+    }
+
+    /// The checks look at players at a club only: a free agent's odd value doesn't switch a field off.
+    func testFreeAgentsDontCountInTheChecks() throws {
+        let world = World()
+        world.game.player(world.values(1))
+        var free = world.values(2)
+        free.person.contract = nil
+        free.morale = 0
+        free.condition = 20_000
+        world.game.player(free)
+        let database = try world.game.read()
+        XCTAssertEqual(database.stateOff, [:])
+        let players = Dictionary(uniqueKeysWithValues: database.players.map { ($0.uid, $0) })
+        XCTAssertNil(players[2]?.morale)
+        XCTAssertNil(players[2]?.fitness)
+        XCTAssertEqual(players[1]?.morale, 12)
     }
 
     /// The fields are off until a read of the game checks them, as in a snapshot.

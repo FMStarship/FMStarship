@@ -41,18 +41,7 @@ public final class GameReader {
         var bansRead = false
         /// The list of bans isn't one: an offset has moved.
         var bansMalformed = false
-        var bans: [RawBan] = []
-    }
-
-    struct RawBan {
-        var association: UInt32 = 0
-        var scope = 0
-        var match: Int64 = 0
-        var day = 0, year = 0
-        var kind: UInt8 = 0
-        var matches = 0, served = 0
-        var issued: Date? { GameDate.checked(year: year, dayOfYear: day) }
-        var isReal: Bool { issued != nil && matches > 0 && served <= matches }
+        var bans: [StoredBan] = []
     }
 
     private struct ScanPart {
@@ -302,13 +291,15 @@ public final class GameReader {
         database.readAt = Date()
         database.gameDate = transferManagers.compactMap(readGameDate).max()
         database.dateRecords = transferManagers.sorted()
+        database.nationRecords = nations.keys.sorted()
         readCurrencies(currencies.sorted(), into: database)
         readHumans(humans.sorted(), managers: managers.sorted(), into: database)
         separateSides(pending.map(\.person), in: database)
         if let today = database.gameDate { applyInjuries(pending, today: today) }
-        applyState(pending, today: database.gameDate, into: database)
         readTactics(sessions: tacticSessions.sorted(), arrays: tacticArrays.sorted(), people: pending.map(\.person), into: database)
         clock.lap("loans, humans, tactics")
+        applyState(pending, today: database.gameDate, into: database)
+        clock.lap("player state")
 
         status("Applying the game's rules...")
         for person in pending.map(\.person) {
@@ -423,12 +414,18 @@ public final class GameReader {
         applyPerson(b, player, item, person: person, identity: identity)
         item.currentTeam = GameReader.i64(b, L.currentTeam)
         item.injuryList = GameReader.i64(b, L.injuries)
-        item.state.condition = GameReader.i16(b, L.condition)
-        item.state.sharpness = GameReader.i16(b, L.sharpness)
-        item.state.fitnessDay = GameReader.u16(b, L.fitnessUpdated) & 0x1ff
-        item.state.fitnessYear = GameReader.u16(b, L.fitnessUpdated + 2)
-        item.state.morale = Int(Int8(bitPattern: b[L.morale]))
+        GameReader.storedState(b, into: &item.state)
         return item
+    }
+
+    /// Condition, sharpness, the day they were brought up to date and morale, from a whole player record.
+    private static func storedState(_ b: [UInt8], into state: inout RawState) {
+        typealias L = MacLayout.Player
+        state.condition = i16(b, L.condition)
+        state.sharpness = i16(b, L.sharpness)
+        state.fitnessDay = u16(b, L.fitnessUpdated) & 0x1ff
+        state.fitnessYear = u16(b, L.fitnessUpdated + 2)
+        state.morale = Int(Int8(bitPattern: b[L.morale]))
     }
 
     private func parseStaff(_ b: [UInt8], _ address: Int64) -> Pending? {
@@ -494,10 +491,12 @@ public final class GameReader {
         }
     }
 
-    private func readInjuries(_ list: Int64) -> [Injury]? {
-        let begin = game.readPointer(list), end = game.readPointer(list &+ 8)
-        // Measured unsigned, as `end - begin` traps on two far-apart garbage pointers.
-        guard begin != 0, end > begin, UInt64(bitPattern: end &- begin) <= 0x200 else { return nil }
+    /// The head of a player's history record: the injuries' vector, then the bans', in one read.
+    static let historyHead = MacLayout.History.bans + 24
+
+    private func readInjuries(_ head: [UInt8]) -> [Injury]? {
+        let begin = GameReader.i64(head, 0), end = GameReader.i64(head, 8)
+        guard begin > 0, end > begin, end - begin <= 0x200 else { return nil }
         var result: [Injury] = []
         for slot in stride(from: begin, to: end, by: 8) {
             let record = game.readPointer(slot)
@@ -518,23 +517,23 @@ public final class GameReader {
         return result.isEmpty ? nil : result
     }
 
-    /// The bans in a player's history record, and whether their list isn't one.
-    private func readBans(_ history: Int64) -> (malformed: Bool, bans: [RawBan]) {
+    /// The bans in a player's history record, from its head, and whether their list isn't one. One read for each ban.
+    static func readBans(_ head: [UInt8], in game: GameProcess) -> (malformed: Bool, bans: [StoredBan]) {
         typealias B = MacLayout.Ban
-        guard let head = game.read(history + Int64(MacLayout.History.bans), count: 24) else { return (true, []) }
-        let begin = GameReader.i64(head, 0), end = GameReader.i64(head, 8), capacity = GameReader.i64(head, 16)
+        let at = MacLayout.History.bans
+        let begin = i64(head, at), end = i64(head, at + 8), capacity = i64(head, at + 16)
         if begin == 0, end == 0, capacity == 0 { return (false, []) }
         guard begin > 0, end >= begin, capacity >= end, (end - begin) % 8 == 0, end - begin <= 0x200 else { return (true, []) }
-        var bans: [RawBan] = []
+        var bans: [StoredBan] = []
         for slot in stride(from: begin, to: end, by: 8) {
             let entry = game.readPointer(slot)
             guard entry != 0, let b = game.read(entry, count: B.size) else { return (true, []) }
-            var ban = RawBan()
-            ban.association = GameReader.u32(b, B.association)
+            var ban = StoredBan()
+            ban.association = u32(b, B.association)
             ban.scope = Int(b[B.scope])
-            ban.match = GameReader.i64(b, B.match)
-            ban.day = GameReader.u16(b, B.day) & 0x1ff
-            ban.year = GameReader.u16(b, B.year)
+            ban.match = i64(b, B.match)
+            ban.day = u16(b, B.day) & 0x1ff
+            ban.year = u16(b, B.year)
             ban.kind = b[B.kind]
             ban.matches = Int(b[B.matches])
             ban.served = Int(b[B.served])
@@ -604,8 +603,12 @@ public final class GameReader {
             item.state.playingTime = Int(Int8(bitPattern: b[C.playingTime]))
             item.state.bansRead = true
             if item.injuryList != 0 {
-                player.injuries = readInjuries(item.injuryList)
-                (item.state.bansMalformed, item.state.bans) = readBans(item.injuryList)
+                if let head = game.read(item.injuryList, count: GameReader.historyHead) {
+                    player.injuries = readInjuries(head)
+                    (item.state.bansMalformed, item.state.bans) = GameReader.readBans(head, in: game)
+                } else {
+                    item.state.bansMalformed = true
+                }
             }
             if item.currentTeam != 0, let type = teamType(item.currentTeam) {
                 let current = club(item.currentTeam)
@@ -669,34 +672,79 @@ public final class GameReader {
     private func teamType(_ team: Int64) -> Int? { teamTypes[team] }
 
     /// Condition, sharpness, morale, playing time and bans, for the fields that pass their checks. Condition and
-    /// sharpness are only kept when FM brought them up to date today: on any other day they're FM's for that day.
+    /// sharpness are only kept when FM brought them up to date today: on any other day they're FM's for that day. Bans
+    /// are kept as FM stores them: what they're for takes more reads, which `PlayerStateReader` makes when it's asked.
     private func applyState(_ pending: [Pending], today: Date?, into database: Database) {
         let players = pending.compactMap { item in (item.person as? Player).map { (player: $0, state: item.state) } }
         database.stateOff = GameReader.checkState(players.filter { $0.player.clubObject != 0 }.map(\.state))
-        var withBans: [(player: Player, bans: [RawBan])] = []
-        for (player, state) in players {
-            if database.stateIsOn(.fitness), let updated = GameDate.checked(year: state.fitnessYear, dayOfYear: state.fitnessDay) {
-                if updated == today, Fitness.range.contains(state.condition), Fitness.range.contains(state.sharpness) {
-                    player.fitness = Fitness(condition: state.condition, sharpness: state.sharpness)
-                } else if updated != today {
-                    player.fitnessUpdated = updated
-                    player.fitnessNeedsCatchUp = true
-                }
-            }
-            if database.stateIsOn(.morale), GameReader.moraleRange.contains(state.morale) { player.morale = state.morale }
-            if database.stateIsOn(.playingTime), let value = state.playingTime, GameReader.playingTimeRange.contains(value) {
-                player.playingTime = value
-            }
-            if database.stateIsOn(.bans), state.bansRead, !state.bansMalformed {
-                player.bans = []
-                let real = state.bans.filter(\.isReal)
-                if !real.isEmpty { withBans.append((player, real)) }
-            }
-        }
-        guard !withBans.isEmpty else { return }
-        nameBans(withBans)
+        for (player, state) in players { GameReader.apply(state, to: player, today: today, in: database) }
     }
 
+    private static func apply(_ state: RawState, to player: Player, today: Date?, in database: Database) {
+        player.fitness = nil
+        player.fitnessUpdated = nil
+        player.fitnessNeedsCatchUp = false
+        if database.stateIsOn(.fitness), let updated = GameDate.checked(year: state.fitnessYear, dayOfYear: state.fitnessDay) {
+            if updated == today, Fitness.range.contains(state.condition), Fitness.range.contains(state.sharpness) {
+                player.fitness = Fitness(condition: state.condition, sharpness: state.sharpness)
+            } else if updated != today {
+                player.fitnessUpdated = updated
+                player.fitnessNeedsCatchUp = true
+            }
+        }
+        player.morale = database.stateIsOn(.morale) && moraleRange.contains(state.morale) ? state.morale : nil
+        player.playingTime = database.stateIsOn(.playingTime) ? state.playingTime.flatMap { playingTimeRange.contains($0) ? $0 : nil } : nil
+        player.storedBans = database.stateIsOn(.bans) && state.bansRead && !state.bansMalformed
+            ? state.bans.filter { $0.isReal && $0.left > 0 } : nil
+    }
+
+    /// A player's state as FM's memory holds it now, for an answer about him: FM can play a match and change it without
+    /// the game date moving, so a read of the whole save can be out of date. The whole read's checks still decide which
+    /// fields are on. A few reads, and one for each ban. Nothing changes when his record is no longer his.
+    public static func refreshState(_ player: Player, in database: Database, game: GameProcess) {
+        typealias L = MacLayout.Player
+        guard player.block > 0, let b = game.read(player.block, count: L.size),
+              u32(b, L.identity + MacLayout.Identity.uid) == player.uid else { return }
+        var state = RawState()
+        storedState(b, into: &state)
+        let contract = i64(b, L.person + MacLayout.Person.contract)
+        if contract > 0, let owner = game.read(contract &+ Int64(MacLayout.Contract.owner), count: 8),
+           i64(owner, 0) == player.block + Int64(L.identity), let byte = game.read(contract &+ Int64(MacLayout.Contract.playingTime), count: 1) {
+            state.playingTime = Int(Int8(bitPattern: byte[0]))
+            state.bansRead = true
+            let history = i64(b, L.injuries)
+            if history > 0 {
+                if let head = game.read(history, count: historyHead) {
+                    (state.bansMalformed, state.bans) = readBans(head, in: game)
+                } else {
+                    state.bansMalformed = true
+                }
+            }
+        }
+        apply(state, to: player, today: database.gameDate, in: database)
+    }
+
+    /// FM's getters have nothing to catch up for a player brought up to date today, so they must give the stored values.
+    /// A sample of those is asked, which checks the getters' slots and the stored offsets together: if any differ, or a
+    /// getter doesn't answer, condition and sharpness are off for the read. Nil when there's nothing to say.
+    @discardableResult
+    public static func checkFitnessGetters(_ database: Database, engine: GameRulesEngine, sample: Int = 50) -> String? {
+        guard database.stateIsOn(.fitness) else { return nil }
+        let today = database.players.filter { $0.fitness != nil }.prefix(sample)
+        let wrong = today.filter { $0.fitness != engine.fitness(player: $0) }.count
+        guard wrong > 0 else { return nil }
+        let reason = "its check failed: FM's own getters gave other values than FM stored for \(wrong) of \(today.count) players brought up to date today"
+        database.stateOff[.fitness] = reason
+        for player in database.players {
+            player.fitness = nil
+            player.fitnessUpdated = nil
+            player.fitnessNeedsCatchUp = false
+        }
+        return reason
+    }
+
+    /// A read this big always has bans.
+    static let bigSave = 10_000
     static let moraleRange = 1...20
     static let playingTimeRange = -100...100
 
@@ -732,120 +780,11 @@ public final class GameReader {
             off[.bans] = malformed
         } else if badBans * 10 > bans.count {
             off[.bans] = "its check failed: \(badBans.formatted()) of \(bans.count.formatted()) bans have no real date or length"
+        } else if read.count >= bigSave, !bans.contains(where: \.isReal) {
+            // Unserved old bans pile up, so a real save always has some. None at all is an offset on empty lists.
+            off[.bans] = "its check failed: none of \(read.count.formatted()) players at a club has a ban"
         }
         return off
-    }
-
-    /// Names each ban's association and competition. A red card's match names its competition. A ban for bookings
-    /// names none, so, in this order: the competition of red cards under the same association's same rule set, among the
-    /// competitions the player has played in or been picked for, where that leaves exactly one; else the competition of the
-    /// match he was last booked in, on the day the ban was given or the week before, where it's his team's league or one a
-    /// red card has named. A rule set that has given a ban in a team's own league is that association's league rule set, so
-    /// any other ban from his own club's association under it is for the league his team plays in.
-    private func nameBans(_ players: [(player: Player, bans: [RawBan])]) {
-        typealias M = MacLayout.BanMatch
-        var associations: [UInt32: String] = [:]
-        for nation in nations.keys {
-            guard let b = game.read(nation &+ Int64(MacLayout.Nation.index), count: 4) else { continue }
-            let index = GameReader.u32(b, 0)
-            if associations[index] == nil { associations[index] = nationName(nation) }
-        }
-        struct Scope: Hashable { let association: UInt32, scope: Int }
-        var competitions: [Scope: [UInt32: String]] = [:]
-        var named: [(player: Player, raw: RawBan, ban: Ban)] = []
-        for (player, raws) in players {
-            for raw in raws {
-                var ban = Ban(issued: raw.issued ?? .distantPast, matches: raw.matches, served: raw.served)
-                ban.association = raw.association
-                ban.associationName = associations[raw.association] ?? ""
-                ban.scope = raw.scope
-                ban.reason = raw.kind == MacLayout.Ban.bookings ? .bookings : MacLayout.Ban.redCards.contains(raw.kind) ? .redCard : nil
-                // Pointers read from FM's memory are only added to with &+, so a bad one can't stop FM.
-                if raw.match > 0 {
-                    let comp = game.readPointer(game.readPointer(raw.match &+ M.name) &+ MacLayout.FixtureName.comp)
-                    if comp != 0, let index = game.read(comp &+ MacLayout.Comp.index, count: 4) {
-                        let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
-                        if !name.isEmpty {
-                            ban.competition = name
-                            ban.competitionIndex = GameReader.u32(index, 0)
-                            competitions[Scope(association: raw.association, scope: raw.scope), default: [:]][GameReader.u32(index, 0)] = name
-                        }
-                    }
-                    let own = Set([player.clubObject, player.loanClubObject].filter { $0 != 0 })
-                    let home = game.readPointer(raw.match &+ M.home), away = game.readPointer(raw.match &+ M.away)
-                    func club(_ team: Int64) -> Int64 { team <= 0 ? 0 : game.readPointer(team &+ Int64(MacLayout.Team.club)) }
-                    let other = own.contains(club(home)) ? away : own.contains(club(away)) ? home : 0
-                    if other > 0, other < Int64.max - 0x1000 { ban.opponent = GameReader.clubName(team: other, in: game) }
-                }
-                named.append((player, raw, ban))
-            }
-        }
-        // The association of each player's clubs' nations, and the league each team is in.
-        func nationIndex(_ club: Int64) -> UInt32? {
-            let nation = club <= 0 ? 0 : game.readPointer(club &+ Int64(MacLayout.Club.nation))
-            guard nation > 0, let b = game.read(nation &+ Int64(MacLayout.Nation.index), count: 4) else { return nil }
-            return GameReader.u32(b, 0)
-        }
-        func league(_ team: Int64) -> (index: UInt32, name: String, association: UInt32?)? {
-            let comp = team <= 0 ? 0 : game.readPointer(team &+ Int64(MacLayout.Team.competition))
-            guard comp > 0, let b = game.read(comp &+ MacLayout.Comp.index, count: 4) else { return nil }
-            let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
-            return name.isEmpty ? nil : (GameReader.u32(b, 0), name, nationIndex(game.readPointer(team &+ Int64(MacLayout.Team.club))))
-        }
-        for index in named.indices {
-            let player = named[index].player
-            let own = Set([player.clubObject, player.loanClubObject].compactMap(nationIndex))
-            named[index].ban.domestic = own.contains(named[index].raw.association)
-        }
-        var histories: [Int64: [PlayerMatch]] = [:]
-        func history(_ player: Player) -> [PlayerMatch] {
-            if let known = histories[player.block] { return known }
-            let found = FixturesReader.history(player: player.block, in: game) { _ in "" }.matches
-            histories[player.block] = found
-            return found
-        }
-        func name(_ index: Int, _ competition: String, _ competitionIndex: UInt32) {
-            named[index].ban.competition = competition
-            named[index].ban.competitionIndex = competitionIndex
-        }
-        for index in named.indices where named[index].ban.competition.isEmpty {
-            let (player, raw, _) = named[index]
-            guard let candidates = competitions[Scope(association: raw.association, scope: raw.scope)] else { continue }
-            let played = Set(history(player).map(\.competitionIndex))
-            let left = candidates.filter { played.contains($0.key) }
-            if left.count == 1, let only = left.first { name(index, only.value, only.key) }
-        }
-        let redCardCompetitions = competitions.values.reduce(into: [UInt32: String]()) { $0.merge($1) { first, _ in first } }
-        var leagueScopes = Set<Scope>()
-        for index in named.indices {
-            let (player, raw, ban) = named[index]
-            let scope = Scope(association: raw.association, scope: raw.scope)
-            if ban.competition.isEmpty, raw.match == 0, let issued = raw.issued,
-               let weekBefore = GameDate.calendar.date(byAdding: .day, value: -7, to: issued) {
-                let booked = history(player).filter { $0.played && $0.yellow > 0 && $0.date <= issued && $0.date >= weekBefore }
-                guard let last = booked.max(by: { $0.date < $1.date }),
-                      Set(booked.filter { $0.date == last.date }.map(\.competitionIndex)).count == 1 else { continue }
-                if let team = league(last.team), team.index == last.competitionIndex {
-                    name(index, team.name, team.index)
-                    if team.association == raw.association { leagueScopes.insert(scope) }
-                } else if let found = redCardCompetitions[last.competitionIndex] {
-                    name(index, found, last.competitionIndex)
-                }
-            } else if let competition = ban.competitionIndex, ban.domestic,
-                      let team = league(game.readPointer(player.block &+ Int64(MacLayout.Player.currentTeam))),
-                      team.index == competition, team.association == raw.association {
-                leagueScopes.insert(scope)
-            }
-        }
-        for index in named.indices where named[index].ban.competition.isEmpty && named[index].ban.domestic {
-            let (player, raw, _) = named[index]
-            guard leagueScopes.contains(Scope(association: raw.association, scope: raw.scope)),
-                  let team = league(game.readPointer(player.block &+ Int64(MacLayout.Player.currentTeam))),
-                  team.association == raw.association else { continue }
-            name(index, team.name, team.index)
-        }
-        for (player, _, ban) in named where ban.left > 0 { player.bans?.append(ban) }
-        for (player, _) in players { player.bans?.sort { $0.issued < $1.issued } }
     }
 
     /// Regions holding a dead copy of the world: most of their contracts name someone else as the owner.

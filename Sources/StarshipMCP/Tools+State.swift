@@ -9,10 +9,10 @@ extension Toolbox {
     /// Condition and sharpness as a percentage with one decimal, as FM keeps them: 0-10000.
     static func percent(_ value: Int) -> JSON { .double((Double(value) / 10).rounded() / 10) }
 
-    /// The matches he's banned for with his club, as "1 Eliteserien, 1 Cupen". Nil when there are none. A ban from another
-    /// association, or one whose competition isn't known, isn't counted, as FM's squad screen doesn't: `person` has it.
-    static func suspended(_ player: Player) -> JSON? {
-        let bans = (player.bans ?? []).filter(\.countsForClub)
+    /// The matches he's banned for with his club, as "1 Eliteserien, 1 Cupen". Nil when there are none. A ban that isn't
+    /// for a competition his team plays in isn't counted, as FM's squad screen doesn't count it: `person` has it.
+    static func suspended(_ bans: [Ban]?) -> JSON? {
+        let bans = (bans ?? []).filter(\.countsForClub)
         guard !bans.isEmpty else { return nil }
         return .string(bans.map { "\($0.left) \($0.competition)" }.joined(separator: ", "))
     }
@@ -20,17 +20,21 @@ extension Toolbox {
     /// Why a ban isn't in the squad's Suspended.
     static func uncounted(_ ban: Ban) -> String? {
         if ban.countsForClub { return nil }
-        if !ban.domestic, ban.opponent.isEmpty {
-            return "not counted in the squad's Suspended: it's from another association than his club's, so most likely for his "
-                + "national team or a youth side, and FM's squad screen doesn't count it"
+        if !ban.competition.isEmpty {
+            return "not counted in the squad's Suspended: \(ban.competition) isn't a competition his team plays in, so it's most "
+                + "likely for his national team or a youth or reserve side"
+        }
+        if !ban.domestic {
+            return "not counted in the squad's Suspended: it's from another association than his club's league's, so most likely "
+                + "for his national team or a youth side, and FM's squad screen doesn't count it"
         }
         return "not counted in the squad's Suspended: FM Starship can't tell which competition it's for"
     }
 
     static func homeGrownText(_ value: HomeGrown) -> JSON { .string(value.rawValue) }
 
-    /// The squad's columns for these, each only while it can be given.
-    static func stateFields(_ db: Database, _ engine: GameRulesEngine?) -> [Output.Field] {
+    /// The squad's columns for these, each only while it can be given. The caller has brought each row's state up to date.
+    static func stateFields(_ db: Database, _ engine: GameRulesEngine?, _ states: PlayerStateSource?) -> [Output.Field] {
         final class Known {
             var fitness: [UInt32: Fitness?] = [:]
         }
@@ -50,7 +54,9 @@ extension Toolbox {
         if db.stateIsOn(.playingTime) {
             fields.append(Output.Field(name: "Playing time") { ($0 as? Player)?.playingTime.map { .int($0) } })
         }
-        if db.stateIsOn(.bans) { fields.append(Output.Field(name: "Suspended") { ($0 as? Player).flatMap(suspended) }) }
+        if db.stateIsOn(.bans) {
+            fields.append(Output.Field(name: "Suspended") { person in (person as? Player).flatMap { suspended(states?.bans(of: $0)) } })
+        }
         if let engine {
             fields.append(Output.Field(name: "Home-grown") { person in
                 (person as? Player).flatMap { engine.homeGrown(player: $0) }.map(homeGrownText)
@@ -60,7 +66,7 @@ extension Toolbox {
     }
 
     /// One player's, for `person`, with each suspension in full.
-    static func stateGroup(_ player: Player, _ db: Database, _ engine: GameRulesEngine?) -> JSON? {
+    static func stateGroup(_ player: Player, _ db: Database, _ engine: GameRulesEngine?, _ states: PlayerStateSource?) -> JSON? {
         var pairs: [(String, JSON?)] = []
         if db.stateIsOn(.fitness) {
             if let fitness = player.fitness(engine) {
@@ -73,7 +79,7 @@ extension Toolbox {
         if db.stateIsOn(.morale) { pairs.append(("Morale", player.morale.map { .int($0) })) }
         if db.stateIsOn(.playingTime) { pairs.append(("Playing time", player.playingTime.map { .int($0) })) }
         if let engine { pairs.append(("Home-grown", engine.homeGrown(player: player).map(homeGrownText))) }
-        if db.stateIsOn(.bans), let bans = player.bans {
+        if db.stateIsOn(.bans), let bans = states?.bans(of: player) {
             pairs.append(("Suspensions", .array(bans.map { ban in
                 .object(dropping: [
                     ("matches_left", .int(ban.left)), ("matches", .int(ban.matches)), ("served", .int(ban.served)),

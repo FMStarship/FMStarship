@@ -11,14 +11,28 @@ public struct GameRead {
     public let number: Int
     /// Fixtures, results and league tables, read when a tool asks for them. Nil where they can't be read.
     public let matches: MatchSource?
+    /// Players' state as FM's memory holds it when a tool answers, and what their bans are for. Nil where it can't be read
+    /// again, so a player's state is the read's and his bans aren't known.
+    public let states: PlayerStateSource?
 
-    public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil) {
+    public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
         self.matches = matches
+        self.states = states
     }
 }
+
+/// A player's state for an answer about him, as `PlayerStateReader` gives it.
+public protocol PlayerStateSource: AnyObject {
+    /// Reads his condition, sharpness, morale, playing time and bans again: FM can play a match without the date moving.
+    func refresh(_ player: Player)
+    /// His bans, with what FM Starship could work out about each. Nil when they're off or weren't read.
+    func bans(of player: Player) -> [Ban]?
+}
+
+extension PlayerStateReader: PlayerStateSource {}
 
 /// A team's fixtures, results and league table, swept for when a tool asks: a couple of seconds for one team, so not
 /// with the save.
@@ -103,7 +117,8 @@ public final class LiveGame: GameSource {
             clubsAtRead = clubs(database, in: process)
             readAt = Date()
             reads += 1
-            return GameRead(database: database, engine: engine, number: reads, matches: LiveMatches(game: process))
+            return GameRead(database: database, engine: engine, number: reads, matches: LiveMatches(game: process),
+                            states: PlayerStateReader(game: process, database: database))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {
@@ -163,6 +178,8 @@ final class GameConnection {
         Units.apply()
         database.prepare()
         guard let engine = read.engine else { return }
+        // FM's getters must give the stored values for players brought up to date today, or condition and sharpness are off.
+        GameReader.checkFitnessGetters(database, engine: engine)
         let players = database.players.filter { $0.block > 0 && $0.season == nil }
         // Only a fresh look at the first few: if the game answers none of them, it won't answer the rest.
         let probe = players.prefix(32)

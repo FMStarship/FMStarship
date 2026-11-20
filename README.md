@@ -429,19 +429,27 @@ FM Starship's own parts, and how to check them after a patch:
   `fmprobe humanteams` gives each human club's team, and `fmprobe fx TEAM` reads that team's matches and table, and runs the
   self-check.
 - **Players' state** is read with the save: condition, sharpness, the day FM last brought them up to date, and morale from the
-  player's record, playing time happiness from his contract, and bans from the record that holds his injuries, with offsets in
-  `MacLayout`. Each has a self-check: when more than one player in a hundred at a club has a value it can't have (condition or
-  sharpness outside 0-10000, morale outside 1-20, playing time outside -100 to 100, a ban with no real date), or a big save has
-  only one value, that field is off for the read. Condition and sharpness are only FM's for the day they were brought up to date,
-  so on any other day they come from FM's getters (`conditionSlot`, `sharpnessSlot`), and are off without the rules engine.
-  Home-grown status is FM's own two tests. `fmprobe state [CLUB]` prints all of it for one club, with the stored fitness beside
-  the getters'. A ban for bookings doesn't name its competition, so FM Starship works it out, which is its reasoning rather than
-  FM's: first from red cards under the same association's same rule set, in a competition the player has played in; else from
-  the match he was last booked in, in the week up to the ban, when that's his team's league or a competition a red card names.
-  A rule set that has given a ban in a team's own league is taken as that association's league rules, so other bans under it
-  from the association of the player's club's nation are for his team's league. What's left says "competition not known". The
-  MCP's squad rows count only bans whose competition is known, from the club's own association or for a red card in the club's
-  match, as FM's squad screen does; `person` has the rest.
+  player's record, playing time happiness from his contract, and bans as FM stores them, from the same head read of the record
+  that holds his injuries, with offsets in `MacLayout`. That costs the read two more reads for each ban, and `clock` logs its
+  time as "player state". Each field has a self-check: when more than one player in a hundred at a club has a value it can't
+  have (condition or sharpness outside 0-10000, morale outside 1-20, playing time outside -100 to 100, a ban with no real date),
+  or a big save has only one value, or no ban at all, that field is off for the read. Condition and sharpness are only FM's for
+  the day they were brought up to date, so on any other day they come from FM's getters (`conditionSlot`, `sharpnessSlot`), and
+  are off without the rules engine. The MCP server asks the getters for 50 players brought up to date today, which must give
+  the stored values: if not, a slot or an offset has moved, and condition and sharpness are off. FM can play a match without the
+  date moving, so the MCP server reads each player's state again for each answer about him (`GameReader.refreshState`), with
+  the read's verdict still deciding what's on. Home-grown status is FM's own two tests. `fmprobe state [CLUB]` prints all of it
+  for one club, with the stored fitness beside the getters', and runs the getter check.
+- **What a ban is for** is worked out by `PlayerStateReader`, only when the MCP server answers about a player, so the app's and
+  the plugin's reads don't pay for it. FM hangs a ban on an association and one of its rule sets, which can cover several
+  competitions, and doesn't say which rule set is which, so this is FM Starship's reasoning rather than FM's. A red card's match
+  names its competition. A ban for bookings takes the competition of the match the player was last booked in, in the week up to
+  the ban, when that's his team's league or a competition a red card names; else what other bans under the same association's
+  same rule set were for, among the competitions his team plays in, where that leaves one. A rule set that has given a ban in a
+  team's own league is taken as that association's league rules, so another ban under it from the association of his team's
+  league (as FM's bans show it, else of his club's nation) is for his team's league. What's left says "competition not known".
+  The squad rows count only bans for a competition his team plays in, its league or one in his recent matches for it, as FM's
+  squad screen does; `person` has the rest.
 - **The dashboard** is `ClubDashboard` plus the two overviews, which it starts itself so their answers are ready when you open them.
 - **The look** lives in `AppColors` (colours by job, from a `Theme.Palette`, or the system's for the System theme), `DesignSystem.swift`
   (panels, pills, `Flow`, range bars) and `TableSupport.swift` (both grids). DESIGN.md is the reference. Grids never cut text off: `AnalysisGrid`

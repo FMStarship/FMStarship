@@ -50,8 +50,13 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     }
     func form(player: Player) -> String? { "7.1 6.8 7.4" }
     func injuryReturnDays(player: Player) -> Int? { 14 }
-    /// FM's getters, caught up to today: only asked for players FM hasn't brought up to date today.
-    func fitness(player: Player) -> Fitness? { Fitness(condition: 9_440, sharpness: 8_020) }
+    /// FM's getters, caught up to today: the stored values for a player FM brought up to date today, as FM's own give.
+    func fitness(player: Player) -> Fitness? {
+        if gettersDisagree { return Fitness(condition: 1, sharpness: 2) }
+        return player.fitness ?? Fitness(condition: 9_440, sharpness: 8_020)
+    }
+    /// True for getters in the wrong vtable slots, which give other numbers than FM stored.
+    var gettersDisagree = false
     /// First 1 was trained at the club, First 2 in its nation, and nobody else.
     func homeGrown(player: Player) -> HomeGrown? { player.uid == 1 ? .club : player.uid == 2 ? .nation : .no }
 
@@ -100,6 +105,26 @@ final class FakeMatches: MatchSource {
     }
 }
 
+/// Players' state as `PlayerStateSource` gives it: bans worked out by hand, and what FM's memory holds now, which a test
+/// can change between calls. Counts the players it reads again.
+final class FakeStates: PlayerStateSource {
+    var bans: [UInt32: [Ban]]
+    /// What a player's record says now, applied when he's read again.
+    var now: [UInt32: (Player) -> Void] = [:]
+    private(set) var refreshed: [UInt32] = []
+
+    init(_ bans: [UInt32: [Ban]]) {
+        self.bans = bans
+    }
+
+    func refresh(_ player: Player) {
+        refreshed.append(player.uid)
+        now[player.uid]?(player)
+    }
+
+    func bans(of player: Player) -> [Ban]? { player.storedBans == nil ? nil : bans[player.uid] ?? [] }
+}
+
 /// A save built by hand, as `GameSource` gives it. It counts its reads, and can say the save has moved on.
 final class FakeSource: GameSource {
     var database: Database
@@ -107,6 +132,7 @@ final class FakeSource: GameSource {
     var problem: GameProblem?
     var current = true
     var matches: FakeMatches? = World.matches()
+    var states: FakeStates? = FakeStates(World.bans())
     private(set) var reads = 0
 
     init(database: Database, engine: GameRulesEngine?) {
@@ -117,7 +143,7 @@ final class FakeSource: GameSource {
     func read() throws -> GameRead {
         if let problem { throw problem }
         reads += 1
-        return GameRead(database: database, engine: engine, number: reads, matches: matches)
+        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states)
     }
 
     func isCurrent(_ read: GameRead) -> Bool { current }
@@ -209,7 +235,7 @@ enum World {
             player.fitness = Fitness(condition: 10_000, sharpness: 9_650)
             player.morale = 12
             player.playingTime = 20
-            player.bans = []
+            player.storedBans = []
         }
         state(players)
 
@@ -229,42 +255,46 @@ enum World {
         return db
     }
 
-    /// First 1 is tired, unhappy with his playing time and banned in the league and the cup. FM last brought First 2's
-    /// condition up to date three days ago, so it takes FM's getters. The youngster has a ban from abroad, in a
-    /// competition the read couldn't name, and the injured player one at home that it couldn't name either.
+    /// First 1 is tired and unhappy with his playing time. FM last brought First 2's condition up to date three days ago,
+    /// so it takes FM's getters.
     static func state(_ players: [Player]) {
         let byUID = Dictionary(uniqueKeysWithValues: players.map { ($0.uid, $0) })
         let tired = byUID[1]!
         tired.fitness = Fitness(condition: 8_570, sharpness: 9_210)
         tired.morale = 2
         tired.playingTime = -89
+
+        let stale = byUID[2]!
+        stale.fitness = nil
+        stale.fitnessNeedsCatchUp = true
+        stale.fitnessUpdated = GameDate.date(year: 2026, dayOfYear: 267)
+    }
+
+    /// First 1 is banned in the league and the cup. The youngster has a ban from abroad, in a competition FM Starship
+    /// couldn't name, and the injured player one at home that it couldn't name either.
+    static func bans() -> [UInt32: [Ban]] {
         var bookings = Ban(issued: GameDate.date(year: 2026, dayOfYear: 244)!, matches: 1, served: 0)
         bookings.competition = "Mock League"
         bookings.associationName = "Mockovia"
         bookings.reason = .bookings
         bookings.domestic = true
+        bookings.countsForClub = true
         var red = Ban(issued: GameDate.date(year: 2026, dayOfYear: cupMatch)!, matches: 3, served: 1)
         red.competition = "Mock Cup"
         red.associationName = "Mockovia"
         red.reason = .redCard
         red.opponent = minnows
         red.domestic = true
-        tired.bans = [bookings, red]
-
-        let stale = byUID[2]!
-        stale.fitness = nil
-        stale.fitnessNeedsCatchUp = true
-        stale.fitnessUpdated = GameDate.date(year: 2026, dayOfYear: 267)
+        red.countsForClub = true
 
         var abroad = Ban(issued: GameDate.date(year: 2025, dayOfYear: 300)!, matches: 2, served: 0)
         abroad.associationName = "Fixtureland"
         abroad.reason = .bookings
-        byUID[12]!.bans = [abroad]
         var unnamed = Ban(issued: GameDate.date(year: 2026, dayOfYear: 250)!, matches: 1, served: 0)
         unnamed.associationName = "Mockovia"
         unnamed.domestic = true
         unnamed.reason = .bookings
-        byUID[13]!.bans = [unnamed]
+        return [1: [bookings, red], 12: [abroad], 13: [unnamed]]
     }
 
     /// A 4-4-2 with the first eleven in it.
