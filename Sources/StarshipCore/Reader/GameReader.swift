@@ -265,11 +265,11 @@ public final class GameReader {
                 database.unnamed += 1
                 continue
             }
-            if let date = database.gameDate, let birth = person.birth {
-                let now = GameDate.calendar.dateComponents([.year], from: date).year!
-                let born = GameDate.calendar.dateComponents([.year], from: birth).year!
-                let dayNow = GameDate.calendar.ordinality(of: .day, in: .year, for: date)!
-                let dayBorn = GameDate.calendar.ordinality(of: .day, in: .year, for: birth)!
+            if let date = database.gameDate, let birth = person.birth,
+               let now = GameDate.calendar.dateComponents([.year], from: date).year,
+               let born = GameDate.calendar.dateComponents([.year], from: birth).year,
+               let dayNow = GameDate.calendar.ordinality(of: .day, in: .year, for: date),
+               let dayBorn = GameDate.calendar.ordinality(of: .day, in: .year, for: birth) {
                 person.age = now - born - (dayNow < dayBorn ? 1 : 0)
             }
             if let player = person as? Player {
@@ -386,14 +386,14 @@ public final class GameReader {
 
     private func nationName(_ address: Int64) -> String {
         address == 0 ? "" : nations.value(address) {
-            game.lengthPrefixedString(game.readPointer(address + Int64(MacLayout.Nation.name)))
+            game.lengthPrefixedString(game.readPointer(address &+ Int64(MacLayout.Nation.name)))
         }
     }
 
     private func continentName(_ nation: Int64) -> String {
         nation == 0 ? "" : continents.value(nation) {
-            let continent = game.readPointer(nation + Int64(MacLayout.Nation.continent))
-            return continent == 0 ? "" : game.lengthPrefixedString(game.readPointer(continent + Int64(MacLayout.continentName)))
+            let continent = game.readPointer(nation &+ Int64(MacLayout.Nation.continent))
+            return continent == 0 ? "" : game.lengthPrefixedString(game.readPointer(continent &+ Int64(MacLayout.continentName)))
         }
     }
 
@@ -401,29 +401,31 @@ public final class GameReader {
         team == 0 ? Club() : clubs.value(team) {
             typealias T = MacLayout.Team
             typealias C = MacLayout.Club
-            let object = game.readPointer(team + Int64(T.club))
-            let competition = game.readPointer(team + Int64(T.competition))
+            // `team` and everything read from it can be anything on a leftover record, so offsets go on with &+.
+            let object = game.readPointer(team &+ Int64(T.club))
+            let competition = game.readPointer(team &+ Int64(T.competition))
             guard object != 0 else { return Club() }
-            let nation = game.readPointer(object + Int64(C.nation))
+            let nation = game.readPointer(object &+ Int64(C.nation))
             var club = Club()
-            club.short = game.lengthPrefixedString(game.readPointer(object + Int64(C.shortName)))
-            club.full = game.lengthPrefixedString(game.readPointer(object + Int64(C.fullName)))
+            club.short = game.lengthPrefixedString(game.readPointer(object &+ Int64(C.shortName)))
+            club.full = game.lengthPrefixedString(game.readPointer(object &+ Int64(C.fullName)))
             if competition != 0 {
-                club.league = game.lengthPrefixedString(game.readPointer(competition + Int64(MacLayout.competitionName)))
+                club.league = game.lengthPrefixedString(game.readPointer(competition &+ Int64(MacLayout.competitionName)))
             }
             club.nation = nationName(nation)
-            club.nationCode = nation == 0 ? "" : game.lengthPrefixedString(game.readPointer(nation + Int64(MacLayout.Nation.code)))
+            club.nationCode = nation == 0 ? "" : game.lengthPrefixedString(game.readPointer(nation &+ Int64(MacLayout.Nation.code)))
             club.object = object
-            club.womens = game.read(object + Int64(C.womens), count: 1)?.first == 1
+            club.womens = game.read(object &+ Int64(C.womens), count: 1)?.first == 1
             club.region = continentName(nation)
-            club.area = nation == 0 ? 0 : game.readPointer(nation + Int64(MacLayout.Nation.area))
+            club.area = nation == 0 ? 0 : game.readPointer(nation &+ Int64(MacLayout.Nation.area))
             return club
         }
     }
 
     private func readInjuries(_ list: Int64) -> [Injury]? {
-        let begin = game.readPointer(list), end = game.readPointer(list + 8)
-        guard begin != 0, end > begin, end - begin <= 0x200 else { return nil }
+        let begin = game.readPointer(list), end = game.readPointer(list &+ 8)
+        // Measured unsigned, as `end - begin` traps on two far-apart garbage pointers.
+        guard begin != 0, end > begin, UInt64(bitPattern: end &- begin) <= 0x200 else { return nil }
         var result: [Injury] = []
         for slot in stride(from: begin, to: end, by: 8) {
             let record = game.readPointer(slot)
@@ -434,7 +436,7 @@ public final class GameReader {
             let injury = Injury()
             injury.record = record
             injury.name = kind == 0 ? "" : injuryNames.value(kind) {
-                let text = game.lengthPrefixedString(game.readPointer(kind + 32))
+                let text = game.lengthPrefixedString(game.readPointer(kind &+ 32))
                 return text.prefix(1).uppercased() + text.dropFirst()
             }
             injury.date = GameDate.date(year: year, dayOfYear: day) ?? .distantPast
@@ -470,7 +472,7 @@ public final class GameReader {
         person.endYear = GameReader.u16(b, C.endYear)
 
         let begin = GameReader.i64(b, C.clausesBegin), end = GameReader.i64(b, C.clausesEnd)
-        if begin != 0, end > begin, end - begin <= 0x400, let clauses = game.read(begin, count: Int(end - begin)) {
+        if begin != 0, end > begin, UInt64(bitPattern: end &- begin) <= 0x400, let clauses = game.read(begin, count: Int(end &- begin)) {
             for o in stride(from: 0, to: clauses.count - 7, by: 8) {
                 let amount = Int64(GameReader.u32(clauses, o))
                 guard amount != 0xffff_ffff else { continue }
@@ -510,7 +512,7 @@ public final class GameReader {
             staff.job = Names.jobs[Int(b[C.job])] ?? ""
             staff.secondJob = Int(b[C.secondJob])
             let team = GameReader.i64(b, C.fallbackTeam)
-            if team != 0, !person.club.isEmpty, let type = game.read(team + Int64(MacLayout.Team.type), count: 1) {
+            if team != 0, !person.club.isEmpty, let type = game.read(team &+ Int64(MacLayout.Team.type), count: 1) {
                 staff.squad = Names.squadName(Int(type[0]))
             }
         }
@@ -599,18 +601,18 @@ public final class GameReader {
         for detail in details {
             let team = game.readPointer(detail + Int64(MacLayout.Human.team))
             guard team != 0, !database.humanClubs.contains(where: { $0.team == team }) else { continue }
-            let club = game.readPointer(team + Int64(MacLayout.Team.club))
+            let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
             guard club != 0 else { continue }
-            let name = game.lengthPrefixedString(game.readPointer(club + Int64(MacLayout.Club.fullName)))
+            let name = game.lengthPrefixedString(game.readPointer(club &+ Int64(MacLayout.Club.fullName)))
             // The manager whose contract is with this team. Keeps the part pointer FM's rules expect.
             let manager = managers.first { object in
                 let contract = game.readPointer(object + Int64(MacLayout.Human.managerPerson + MacLayout.Person.contract))
                 guard contract != 0 else { return false }
-                return game.readPointer(contract + Int64(MacLayout.Contract.team)) == team
-                    || game.readPointer(contract + Int64(MacLayout.Contract.fallbackTeam)) == team
+                return game.readPointer(contract &+ Int64(MacLayout.Contract.team)) == team
+                    || game.readPointer(contract &+ Int64(MacLayout.Contract.fallbackTeam)) == team
             } ?? (managers.count == 1 ? managers[0] : 0)
             database.humanClubs.append((team, name, manager))
-            let finance = game.readPointer(club + Int64(F.clubOffset))
+            let finance = game.readPointer(club &+ Int64(F.clubOffset))
             guard finance != 0, let record = game.read(finance, count: F.wageSpent + 4) else { continue }
             database.budgets[team] = GameReader.budget(record)
         }
@@ -620,8 +622,9 @@ public final class GameReader {
     /// FM uses it to notice FM loading another save: once FM has let go of the save that was read, the team the read
     /// found is gone from that address, or something else is there.
     public static func clubName(team: Int64, in game: GameProcess) -> String {
-        let club = game.readPointer(team + Int64(MacLayout.Team.club))
-        return club == 0 ? "" : game.lengthPrefixedString(game.readPointer(club + Int64(MacLayout.Club.fullName)))
+        // Once FM has let the save go, whatever is at `team` now can be anything, so offsets go on with &+.
+        let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
+        return club == 0 ? "" : game.lengthPrefixedString(game.readPointer(club &+ Int64(MacLayout.Club.fullName)))
     }
 
     /// What a club has left to spend, from the start of its CLUB_FINANCE record.
@@ -693,8 +696,8 @@ public final class GameReader {
         typealias T = MacLayout.Tactic
         let creator = game.readPointer(game.readPointer(array + T.arrayCreators))
         guard creator != 0, let ids = game.read(array + T.arrayPlayers, count: T.slots * 4),
-              let withBall = game.read(creator + T.withBall, count: T.slots * Int(T.slotSize)),
-              let withoutBall = game.read(creator + T.withoutBall, count: T.slots * Int(T.slotSize)) else { return nil }
+              let withBall = game.read(creator &+ T.withBall, count: T.slots * Int(T.slotSize)),
+              let withoutBall = game.read(creator &+ T.withoutBall, count: T.slots * Int(T.slotSize)) else { return nil }
 
         func place(_ bytes: [UInt8], _ slot: Int) -> (position: Int, side: TacticSlot.Side, role: Int)? {
             let at = slot * Int(T.slotSize)

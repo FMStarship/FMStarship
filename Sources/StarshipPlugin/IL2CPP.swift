@@ -247,7 +247,7 @@ final class IL2CPP {
     private func loadImages() -> [Pointer] {
         var count = 0
         guard let assemblies = api.domainAssemblies(api.domainGet(), &count) else { return [] }
-        return (0..<count).compactMap { api.assemblyImage(assemblies[$0]) }
+        return (0..<max(0, count)).compactMap { api.assemblyImage(assemblies[$0]) }
     }
 
     private func string(_ text: Text) -> String { text.map { String(cString: $0) } ?? "" }
@@ -280,7 +280,7 @@ final class IL2CPP {
     /// Every class in one assembly, such as "FM.UI.dll".
     func classes(inImage imageName: String) -> [Pointer] {
         guard let image = images.first(where: { string(api.imageName($0)) == imageName }) else { return [] }
-        return (0..<api.imageClassCount(image)).compactMap { api.imageClass(image, $0) }
+        return (0..<max(0, api.imageClassCount(image))).compactMap { api.imageClass(image, $0) }
     }
 
     func name(of klass: Pointer?) -> String {
@@ -409,7 +409,9 @@ final class IL2CPP {
     /// A string's text. Nil for any object that isn't a System.String, whose memory isn't a string's.
     func text(_ string: Pointer?) -> String? {
         guard let string, let stringClass, api.objectClass(string) == stringClass, let chars = api.stringChars(string) else { return nil }
-        return String(utf16CodeUnits: chars, count: Int(api.stringLength(string)))
+        let length = Int(api.stringLength(string))
+        guard length >= 0 else { return nil }
+        return String(utf16CodeUnits: chars, count: length)
     }
 
     private lazy var stringClass: Pointer? = findClass("System", "String")

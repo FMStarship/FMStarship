@@ -116,8 +116,8 @@ enum GameImports {
             let live = game.readPointer(game.pluginBase + Int64(got.address + slot))
             guard live != 0 else { continue }
             names[live] = name
-            if let stub = stubs[name] { a64_image_add_stub(image, UInt64(live), stub) }
-            if let math = mathStubs[name] { a64_image_add_math_stub(image, UInt64(live), math) }
+            if let stub = stubs[name] { a64_image_add_stub(image, UInt64(bitPattern: live), stub) }
+            if let math = mathStubs[name] { a64_image_add_math_stub(image, UInt64(bitPattern: live), math) }
         }
         if let thread {
             // Every thread-local access goes through the thunk stored at the start of each descriptor.
@@ -128,10 +128,10 @@ enum GameImports {
                 guard thunk != 0 else { continue }
                 thunks.insert(thunk)
                 file.append(u64(slice + thread.fileOffset + slot + 16))
-                live.append((UInt64(bitPattern: game.readPointer(descriptor + 8)), UInt64(bitPattern: game.readPointer(descriptor + 16))))
+                live.append((UInt64(bitPattern: game.readPointer(descriptor &+ 8)), UInt64(bitPattern: game.readPointer(descriptor &+ 16))))
             }
             if let stub = threadLocalStub(file: file, live: live) {
-                for thunk in thunks { a64_image_add_stub(image, UInt64(thunk), stub) }
+                for thunk in thunks { a64_image_add_stub(image, UInt64(bitPattern: thunk), stub) }
             }
         }
         return names

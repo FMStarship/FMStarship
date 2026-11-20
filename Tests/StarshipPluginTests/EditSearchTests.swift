@@ -121,6 +121,15 @@ final class EditSearchTests: XCTestCase {
         XCTAssertEqual(kroner.values.last, "2000")
     }
 
+    /// The fee kept in the settings is put among the choices as it is. One too large for Int must not stop FM.
+    func testAFeeTooLargeForAWholeNumberIsStillAChoice() {
+        let fees = FeeChoices(units: pounds, current: "1e300")
+        XCTAssertEqual(fees.values.count, 13)
+        XCTAssertEqual(FeeChoices.text(.infinity), "inf")
+        XCTAssertEqual(FeeChoices.text(2), "2")
+        XCTAssertEqual(FeeChoices.text(9.1), "9.1")
+    }
+
     func testThePitchHasFMsPositionsAndNoSweeper() {
         let spots = PitchSpot.spots
         XCTAssertEqual(spots.count, 14)

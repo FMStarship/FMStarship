@@ -229,7 +229,7 @@ struct FeeChoices {
 
     /// Millions as the options take them: "0.5", "2", "9.1".
     static func text(_ millions: Double) -> String {
-        if millions == millions.rounded() { return String(Int(millions)) }
+        if let whole = Int(exactly: millions) { return String(whole) }
         var text = String(format: "%.2f", millions)
         while text.hasSuffix("0") { text.removeLast() }
         if text.hasSuffix(".") { text.removeLast() }

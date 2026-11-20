@@ -177,6 +177,8 @@ final class FakeGame {
         var statusFlags: UInt8 = 0
         /// Each clause's amount, and FM's number for its kind.
         var clauses: [(amount: UInt32, kind: UInt16)] = []
+        /// Where the clauses start and end, in place of `clauses`, for a test of what a leftover record can hold.
+        var clausesAt: (begin: Int64, end: Int64)?
     }
 
     struct PersonValues {
@@ -207,6 +209,8 @@ final class FakeGame {
         var topRoles = [UInt8](repeating: 0, count: 6)
         var traits: UInt64 = 0
         var currentTeam: Int64 = 0
+        /// The record holding the player's injuries and recent matches. None by default.
+        var injuries: Int64 = 0
     }
 
     struct StaffValues {
@@ -231,7 +235,7 @@ final class FakeGame {
         record.set("pa", a + L.pa, values.pa)
         record.set("topRoles", a + L.topRoles, bytes: values.topRoles)
         record.set("currentTeam", L.currentTeam, values.currentTeam)
-        record.set("injuries", L.injuries, Int64(0))
+        record.set("injuries", L.injuries, values.injuries)
         record.set("traits", L.person + MacLayout.Person.traits, values.traits)
         person(values.person, in: record, person: L.person, identity: L.identity)
         return record
@@ -297,6 +301,7 @@ final class FakeGame {
                 store(clause.kind, begin + Int64(i * 8 + 6))
             }
         }
+        if let at = values.clausesAt { (begin, end) = at }
         record.set("clausesBegin", C.clausesBegin, begin)
         record.set("clausesEnd", C.clausesEnd, end)
         return record.address

@@ -119,10 +119,10 @@ public final class RulesEngine: GameRulesEngine {
             return try sandbox.call(staffFunction, [rule, person, context], prepare: { cpu in
                 a64_write(cpu, rule + 24, UInt64(level), 1)
                 a64_write(cpu, rule + 25, 1, 1)
-                a64_write(cpu, person + 8, UInt64(staff.block + Int64(MacLayout.Staff.identity)), 8)
+                a64_write(cpu, person + 8, UInt64(bitPattern: staff.block &+ Int64(MacLayout.Staff.identity)), 8)
                 a64_write(cpu, context + 8, UInt64(bitPattern: manager), 8)
                 a64_write(cpu, context + 16, UInt64(bitPattern: team), 8)
-                a64_write(cpu, context + 24, UInt64(manager + Int64(MacLayout.Human.managerIdentity)), 8)
+                a64_write(cpu, context + 24, UInt64(bitPattern: manager &+ Int64(MacLayout.Human.managerIdentity)), 8)
             }, result: { a64_get_x($0, 0) & 255 != 0 })
         } catch {
             failureLock.lock()
@@ -306,8 +306,8 @@ public final class RulesEngine: GameRulesEngine {
         var slot = game.readPointer(club &+ 24)
         while slot != 0, slot < end, teams.count < 32 {
             let object = game.readPointer(slot)
-            teams.append((object, Int(game.read(object + Int64(MacLayout.Team.type), count: 1)?.first ?? 0)))
-            slot += 8
+            teams.append((object, Int(game.read(object &+ Int64(MacLayout.Team.type), count: 1)?.first ?? 0)))
+            slot &+= 8
         }
         return (allowed.totals, current.totals, teams, allowed.teams, current.teams, Int(flags[0]), Int(flags[1]))
     }
@@ -334,7 +334,7 @@ public final class RulesEngine: GameRulesEngine {
             let text = a64_read(cpu, name, 8), length = a64_read(cpu, text, 4)
             guard text != 0, length > 0, length < 64 else { return nil }
             var bytes = [UInt8](repeating: 0, count: Int(length))
-            a64_read_bytes(cpu, text + 4, &bytes, bytes.count)
+            a64_read_bytes(cpu, text &+ 4, &bytes, bytes.count)
             return String(decoding: bytes, as: UTF8.self)
         } ?? nil
     }
@@ -379,7 +379,7 @@ public final class RulesEngine: GameRulesEngine {
                 a64_set_watch(cpu, 1, UInt64(self.game.pluginBase + Mac27.bagClear))
                 a64_set_watch_handler(cpu, { context, cpu, key, value in
                     if key & 0xffff_ffff == Mac27.injuryDaysKey {
-                        Unmanaged<Found>.fromOpaque(context!).takeUnretainedValue().days = Int(Int32(truncatingIfNeeded: a64_read(cpu!, value + 8, 4)))
+                        Unmanaged<Found>.fromOpaque(context!).takeUnretainedValue().days = Int(Int32(truncatingIfNeeded: a64_read(cpu!, value &+ 8, 4)))
                     }
                 }, context)
             }) { _ in () }

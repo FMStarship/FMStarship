@@ -193,7 +193,7 @@ struct FMElements {
 
     func children(of element: Pointer) -> [Pointer] {
         let count = il2cpp.unbox(try? il2cpp.call(element, "get_childCount"), as: Int32.self) ?? 0
-        return (0..<count).compactMap { index in
+        return (0..<max(0, count)).compactMap { index in
             var position = index
             return try? withUnsafeMutablePointer(to: &position) { try il2cpp.call(element, "ElementAt", [Pointer($0)]) }
         }
