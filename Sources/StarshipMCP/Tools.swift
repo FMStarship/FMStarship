@@ -217,6 +217,21 @@ extension Toolbox {
              parameters: [Parameter(name: "uids", type: "array", description: "Two to four uids, all players or all staff.",
                                     items: ["type": "integer"], required: true), club],
              run: { $0.compare }),
+        Tool(name: "development", title: "Development",
+             description: "How a club's players have developed, from FM Starship's own record, not FM's: a snapshot of the squad on "
+                + "each game day FM Starship read the save, in the app or in its tab inside FM, so a gap between dates is days nobody "
+                + "read it. Compares two records, the oldest and newest unless since or until is given: each player's CA and PA "
+                + "(while Ability is on) and the attributes that went up or down, by how much, with those who joined or left in "
+                + "between listed apart. With uid, one player at every recorded date: CA, PA and the attributes that moved most, "
+                + "and every change over those dates.",
+             parameters: [Parameter(name: "club", type: "string",
+                                    description: "The user's club if left out. Or another club FM Starship has a record of, by its full name."),
+                          Parameter(name: "since", type: "string",
+                                    description: "Compare from the first record on or after this date, YYYY-MM-DD. The oldest if left out."),
+                          Parameter(name: "until", type: "string",
+                                    description: "Compare to the last record on or before this date, YYYY-MM-DD. The newest if left out."),
+                          Parameter(name: "uid", type: "integer", description: "One player, at every recorded date from since to until.")],
+             run: { $0.development }),
         Tool(name: "recommend_signings", title: "Recommended signings",
              description: "FM Starship's recommended signings for the user's club: the best players who'd join, from FM's own answer.",
              parameters: [

@@ -29,10 +29,12 @@ final class HiddenOffTests: XCTestCase {
         ("recommend_staff", ["role": "Director of Football", "only_join": false]), ("recommend_staff", ["role": "Manager", "level": "youth"]),
         ("fixtures", [:]), ("fixtures", ["from": "2026-09-01"]), ("fixtures", ["club": "Rivals FC", "from": "2026-09-01"]),
         ("results", [:]), ("results", ["date": "2026-09-20"]), ("results", ["date": "2026-09-13"]), ("league_table", [:]),
+        ("development", [:]), ("development", ["uid": 12]), ("development", ["uid": 1]),
     ]
 
     private static let abilityNames = ["CA", "PA", "Growth room", "Current ability", "Potential ability", "Likely peak",
-                                       "Room to grow", "vs your best", "vs best", "Best eleven"]
+                                       "Room to grow", "vs your best", "vs best", "Best eleven", "CA from", "CA to", "CA change",
+                                       "PA change"]
     /// The names of what's hidden, except a member of staff's Adaptability, which FM shows. Some of the hidden ones in a staff
     /// record share a name with something shown, such as a player's Marking, so names are looked for where values are named.
     private static let hiddenNames = Names.hidden + Names.personality.filter { !Names.staffShownPersonality.contains($0) }
@@ -64,6 +66,7 @@ final class HiddenOffTests: XCTestCase {
         let harness = Harness(hidden: hidden, reveal: reveal)
         try harness.saveShortlist("Targets", isStaff: false, uids: [12, 21])
         try harness.saveShortlist("Coaches", isStaff: true, uids: [501, 502])
+        try harness.saveDevelopment(World.history())
         return harness
     }
 

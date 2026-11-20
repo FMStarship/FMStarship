@@ -143,6 +143,8 @@ public final class Toolbox: ToolProvider {
     private var namesByIndex: [UInt32: String] = [:]
     /// The time now, which a test can move on.
     var clock: () -> Date = Date.init
+    /// Where the app keeps its development records, which `development` only reads. A test points it at a folder of its own.
+    var developmentStore = DevelopmentStore()
 
     /// `settings` gives the settings as they are now: the live server reads FM Starship's settings file each call.
     public init(source: GameSource, settings: @escaping () -> Settings, shortlistRoots: @escaping () -> [URL]) {

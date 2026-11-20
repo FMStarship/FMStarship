@@ -23,6 +23,7 @@ chosen in FM Starship.
 | `squad_overview` | Each place in the user's tactic, who plays there and how they stand against the league |
 | `staff_overview` | Each backroom job and training area, and empty places |
 | `compare` | Two to four players, or two to four staff, side by side |
+| `development` | How the user's players have developed, from FM Starship's own record of the squad: each player's CA and PA and the attributes that went up or down between two records (`since`, `until`), and who joined or left in between. With `uid`, one player at every recorded date |
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
 | `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
@@ -83,11 +84,16 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   won't loan him, so FM isn't asked.
 - **Would join your club** for a member of staff, in `person`, is FM's own answer for the first team, the reserves and the youth
   team (`first_team`, `reserves`, `youth`: true or false). `recommend_staff` gives it as `Would join`: "First team", "Reserves", "Youth", those together, or "No". Its
-  `interest` says whether FM was asked: when FM couldn't be, or gave no answer, the list isn't narrowed to people who'd come, so
-  don't present it as one. When FM couldn't be asked at all, `person` can't ask it either; when it didn't answer for some people,
-  they're left out, and asking again or `person` may get their answers. FM is asked about the best 600 for the job at most, and
-  `interest` says when it stopped there. FM only answers about staff for a club the user manages. `wage_max` starts at the
-  club's wage room when you leave it out.
+  `interest` says whether FM was asked: when FM couldn't be, the list isn't narrowed to people who'd come, so don't present it
+  as one; check each one's answer with `person`. FM only answers about staff for a club the user manages. `wage_max` starts at
+  the club's wage room when you leave it out.
+- **Development** is FM Starship's own record, not FM's history: a snapshot of the club's squad on each game day FM Starship
+  read the save, in the app or in its tab inside FM, for the club picked in FM Starship. A gap between dates is days nobody read
+  the save with FM Starship, not days nothing changed, so say which dates you compared (`compared`). The newest record can be
+  older than today: `newest_record` says so, and `person` gives a player as he is now. Attributes move slowly, so compare over
+  weeks or months. Players who joined or left in between are in `joined` and `left`, not in the rows. `CA change` is only there
+  with Ability set to Exact; with Stars you get the stars at each end. If there's no record yet, tell the user it's made by
+  reading the save with FM Starship on different game days, and that it can't be made after the fact.
 - **Loan status** is "Listed for loan" or "Not available for loan", which is the club's decision, not an injury.
 - **Matches**: scores are home team first, as FM writes them, with `result` W, D or L for the club asked about. An
   `aggregate` names the teams, home team of that leg first: "Apoel Nikosia 2-4 Molde FK" means Molde lead 4-2. A scorer FM

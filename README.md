@@ -137,8 +137,9 @@ use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your sav
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
 shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match,
 each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
-each player's condition, sharpness, morale, playing time, suspensions and home-grown status, and FM Starship's club, squad and
-staff overviews, recommended signings, recommended staff and bargains.
+each player's condition, sharpness, morale, playing time, suspensions and home-grown status, how your players have developed
+between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
+recommended staff and bargains.
 
 - **It only reads.** It has no way to change anything in FM or your save, and it writes no files.
 - **It stays on your Mac.** Your agent's app starts it and talks to it through stdin and stdout. It opens no network connection and

@@ -410,6 +410,37 @@ enum World {
         ])
     }
 
+    // MARK: Development
+
+    /// The days of 2026 FM Starship read the save on: 1 July, 1 August, 1 September and 20 September. The game is on 27 September.
+    static let recordDays = [182, 213, 244, 263]
+
+    /// One player's row in a record: every attribute 10 and the hidden ones 19, but for `changed`.
+    static func record(_ name: String, ca: Int, pa: Int, _ changed: [String: UInt8] = [:]) -> DevelopmentStore.Row {
+        var attr = [UInt8](repeating: 10, count: 54)
+        for name in Names.hidden { attr[Names.playerIndex[name]!] = 19 }
+        for (name, value) in changed { attr[Names.playerIndex[name]!] = value }
+        return DevelopmentStore.Row(name: name, ca: ca, pa: pa, attr: attr)
+    }
+
+    /// FM Starship's record of Testing FC. The youngster's CA went from 137 to 171 and his Passing from 8 to 12, while his
+    /// Pace went up and back. First 1's hidden Consistency went from 17 to 19 and his Stamina down from 12 to 10. Hurt Player
+    /// came after the first record, and Rival 22 was at the club until August.
+    static func history() -> [DevelopmentStore.Snap] {
+        let youngster: [(ca: Int, passing: UInt8, pace: UInt8)] = [(137, 8, 10), (139, 9, 13), (139, 11, 12), (171, 12, 10)]
+        return recordDays.enumerated().map { step, day in
+            var snap = DevelopmentStore.Snap(gameDate: GameDate.date(year: 2026, dayOfYear: day)!)
+            for uid in 2...11 { snap.players[UInt32(uid)] = record("First \(uid)", ca: 171, pa: 183) }
+            let last = step == recordDays.count - 1
+            snap.players[1] = record("First 1", ca: 171, pa: 183, last ? ["Consistency": 19, "Stamina": 10] : ["Consistency": 17, "Stamina": 12])
+            let young = youngster[step]
+            snap.players[12] = record("Young Prospect", ca: young.ca, pa: 197, ["Passing": young.passing, "Pace": young.pace])
+            if step > 0 { snap.players[13] = record("Hurt Player", ca: 171, pa: 183) }
+            if step < 2 { snap.players[22] = record("Rival 22", ca: 139, pa: 177) }
+            return snap
+        }
+    }
+
     static func settings(hidden: Bool, reveal: Reveal = .exact) -> Settings {
         var settings = Settings()
         settings.showHidden = hidden
@@ -428,15 +459,32 @@ final class Harness {
     let source: FakeSource
     var settings: Settings
     let shortlists: URL
-    lazy var toolbox = Toolbox(source: source, settings: { [unowned self] in self.settings }, shortlistRoots: { [unowned self] in [self.shortlists] })
+    /// The app's folder for development records, a temporary one, never the real one.
+    let development: URL
+    lazy var toolbox: Toolbox = {
+        let toolbox = Toolbox(source: source, settings: { [unowned self] in self.settings }, shortlistRoots: { [unowned self] in [self.shortlists] })
+        toolbox.developmentStore = DevelopmentStore(directory: development)
+        return toolbox
+    }()
 
     init(hidden: Bool = true, reveal: Reveal = .exact, engine: GameRulesEngine? = FakeEngine()) {
         source = FakeSource(database: World.database(), engine: engine)
         settings = World.settings(hidden: hidden, reveal: reveal)
         shortlists = FileManager.default.temporaryDirectory.appendingPathComponent("fmstarship-mcp-tests-\(UUID().uuidString)")
+        development = FileManager.default.temporaryDirectory.appendingPathComponent("fmstarship-mcp-development-\(UUID().uuidString)")
     }
 
-    deinit { try? FileManager.default.removeItem(at: shortlists) }
+    deinit {
+        try? FileManager.default.removeItem(at: shortlists)
+        try? FileManager.default.removeItem(at: development)
+    }
+
+    /// Writes a club's development record where the app would, in the temporary folder.
+    func saveDevelopment(_ snaps: [DevelopmentStore.Snap], club: String = World.club) throws {
+        let url = DevelopmentStore(directory: development).path(db: source.database, club: club)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(snaps).write(to: url)
+    }
 
     func saveShortlist(_ name: String, isStaff: Bool, uids: [UInt32]) throws {
         let folder = shortlists.appendingPathComponent("cloud").appendingPathComponent(isStaff ? "staff shortlists" : "shortlists")
