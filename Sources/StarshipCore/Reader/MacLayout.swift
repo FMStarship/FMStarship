@@ -108,6 +108,10 @@ enum MacLayout {
         static let year = 0x12
         /// The competition's database index, as at `Comp.index`.
         static let competition = 0x14
+        /// Why he didn't play, when `record` is zero. 5 for a suspended player: the three suspended for a match on Molde's
+        /// save on 27.1.0 had it. 12 for most of the others, on the bench or left out; what 6 and 0x4c mean isn't known.
+        static let reason = 0x18
+        static let suspended: UInt8 = 5
     }
 
     /// The player's own match record, 0x28 bytes, which `FormEntry.record` points at.

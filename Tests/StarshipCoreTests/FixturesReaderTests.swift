@@ -385,7 +385,22 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(found.fullFrom[world.minnows], GameDate.date(year: 2028, dayOfYear: 20), "only a full list loses matches")
     }
 
-    /// A record of 0 minutes is an appearance: only no record at all is an unused substitute.
+    /// FM's entry for a player who didn't play says when it was because he was suspended.
+    func testAnEntryWithoutARecordSaysWhenHeWasSuspended() throws {
+        let world = World()
+        let history = world.game.history([(world.rovers, [
+            FakeGame.HistoryEntry(opponent: world.town, day: 100, competition: World.leagueIndex, played: nil, reason: 5),
+            FakeGame.HistoryEntry(opponent: world.united, day: 107, competition: World.leagueIndex, played: nil, reason: 12),
+        ])])
+        var values = FakeGame.PlayerValues()
+        values.history = history
+        let player = world.game.player(values)
+        let matches = FixturesReader.history(player: player.address, in: world.game.process()) { _ in "" }.matches
+        XCTAssertEqual(matches.map(\.played), [false, false])
+        XCTAssertEqual(matches.map(\.suspended), [false, true], "newest first: the bench, then the ban")
+    }
+
+    /// A record of 0 minutes is an appearance: only no record at all means he didn't play.
     func testAZeroMinuteAppearanceIsPlayed() throws {
         let world = World()
         let history = world.game.history([(world.rovers, [

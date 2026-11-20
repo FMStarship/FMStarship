@@ -117,12 +117,12 @@ extension Toolbox {
             pairs.append(("players", "Not available: players' match records come with FM's rules, which are off on this build of FM."))
             return .object(pairs)
         }
-        var played: [(Player, PlayerMatch)] = [], unused: [Player] = [], gone = 0
+        var played: [(Player, PlayerMatch)] = [], didntPlay: [(Player, PlayerMatch)] = [], gone = 0
         let squad = context.db.players.filter { $0.clubFull == club || $0.loanClubFull == club }
         for player in squad {
             guard let history = engine.matchHistory(player: player) else { continue }
             if let record = history.matches.first(where: { $0.team == matches.team && $0.date == match.date }) {
-                if record.played { played.append((player, record)) } else { unused.append(player) }
+                if record.played { played.append((player, record)) } else { didntPlay.append((player, record)) }
             } else if let from = history.fullFrom[matches.team], from > match.date {
                 gone += 1
             }
@@ -133,7 +133,10 @@ extension Toolbox {
                     .int(record.goals), .int(record.assists), .int(record.yellow), .int(record.red), record.xG.map { .double($0) } ?? .null])
         }
         pairs += [("columns", .array((["uid"] + Self.matchPlayerColumns).map { .string($0) })), ("rows", .array(rows))]
-        if !unused.isEmpty { pairs.append(("unused_substitutes", .array(unused.map { .string($0.name) }))) }
+        // FM keeps an entry for every player of the team who didn't play, not only the substitutes who didn't come on.
+        if !didntPlay.isEmpty {
+            pairs.append(("didnt_play", .array(didntPlay.map { .string($0.0.name + ($0.1.suspended ? " (suspended)" : "")) })))
+        }
         var note = "Only players at \(club) now are listed. xG is left out for goalkeepers."
         if gone > 0 {
             note += " FM keeps only each player's last \(MatchHistory.kept) matches for a team, and this match has gone from "

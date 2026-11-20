@@ -112,7 +112,7 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(striker["Goals"], 1)
         XCTAssertEqual(striker["xG"], 0.45)
         XCTAssertEqual(players.first { $0["uid"] == 4 }?["Yellow cards"], 1)
-        XCTAssertEqual(match["unused_substitutes"], ["Young Prospect"])
+        XCTAssertEqual(match["didnt_play"], ["Young Prospect"])
         let note = try XCTUnwrap(match["note"]?.string)
         XCTAssertTrue(note.contains("Only players at \(World.club) now"), note)
         XCTAssertFalse(note.contains("last 20"), "nobody's record of this match has gone")
@@ -306,7 +306,7 @@ final class MatchToolTests: XCTestCase {
         let all = try harness.answer("squad", ["squad": "all"])
         let youngster = try XCTUnwrap(rows(all).first { $0["uid"] == 12 })
         XCTAssertEqual(youngster["Last match"], "2026-09-20")
-        XCTAssertEqual(youngster["Last match minutes"], .null, "an unused substitute")
+        XCTAssertEqual(youngster["Last match minutes"], .null, "he didn't play")
         XCTAssertEqual(youngster["Last match rating"], .null)
 
         XCTAssertFalse(try Harness(engine: nil).answer("squad").columnNames.contains("Last match"))

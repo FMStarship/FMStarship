@@ -160,8 +160,11 @@ public struct PlayerMatch: Sendable {
     public var opponentName = ""
     /// The competition's database index, as `MatchFixture.competitionIndex`.
     public var competitionIndex: UInt32 = 0
-    /// False when he was in the squad and didn't come on: FM keeps no record of his match then.
+    /// False when he didn't play. FM keeps an entry with no record of his match for every player of the team who didn't:
+    /// on the bench, left out or suspended.
     public var played = false
+    /// He didn't play because he was suspended, as FM's entry says.
+    public var suspended = false
     public var minutes = 0
     public var rating: Double?
     public var goals = 0
@@ -473,6 +476,7 @@ public final class FixturesReader {
                 match.opponentName = name(match.opponent)
                 match.competitionIndex = le32(b, E.competition)
                 let stats = le64(b, E.record)
+                if stats == 0 { match.suspended = b[E.reason] == MacLayout.FormEntry.suspended }
                 if stats != 0, let r = game.read(stats, count: M.size) {
                     match.played = true
                     match.minutes = Int(r[M.minutes])

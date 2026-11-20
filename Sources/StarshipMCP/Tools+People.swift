@@ -54,8 +54,8 @@ extension Toolbox {
                        + Output.rows(players, columns + Self.lastMatch(context.read.engine)))
     }
 
-    /// Each player's latest match in FM's record of his form: when, his minutes and his rating, both empty when he was an
-    /// unused substitute.
+    /// Each player's latest match in FM's record of his form: when, his minutes and his rating, both empty when he didn't
+    /// play (on the bench, left out or suspended).
     /// None when FM's rules are off, since the record comes with them.
     static func lastMatch(_ engine: GameRulesEngine?) -> [Output.Field] {
         guard let engine else { return [] }

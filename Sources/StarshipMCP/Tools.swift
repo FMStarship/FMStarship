@@ -78,7 +78,7 @@ extension Toolbox {
         Tool(name: "squad", title: "Squad",
              description: "One squad of a club, one compact row per player with uid: first team, reserves or B team, a youth team, "
                 + "those out on loan, or all. Says which squads the club has. Last match is each player's latest match in FM's "
-                + "record of his form, with his minutes and rating (both empty if he was an unused substitute), which shows rotation.",
+                + "record of his form, with his minutes and rating (both empty if he didn't play: on the bench, left out or suspended), which shows rotation.",
              parameters: [ownOrAnyClub,
                           Parameter(name: "squad", type: "string",
                                     description: "\"First team\", \"Reserves\", \"U21\", \"U19\", \"On loan\", ... or \"all\". First team if left out.")],

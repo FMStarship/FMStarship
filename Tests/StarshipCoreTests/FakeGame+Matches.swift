@@ -155,6 +155,8 @@ extension FakeGame {
         var year: UInt16 = 2029
         var competition: UInt32
         var played: PlayedValues?
+        /// Why he didn't play, when `played` is nil.
+        var reason: UInt8 = 12
     }
 
     /// The record a player's `injuries` points at, holding his matches for each team.
@@ -172,6 +174,7 @@ extension FakeGame {
                 entry.set("day", E.day, values.day)
                 entry.set("year", E.year, values.year)
                 entry.set("competition", E.competition, values.competition)
+                if values.played == nil { entry.set("reason", E.reason, values.reason) }
                 if let played = values.played {
                     let stats = self.record("Match record", size: M.size)
                     stats.set("xG", M.xG, played.xG)
