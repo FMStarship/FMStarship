@@ -178,7 +178,12 @@ public final class Staff: Person {
     public var repWorld = 0
     public var stars = [Double](repeating: 0, count: 9)
 
-    public func a(_ name: String) -> Int { Int(attr[Names.staffIndex[name]!]) }
+    /// Adaptability isn't in the staff record: it's the person's personality number, which FM shows for staff. No other
+    /// personality name is read here, so this never hands out a hidden one.
+    public func a(_ name: String) -> Int {
+        if Names.staffShownPersonality.contains(name) { return p(name) }
+        return Int(attr[Names.staffIndex[name]!])
+    }
 }
 
 public struct Currency {

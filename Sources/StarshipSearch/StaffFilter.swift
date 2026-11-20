@@ -55,10 +55,10 @@ public struct StaffFilter: SearchFilter, Equatable {
     public static let tabOrder = ["General", "Attributes", "Contract & more"]
 
     public static let ruleAttributes: [String] =
-        Net.cultureSorted(Names.staffShown)
+        Net.cultureSorted(Names.staffVisible)
         + Net.cultureSorted(Columns.hiddenStaffAttributes.filter { !$0.hasPrefix("Unnamed") })
 
-    public static let hiddenRuleAttributes = Set(Columns.hiddenStaffAttributes + Names.personality)
+    public static let hiddenRuleAttributes = Set(Columns.hiddenStaffAttributes + Names.staffHiddenPersonality)
 
     public static let sections: [FilterSection<StaffFilter>] = [
         FilterSection("Basics", tab: "General", fields: [

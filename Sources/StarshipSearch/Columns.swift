@@ -318,7 +318,7 @@ public enum Columns {
             "Determination", "Level Of Discipline", "Motivating", "Working With Youngsters",
             "Judging Player Ability", "Judging Player Potential",
         ]
-        for attribute in Names.staffShown {
+        for attribute in Names.staffVisible {
             cols.append(Col(attribute, "Attributes", { .int(staff($0).a(attribute)) },
                             isDefault: shownByDefault.contains(attribute), numeric: true, width: 40))
         }
@@ -329,7 +329,7 @@ public enum Columns {
 
         cols.append(Col("Personality", "Personality", { .text($0.personality) }, isDefault: false, numeric: false, width: 120))
         cols.append(Col("Media handling", "Personality", { .text($0.media) }, isDefault: false, numeric: false, width: 140))
-        for trait in Names.personality {
+        for trait in Names.staffHiddenPersonality {
             cols.append(Col(trait, "Personality", { .int($0.p(trait)) }, isDefault: false, numeric: true, width: 40,
                             hidden: true))
         }
