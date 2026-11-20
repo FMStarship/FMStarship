@@ -71,9 +71,11 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   where a goal or a rating came from. `team` is the club's name, so a reserve team's match shows its club with the reserve
   league as the competition; it's empty for a national team. An empty competition is one FM Starship couldn't name.
   Empty minutes and rating mean he didn't play: on the bench, left out or suspended.
-- **Clubs FM runs in the background**: for players in a league no human plays in, FM may keep season stats but no record of
-  each match. Then there's no Last match, Recent matches, Match load or league name for them; that's not knowable, not zero.
-  Use their League, Cup and Continental stats, which FM does keep.
+- **Players FM keeps no match record for**: FM keeps a record of each match only for some players. At AI clubs many have
+  none, even in the user's own league (on the save it was checked on, Strømsgodset's Ardraa had 21 league matches and no
+  record, and FM's own form had nothing for him either), and in a league FM runs in the background it may be every player.
+  Then there's no Last match, Recent matches, Match load, Form or league name for him: that's not knowable, not zero. Use his
+  League, Cup and Continental stats, which FM keeps for everyone.
 - **Would join your club** is FM's own answer, with how keen they are: Interested, Persuadable, Doubtful or Not interested.
   `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`. Null there means FM wasn't asked
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club
