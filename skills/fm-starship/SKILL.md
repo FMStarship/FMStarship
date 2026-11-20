@@ -59,7 +59,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club
   won't loan him, so FM isn't asked.
 - **Loan status** is "Listed for loan" or "Not available for loan", which is the club's decision, not an injury.
-- **Matches**: scores are home team first, as FM writes them, with `result` W, D or L for the club asked about. Competitions,
+- **Matches**: scores are home team first, as FM writes them, with `result` W, D or L for the club asked about. An
+  `aggregate` names the teams, home team of that leg first: "Apoel Nikosia 2-4 Molde FK" means Molde lead 4-2. A scorer FM
+  Starship can't name is given by his side, such as "an Apoel Nikosia player FM Starship can't name". Competitions,
   stages ("kvartfinale") and clubs are FM's names in the game's language. The match tools work for the user's club, the clubs in
   its league and the clubs it plays, by their full names. FM keeps each player's last 20 matches for a team, so a player's stats
   for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with

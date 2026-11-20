@@ -178,16 +178,16 @@ extension Toolbox {
         Tool(name: "fixtures", title: "Fixtures",
              description: Toolbox.matchNames + "A club's matches, oldest first, from today unless from or to is given: date, kick-off, "
                 + "competition, stage, league round, home or away (H/A), opponent, and for played matches the score (home team "
-                + "first), the result for the club, the aggregate of a two-legged tie, attendance, and the goals with their minutes "
-                + "and assists. The first question about a club takes a few seconds.",
+                + "first), the result for the club, the aggregate of a two-legged tie with the teams' names (\"Apoel Nikosia 2-4 Molde "
+                + "FK\"), attendance, and the goals with their minutes and assists. The first question about a club takes a few seconds.",
              parameters: [matchClub,
                           Parameter(name: "from", type: "string", description: "First date, YYYY-MM-DD. Today if neither from nor to is given."),
                           Parameter(name: "to", type: "string", description: "Last date, YYYY-MM-DD."),
                           limit],
              run: { $0.fixtures }),
         Tool(name: "results", title: "Results",
-             description: Toolbox.matchNames + "A club's played matches, newest first, with score, result, aggregate, attendance and "
-                + "goals. With date, one match, with each of the club's players who played: minutes, rating, goals, assists, cards "
+             description: Toolbox.matchNames + "A club's played matches, newest first, with score, result, aggregate (with the teams' "
+                + "names), attendance and goals. With date, one match, with each of the club's players who played: minutes, rating, goals, assists, cards "
                 + "and xG. FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
              parameters: [matchClub,
                           Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),

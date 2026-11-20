@@ -34,6 +34,18 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(later["round"], .null)
     }
 
+    /// A scorer or assister who isn't in the read is named by the side the goal is for, with "a" or "an" as it reads.
+    func testAnUnnamedScorerSaysWhichSide() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        var ours = try XCTUnwrap(matches.teams[World.team])
+        ours.fixtures[0].goals.append(MatchGoal(scorer: 9_998, assist: 9_997, home: false, minute: 70, addedMinute: 0))
+        matches.teams[World.team] = ours
+        let first = try XCTUnwrap(rows(try harness.answer("fixtures", ["from": "2026-09-01"])).first)
+        XCTAssertEqual(first["opponent_scorers"],
+                       .array([.string("70' a \(World.rivals) player FM Starship can't name, assist a \(World.rivals) player FM Starship can't name")]))
+    }
+
     func testPlayedFixturesHaveScoresAndGoals() throws {
         let harness = Harness()
         let fixtures = try harness.answer("fixtures", ["from": "2026-09-01", "to": "2026-09-30"])
@@ -49,10 +61,10 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(list[1]["score"], "1-1", "home team first")
         XCTAssertEqual(list[1]["result"], "D")
         XCTAssertEqual(list[1]["scorers"], ["80' First 9"])
-        XCTAssertEqual(list[1]["opponent_scorers"], ["60' a player not in FM Starship's read"])
+        XCTAssertEqual(list[1]["opponent_scorers"], ["60' an Other Town player FM Starship can't name"])
         XCTAssertEqual(list[2]["score"], "2-4")
         XCTAssertEqual(list[2]["result"], "W")
-        XCTAssertEqual(list[2]["aggregate"], "3-6")
+        XCTAssertEqual(list[2]["aggregate"], .string("\(World.minnows) 3-6 \(World.club)"))
 
         let one = try harness.answer("fixtures", ["from": "2026-09-01", "limit": 1])
         XCTAssertEqual(one["found"], 5)

@@ -193,8 +193,10 @@ extension Toolbox {
             guard !list.isEmpty else { return nil }
             return .array(list.sorted { ($0.minute, $0.addedMinute) < ($1.minute, $1.addedMinute) }.map { goal in
                 var text = goal.addedMinute > 0 ? "\(goal.minute)+\(goal.addedMinute)' " : "\(goal.minute)' "
-                text += playerName(goal.scorer, context)
-                if let assist = goal.assist { text += ", assist " + playerName(assist, context) }
+                // A goal's scorer and assister are on the side it's for.
+                let side = goal.home ? match.homeName : match.awayName
+                text += playerName(goal.scorer, side: side, context)
+                if let assist = goal.assist { text += ", assist " + playerName(assist, side: side, context) }
                 return .string(text)
             })
         }
@@ -216,8 +218,9 @@ extension Toolbox {
                 let (us, them) = home ? (h, a) : (a, h)
                 return .string(us > them ? "W" : us == them ? "D" : "L")
             case "aggregate":
+                // With the teams' names, as "2-4" alone reads as the club's loss when it's away.
                 guard let h = result.homeAggregate, let a = result.awayAggregate else { return nil }
-                return .string("\(h)-\(a)")
+                return .string("\(match.homeName) \(h)-\(a) \(match.awayName)")
             case "attendance": return result.attendance.map { .int($0) }
             case "scorers": return goals(ours: true)
             case "opponent_scorers": return goals(ours: false)
@@ -229,9 +232,11 @@ extension Toolbox {
 
     static func time(_ minutes: Int) -> String { String(format: "%02d:%02d", minutes / 60, minutes % 60) }
 
-    /// A goal's scorer or assister, by the index FM's goal list keeps.
-    private func playerName(_ index: UInt32, _ context: CallContext) -> String {
-        playersByIndex(context.read)[index]?.name ?? "a player not in FM Starship's read"
+    /// A goal's scorer or assister, by the index FM's goal list keeps. One who isn't in the read is named by his side.
+    private func playerName(_ index: UInt32, side: String, _ context: CallContext) -> String {
+        if let name = playersByIndex(context.read)[index]?.name { return name }
+        guard let first = side.first else { return "a player FM Starship can't name" }
+        return ("AEIOUaeiou".contains(first) ? "an " : "a ") + side + " player FM Starship can't name"
     }
 
     /// A date argument, as YYYY-MM-DD.
