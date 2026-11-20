@@ -160,6 +160,8 @@ public struct PlayerMatch: Sendable {
     public var opponentName = ""
     /// The team he was in, by its club's name: empty for a national team.
     public var teamName = ""
+    /// That team's type, as `Names.squadName` names it: 0 the first team, 11 the U19s. Nil where it couldn't be read.
+    public var teamType: Int?
     /// The competition's database index, as `MatchFixture.competitionIndex`.
     public var competitionIndex: UInt32 = 0
     /// The competition's name when it's his team's own league, which names a reserve league's matches that no fixture in
@@ -517,6 +519,7 @@ public final class FixturesReader {
             guard group != 0, let head = game.read(group, count: G.entries) else { continue }
             let team = le64(head, G.team)
             let teamName = name(team)
+            let teamType = game.read(team &+ Int64(MacLayout.Team.type), count: 1)?.first.map(Int.init)
             let league = league(of: team, in: game)
             let count = min(Int(head[G.count]), G.kept)
             var oldest: Date?
@@ -528,6 +531,7 @@ public final class FixturesReader {
                 var match = PlayerMatch(date: date, team: team, opponent: le64(b, E.opponent))
                 match.opponentName = name(match.opponent)
                 match.teamName = teamName
+                match.teamType = teamType
                 match.competitionIndex = le32(b, E.competition)
                 if let league, league.index == match.competitionIndex { match.competitionName = league.name }
                 let stats = le64(b, E.record)

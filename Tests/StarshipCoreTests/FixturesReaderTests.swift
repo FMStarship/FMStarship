@@ -386,6 +386,7 @@ final class FixturesReaderTests: XCTestCase {
 
         // His team's own league names its matches in it, as for a reserve league no fixture in memory names; not the cup.
         XCTAssertEqual(latest.teamName, "Mockport Rovers")
+        XCTAssertEqual(latest.teamType, 0, "a first team")
         XCTAssertEqual(latest.competitionName, "")
         XCTAssertEqual(first.competitionName, "Mock League")
         let lower = try XCTUnwrap(found.matches.last)

@@ -61,6 +61,8 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     var failingScopes: Set<Int> = []
     /// More matches in a player's record, ahead of the league ones, newest first.
     var moreMatches: [UInt32: [PlayerMatch]] = [:]
+    /// For each player, the teams whose list of his matches is full, from the oldest kept.
+    var fullFrom: [UInt32: [Int64: Date]] = [:]
     func form(player: Player) -> String? { "7.1 6.8 7.4" }
     func injuryReturnDays(player: Player) -> Int? { 14 }
     /// FM's getters, caught up to today: the stored values for a player FM brought up to date today, as FM's own give.
@@ -96,7 +98,8 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
         }
         switch uid {
         case 1...11: return MatchHistory(matches: (moreMatches[player.uid] ?? []) + [match(World.secondMatch, opponent: World.otherTeam),
-                                                                                        match(World.firstMatch, opponent: World.rivalsTeam)])
+                                                                                        match(World.firstMatch, opponent: World.rivalsTeam)],
+                                         fullFrom: fullFrom[player.uid] ?? [:])
         case 12: return MatchHistory(matches: [match(World.secondMatch, opponent: World.otherTeam, played: false)])
         case 13: return MatchHistory(fullFrom: [World.team: GameDate.date(year: 2026, dayOfYear: World.firstMatch + 2) ?? Date()])
         default: return MatchHistory()

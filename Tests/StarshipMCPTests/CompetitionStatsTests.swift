@@ -20,9 +20,11 @@ final class CompetitionStatsTests: XCTestCase {
         Dictionary(uniqueKeysWithValues: squad.rowsByName.compactMap { row in row["uid"]?.int.map { ($0, row) } })
     }
 
-    private static func match(_ day: Int, team: String, index: UInt32, name: String = "", opponent: String, goals: Int) -> PlayerMatch {
-        var match = PlayerMatch(date: GameDate.date(year: 2026, dayOfYear: day)!, team: 50, opponent: 60)
+    private static func match(_ day: Int, team: String, index: UInt32, name: String = "", opponent: String, goals: Int,
+                              teamID: Int64 = 50, type: Int? = nil) -> PlayerMatch {
+        var match = PlayerMatch(date: GameDate.date(year: 2026, dayOfYear: day)!, team: teamID, opponent: 60)
         match.teamName = team
+        match.teamType = type
         match.competitionIndex = index
         match.competitionName = name
         match.opponentName = opponent
@@ -38,7 +40,7 @@ final class CompetitionStatsTests: XCTestCase {
         XCTAssertTrue(squad["season_stats"]?.string?.contains("club total") ?? false)
         let first = try XCTUnwrap(Self.rows(squad)[9])
         XCTAssertEqual(first["Goals"], 3, "the club total")
-        XCTAssertEqual(first["League stats"], "6 (1) apps, 630 min, 0 goals, 1 assist, 6.80 rating")
+        XCTAssertEqual(first["League stats"], "Mock League: 6 (1) apps, 630 min, 0 goals, 1 assist, 6.80 rating")
         XCTAssertEqual(first["Cup stats"], "2 (0) apps, 180 min, 3 goals, 0 assists, 8.40 rating")
         XCTAssertEqual(first["Continental stats"], "1 (0) apps, 90 min, 0 goals, 1 assist, 7.00 rating")
 
@@ -60,6 +62,7 @@ final class CompetitionStatsTests: XCTestCase {
         XCTAssertEqual(competitions.compactMap { $0 }, competitions.compactMap { $0 }.sorted())
         let split = try XCTUnwrap(person["Season stats by competition"])
         XCTAssertEqual(Set(Self.keys(split)), ["League", "Cup", "Continental"])
+        XCTAssertEqual(split["League"]?["Competition"], "Mock League")
         XCTAssertEqual(split["League"]?["Goals"], 0)
         XCTAssertEqual(split["League"]?["Starts"], 6)
         XCTAssertEqual(split["League"]?["Sub appearances"], 1)
@@ -78,10 +81,53 @@ final class CompetitionStatsTests: XCTestCase {
         engine.failingScopes = [RulesEngine.cup]
         let first = try XCTUnwrap(Self.rows(try harness.answer("squad"))[9])
         XCTAssertEqual(first["Cup stats"], "not available")
-        XCTAssertEqual(first["League stats"], "6 (1) apps, 630 min, 0 goals, 1 assist, 6.80 rating")
+        XCTAssertEqual(first["League stats"], "Mock League: 6 (1) apps, 630 min, 0 goals, 1 assist, 6.80 rating")
         let split = try XCTUnwrap(try harness.answer("person", ["uid": 9])["Season stats by competition"])
         XCTAssertEqual(split["Cup"], "not available")
         XCTAssertEqual(split["League"]?["Goals"], 0)
+    }
+
+    // MARK: Which league League stats are for
+
+    /// The league named for number 9's League stats, with `matches` ahead of his two league matches.
+    private func leagueName(_ matches: [PlayerMatch], fullFrom: [Int64: Date] = [:], loanedTo: String? = nil) throws -> String? {
+        let harness = Harness()
+        let engine = try XCTUnwrap(harness.source.engine as? FakeEngine)
+        engine.moreMatches[9] = matches
+        engine.fullFrom[9] = fullFrom
+        if let loanedTo { harness.source.database.players.first { $0.uid == 9 }?.loanClubFull = loanedTo }
+        let league = try harness.answer("person", ["uid": 9])["Season stats by competition"]?["League"]
+        return league?["Competition"]?.string
+    }
+
+    private static func reserveMatch(_ day: Int) -> PlayerMatch {
+        match(day, team: World.club, index: 55, name: "Mock Reserve League", opponent: "Reserve Town", goals: 0, type: 16)
+    }
+
+    func testAReserveLeagueIsNamedWithTheFirstTeams() throws {
+        XCTAssertEqual(try leagueName([Self.reserveMatch(269)]), "Mock Reserve League and Mock League")
+    }
+
+    /// FM counts seven league appearances, so his seven newest league matches are this season's, and older ones aren't named.
+    func testOnlyAsManyLeagueMatchesAsFMCountsNameIt() throws {
+        XCTAssertEqual(try leagueName((264...270).reversed().map(Self.reserveMatch)), "Mock Reserve League")
+    }
+
+    /// FM leaves a youth team's league out of a player's season stats.
+    func testAYouthLeagueIsntNamed() throws {
+        let youth = Self.match(269, team: World.club, index: 66, name: "Mock U19 League", opponent: "Youth Town", goals: 0, type: 11)
+        XCTAssertEqual(try leagueName([youth]), "Mock League")
+    }
+
+    /// The reserves' list is full from day 268, so their older matches are gone and may be newer than the first team's.
+    func testAFullListStopsTheCount() throws {
+        let from = try XCTUnwrap(GameDate.date(year: 2026, dayOfYear: 268))
+        XCTAssertEqual(try leagueName([Self.reserveMatch(269)], fullFrom: [50: from]), "Mock Reserve League")
+    }
+
+    func testALoaneesLeagueIsHisLoanClubs() throws {
+        let loan = Self.match(269, team: "Loan Club", index: 77, name: "Mock Lower League", opponent: "Away Town", goals: 0, teamID: 70)
+        XCTAssertEqual(try leagueName([loan], loanedTo: "Loan Club"), "Mock Lower League")
     }
 
     func testLastMatchSaysWhichCompetitionAndOpponent() throws {
@@ -136,7 +182,7 @@ final class CompetitionStatsTests: XCTestCase {
         engine.goalSinceRead = true
         let first = try XCTUnwrap(Self.rows(try harness.answer("squad"))[9])
         XCTAssertEqual(first["Goals"], 4)
-        XCTAssertEqual(first["League stats"], "6 (1) apps, 630 min, 1 goal, 1 assist, 6.80 rating")
+        XCTAssertEqual(first["League stats"], "Mock League: 6 (1) apps, 630 min, 1 goal, 1 assist, 6.80 rating")
         XCTAssertEqual(try harness.answer("person", ["uid": 9])["Season stats"]?["Goals"], 4)
         XCTAssertEqual(harness.source.reads, 1)
     }

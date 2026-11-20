@@ -452,7 +452,9 @@ FM Starship's own parts, and how to check them after a patch:
   keeps, where scope 4 gave 8 and scope 7 gave 4. A stats call that fails shows as "not available", not as no matches. The MCP server asks for each again when it answers, as FM can play a
   match without the date moving. A player's recent matches come from his form record, which only holds a competition's database
   index: `FixturesReader.competitionNames` names every competition with a fixture in memory in one sweep, and a reserve league
-  that has none is named by the team's own league. `fmprobe scopes [CLUB] [detail]` prints scopes 0 to 7 next to each player's
+  that has none is named by the team's own league. `League stats` names the league from the player's newest league matches
+  FM keeps at the club he plays for now, no more of them than scope 1 counts, leaving out youth teams (U23 to U18, whose
+  league was in no scope on Molde's save), and stopping at the oldest match of a team whose list is full. `fmprobe scopes [CLUB] [detail]` prints scopes 0 to 7 next to each player's
   matches this year by competition, so a patch that renumbers them shows.
 - **What a ban is for** is worked out by `PlayerStateReader`, only when the MCP server answers about a player, so the app's and
   the plugin's reads don't pay for it. FM hangs a ban on an association and one of its rule sets, which can cover several
