@@ -101,6 +101,14 @@ extension Toolbox {
             return (object(moved.filter { $0.by > 0 }), object(moved.filter { $0.by < 0 }), moved.reduce(0) { $0 + $1.by })
         }
         func live(_ uid: UInt32) -> Player? { (try? context.person(Int(uid))) as? Player }
+        // By the squad he's in now, as `squad` names them, with "On loan" for those out on loan.
+        let squad = try args.string("squad")
+        func inSquad(_ uid: UInt32) -> Bool {
+            guard let squad else { return true }
+            guard let player = live(uid) else { return false }
+            if squad.caseInsensitiveCompare("On loan") == .orderedSame { return !player.loanClubFull.isEmpty }
+            return player.loanClubFull.isEmpty && player.squad.caseInsensitiveCompare(squad) == .orderedSame
+        }
         func days(_ from: Date, _ to: Date) -> Int { GameDate.calendar.dateComponents([.day], from: from, to: to).day ?? 0 }
 
         var pairs: [(String, JSON)] = [("club", .string(club)), ("about", .string(Self.developmentAbout)), ("recorded", recorded)]
@@ -153,7 +161,7 @@ extension Toolbox {
         if visibility.showsAbility { titles += exact ? ["CA from", "CA to", "CA change", "PA", "PA change"] : ["CA from", "CA to", "PA"] }
         titles += ["Up", "Down"]
         var rows: [(row: JSON, order: Int, then: Int, name: String)] = []
-        for (uid, new) in last.players {
+        for (uid, new) in last.players where inSquad(uid) {
             guard let old = first.players[uid] else { continue }
             let moved = changes(old, new)
             var cells: [JSON] = [.int(Int(uid)), .string(new.name), live(uid).flatMap { $0.age >= 0 ? .int($0.age) : nil } ?? .null]
@@ -179,7 +187,7 @@ extension Toolbox {
             }
             return .object(dropping: fields)
         }
-        let joined: [JSON] = last.players.filter { first.players[$0.key] == nil }.sorted { $0.value.name < $1.value.name }.compactMap { uid, row in
+        let joined: [JSON] = last.players.filter { first.players[$0.key] == nil && inSquad($0.key) }.sorted { $0.value.name < $1.value.name }.compactMap { uid, row in
             window.first { $0.players[uid] != nil }.map { entry(uid, row, "first_recorded", $0.gameDate, now: false) }
         }
         let left: [JSON] = first.players.filter { last.players[$0.key] == nil }.sorted { $0.value.name < $1.value.name }.compactMap { uid, row in
@@ -193,6 +201,7 @@ extension Toolbox {
             ("note", "Up and Down have every attribute that went up or down between from and to, by how much, largest first."),
             ("columns", .array(titles)), ("rows", .array(rows.map(\.row))),
         ]
+        if let squad { pairs.append(("squad", .string("\(squad): players in that squad now. Left is everyone who left, whatever squad."))) }
         if !joined.isEmpty { pairs.append(("joined", .array(joined))) }
         if !left.isEmpty { pairs.append(("left", .array(left))) }
         return .object(pairs)

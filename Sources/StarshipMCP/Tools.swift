@@ -235,6 +235,7 @@ extension Toolbox {
                                         + "with uid, the oldest."),
                           Parameter(name: "until", type: "string",
                                     description: "Compare to the last record on or before this date, YYYY-MM-DD. The newest if left out."),
+                          Parameter(name: "squad", type: "string", description: "Only players in this squad now: \"First team\", \"U19\", \"On loan\", ... as squad names them."),
                           Parameter(name: "uid", type: "integer", description: "One player, at every recorded date from since to until.")],
              run: { $0.development }),
         Tool(name: "recommend_signings", title: "Recommended signings",

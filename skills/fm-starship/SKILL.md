@@ -98,7 +98,7 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   compares the last 90 days up to the newest record, so players long gone don't crowd in; `compared.why` says so, and `since`
   reaches further back. The newest record can be
   older than today: `newest_record` says so, and `person` gives a player as he is now. Attributes move slowly, so compare over
-  weeks or months. Players who joined or left in between are in `joined` and `left`, not in the rows. `CA change` is only there
+  weeks or months. Players who joined or left in between are in `joined` and `left`, not in the rows. `squad` narrows the rows to one squad as it is now ("First team", "U19", "On loan"). `CA change` is only there
   with Ability set to Exact; with Stars you get the stars at each end. If there's no record yet, tell the user it's made by
   reading the save with FM Starship on different game days, and that it can't be made after the fact.
 - **Loan status** is "Listed for loan" or "Not available for loan", which is the club's decision, not an injury.

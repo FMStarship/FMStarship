@@ -20,6 +20,18 @@ final class DevelopmentToolTests: XCTestCase {
 
     private func row(_ answer: JSON, _ uid: Int) -> [String: JSON]? { answer.rowsByName.first { $0["uid"]?.int == uid } }
 
+    /// By the squad each player is in now: the youngster is in the U19s, the others in the first team.
+    func testASquadNarrowsTheRows() throws {
+        let h = try harness()
+        let youth = try h.answer("development", ["squad": "u19"])
+        XCTAssertEqual(youth.rowsByName.compactMap { $0["uid"]?.int }, [12])
+        XCTAssertTrue(youth["squad"]?.string?.hasPrefix("u19: players in that squad now") ?? false)
+        let first = try h.answer("development", ["squad": "First team"])
+        XCTAssertFalse(first.rowsByName.isEmpty)
+        XCTAssertFalse(first.rowsByName.contains { $0["uid"] == 12 })
+        XCTAssertTrue(try h.answer("development", ["squad": "On loan"]).rowsByName.isEmpty, "nobody is out on loan")
+    }
+
     func testTheOldestAndNewestRecordsAreComparedByDefault() throws {
         let answer = try harness().answer("development")
         XCTAssertEqual(answer["club"], "Testing FC")
