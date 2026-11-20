@@ -44,7 +44,9 @@ extension AppModel {
         // Before the model, which reads its starting state from the settings.
         StarshipSearch.Settings.load()
         Units.apply()
-        return AppModel()
+        let model = AppModel()
+        model.developmentStore = DevelopmentStore()
+        return model
     }
 
     /// Inside FM there's no button to press first: the game is right there.

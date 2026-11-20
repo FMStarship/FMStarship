@@ -33,7 +33,7 @@ package enum AppLog {
 package final class TimerCost {
     private var runs = 0
     private var total = 0.0
-    private var worst = 0.0
+    private(set) var worst = 0.0
 
     package init() {}
 

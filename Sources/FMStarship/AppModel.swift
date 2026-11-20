@@ -206,8 +206,13 @@ package final class AppModel: ObservableObject {
     static let settleTime: TimeInterval = 10
     /// Outside FM a look at the date goes through the agent, off the main thread, one at a time.
     private var lookingAtDate = false
-    /// Set when the window is shown, so the next look at the date can start a read.
+    /// Set when the window is shown, so a look at the date can start a read. It stays set while FM hasn't yet stayed on
+    /// its day for `settleTime`, until the window is hidden, the app goes to the back, or a read starts.
     private var readIfMovedOn = false
+    /// Starts a read nobody asked for. A test sets its own, so nothing reaches for FM.
+    var readOnItsOwn: (AppModel) -> Void = { $0.loadSave(automatic: true) }
+    /// Where each read's development snapshot is kept. Only `startUp()` sets it, so a test never writes to the player's.
+    var developmentStore: DevelopmentStore?
     /// A read started on showing the window that finished while the player was in the middle of something, kept until
     /// they're done with it.
     private var heldRead: (data: NewData, engine: RulesEngine?)?
@@ -223,10 +228,7 @@ package final class AppModel: ObservableObject {
         colors = AppColors(themeNamed: Settings.current.theme)
         reloadColumns()
         poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.checkGameCost.measure { self.checkGame() }
-            }
+            Task { @MainActor in self?.pollGame() }
         }
     }
 
@@ -400,6 +402,7 @@ package final class AppModel: ObservableObject {
     func loadSave(automatic: Bool = false) {
         guard !loading else { return }
         loading = true
+        readIfMovedOn = false
         status = "Connecting to Football Manager..."
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
@@ -418,13 +421,13 @@ package final class AppModel: ObservableObject {
         loading = false
         if automatic, playerIsBusy {
             heldRead = (data, engine)
-            status = "Your save has been read again. It shows once you've closed what you have open."
+            status = Self.heldReadNote
             return
         }
         GameRules.engine = engine
         install(data, automatic: automatic)
         let database = data.database, club = session?.club.name ?? ""
-        DispatchQueue.global(qos: .utility).async { DevelopmentStore().save(db: database, club: club) }
+        if let developmentStore { DispatchQueue.global(qos: .utility).async { developmentStore.save(db: database, club: club) } }
         if let engine { loadSeasonStats(database, engine) }
     }
 
@@ -434,19 +437,25 @@ package final class AppModel: ObservableObject {
         if !automatic { alert = message }
     }
 
-    /// Installs the read held for the player, once they're done with what they had open.
+    static let heldReadNote = "Your save has been read again. It shows once you've closed what you have open."
+
+    /// Installs the read held for the player, once they're done with what they had open, and not in the middle of
+    /// another read, which would show the older one and leave the newer reading alongside.
     @discardableResult
     func useHeldRead() -> Bool {
-        guard let heldRead, !playerIsBusy else { return false }
+        guard let heldRead, heldReadReady else { return false }
         finished(heldRead.data, heldRead.engine, automatic: true)
         return true
     }
+
+    private var heldReadReady: Bool { heldRead != nil && !playerIsBusy && !loading }
 
     /// Everything that follows new data, wherever it came from. `automatic` for a read the player didn't ask for.
     func install(_ data: NewData, automatic: Bool = false) {
         let database = data.database
         heldRead = nil
         readOnShowFor = nil
+        readIfMovedOn = false
         quietSelfCheck = nil
         seasonToken?.cancel()
         readingSeasonStats = false
@@ -486,13 +495,21 @@ package final class AppModel: ObservableObject {
         }
     }
 
+    /// Every 2 s. A read held for the player is installed after what's measured: that's a search and more, not the
+    /// poll's own cost, which the plugin logs. `checkGame` has dropped it if FM has closed.
+    func pollGame() {
+        checkGameCost.measure { checkGame() }
+        useHeldRead()
+    }
+
     /// The rules read addresses that only mean something in the game they came from. When that game
     /// closes they go, and what was loaded stays on screen as plain data.
     private func checkGame() {
         gameState = GameLauncher.state
         guard let engine = GameRules.engine as? RulesEngine else { return }
         guard GameProcess.runningPID() != engine.pid else {
-            if !useHeldRead() { followSaveDate(engine, byPoll: true) }
+            // A held read about to be installed: the date is looked at again against it.
+            if !heldReadReady { followSaveDate(engine, byPoll: true) }
             return
         }
         seasonToken?.cancel()
@@ -534,16 +551,21 @@ package final class AppModel: ObservableObject {
         }
     }
 
-    private func dateLooked(_ now: Date?, byPoll: Bool) {
-        saveDateSeen(now, byPoll: byPoll)
+    func dateLooked(_ now: Date?, at time: TimeInterval = ProcessInfo.processInfo.systemUptime, byPoll: Bool) {
+        saveDateSeen(now, at: time, byPoll: byPoll)
         readIfShown()
     }
 
-    /// Starts the read the window's showing asked for, if `takeReadOnShow` agrees.
+    /// Starts the read the window's showing asked for, if `takeReadOnShow` agrees. If all it's waiting for is FM to
+    /// stay on its day, the poll's next looks ask again.
     private func readIfShown() {
         guard readIfMovedOn else { return }
-        readIfMovedOn = false
-        if takeReadOnShow() { loadSave(automatic: true) }
+        if takeReadOnShow() {
+            readIfMovedOn = false
+            readOnItsOwn(self)
+        } else if !readOnShowWanted {
+            readIfMovedOn = false
+        }
     }
 
     /// FM's game date as it is now, nil when it can't be told, as once FM has let go of the save that was read. Only
@@ -562,8 +584,14 @@ package final class AppModel: ObservableObject {
     /// Over a list the game couldn't narrow by who would join.
     var joinWarning: String { SaveProgress.joinWarning(saveMovedOn, canReload: GameRules.engine != nil) }
 
+    /// FM Starship's window has been hidden or closed, or the app has gone to the back: a read it was waiting to start
+    /// for being shown isn't wanted any more.
+    package func windowHidden() {
+        readIfMovedOn = false
+    }
+
     /// FM Starship's window has been shown, or the app has come to the front. If the save has moved on since it was
-    /// read, it's read again, once the date has been looked at.
+    /// read, it's read again, once the date has been looked at and FM has stayed on its day.
     package func windowShown() {
         readIfMovedOn = true
         if let engine = GameRules.engine as? RulesEngine, GameProcess.runningPID() == engine.pid { followSaveDate(engine, byPoll: false) }
@@ -575,8 +603,14 @@ package final class AppModel: ObservableObject {
     /// fails, or a window shown again and again, doesn't start one after another. Not while FM is still pressing on
     /// through days, nor while the player is in the middle of something.
     func takeReadOnShow() -> Bool {
-        guard let saveMovedOn, !loading, daySettled, !playerIsBusy, saveMovedOn != readOnShowFor else { return false }
+        guard readOnShowWanted, daySettled else { return false }
         readOnShowFor = saveMovedOn
+        return true
+    }
+
+    /// Everything a read on showing the window needs but FM staying on its day.
+    private var readOnShowWanted: Bool {
+        guard let saveMovedOn, !loading, !playerIsBusy, saveMovedOn != readOnShowFor else { return false }
         return true
     }
 
@@ -978,7 +1012,14 @@ package final class AppModel: ObservableObject {
         status = "Stopped. The list shows what was found so far."
     }
 
-    private func idleStatus() -> String {
+    /// The list's usual line, after what the player should still see: a read held for them, and self-checks that
+    /// failed on a read nobody asked for.
+    func idleStatus() -> String {
+        let notes = [heldRead == nil ? nil : Self.heldReadNote, quietSelfCheck].compactMap { $0 }
+        return (notes + [listStatus()]).joined(separator: "  ·  ")
+    }
+
+    private func listStatus() -> String {
         if screen == .shortlists, let openShortlist {
             var line = "Shortlist \"\(openShortlist.name)\": \(rowsShown.formatted()) of \(openShortlist.uids.count.formatted()) shown"
             if !openShortlist.isStaff, let club = session?.club.name, !club.isEmpty, let database {
@@ -993,7 +1034,6 @@ package final class AppModel: ObservableObject {
             if readingSeasonStats { line += "  ·  reading season stats..." }
             if !seasonStatsAvailable { line += "  ·  season stats: not available on this version" }
         }
-        if let quietSelfCheck { return quietSelfCheck + "  ·  " + line }
         return line
     }
 

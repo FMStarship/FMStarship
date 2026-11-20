@@ -64,6 +64,12 @@ struct MainWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             if !AppModel.isInsideGame { model.windowShown() }
         }
+        // The app, or FM with this window, going to the back, or the window closing: a read it was waiting to start for
+        // being shown isn't wanted any more.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            model.windowHidden()
+        }
+        .onDisappear { model.windowHidden() }
     }
 
     @ViewBuilder

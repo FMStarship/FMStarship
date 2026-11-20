@@ -25,13 +25,17 @@ final class SaveProgressTests: XCTestCase {
         GameDate.calendar.date(from: DateComponents(year: year, month: month, day: day))!
     }
 
-    /// A model with a save read on `readOn`, as Load Save leaves it. Settings aren't loaded in tests, so nothing is written.
+    /// A model with a save read on `readOn`, as Load Save leaves it. Settings aren't loaded in tests, so nothing is written,
+    /// and a read it starts on its own is only counted, so nothing reaches for FM.
     private func model(readOn: Date?) -> AppModel {
         let model = AppModel()
         model.sheetShown = { false }
+        model.readOnItsOwn = { [weak self] _ in self?.readsStarted += 1 }
         model.database = database(readOn: readOn)
         return model
     }
+
+    private var readsStarted = 0
 
     private func database(readOn: Date?) -> Database {
         let database = Database()
@@ -232,6 +236,121 @@ final class SaveProgressTests: XCTestCase {
         model.loading = true
         model.failed("Football Manager isn't running.")
         XCTAssertEqual(model.alert, "Football Manager isn't running.", "Load Save pressed: the alert as before")
+    }
+
+    func testAWindowShownBeforeTheDayHasHeldReadsOnceItHas() {
+        let model = model(readOn: day(2029, 9, 12))
+        model.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
+        model.windowShown()
+        XCTAssertEqual(readsStarted, 0, "FM has only just stopped on the 22nd")
+        model.dateLooked(day(2029, 9, 22), at: 2, byPoll: true)
+        XCTAssertEqual(readsStarted, 0, "2 s on the same day")
+        model.dateLooked(day(2029, 9, 22), at: 10, byPoll: true)
+        XCTAssertEqual(readsStarted, 1, "The window's showing still asks: FM has held the day for 10 s")
+        model.dateLooked(day(2029, 9, 22), at: 12, byPoll: true)
+        XCTAssertEqual(readsStarted, 1, "One read, not one on every look")
+
+        // FM pressing on again while the window waits: the wait starts over on the new day.
+        let pressing = self.model(readOn: day(2029, 9, 12))
+        readsStarted = 0
+        pressing.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
+        pressing.windowShown()
+        pressing.dateLooked(day(2029, 9, 23), at: 4, byPoll: true)
+        pressing.dateLooked(day(2029, 9, 23), at: 12, byPoll: true)
+        XCTAssertEqual(readsStarted, 0, "8 s on the 23rd")
+        pressing.dateLooked(day(2029, 9, 23), at: 14, byPoll: true)
+        XCTAssertEqual(readsStarted, 1)
+    }
+
+    func testAWindowWaitingForTheDayStopsWaitingWhenItsNotWanted() {
+        // Hidden, or the app gone to the back.
+        let hidden = model(readOn: day(2029, 9, 12))
+        hidden.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
+        hidden.windowShown()
+        hidden.windowHidden()
+        hidden.dateLooked(day(2029, 9, 22), at: 10, byPoll: true)
+        XCTAssertEqual(readsStarted, 0, "The window was hidden before the day had held")
+        hidden.windowShown()
+        XCTAssertEqual(readsStarted, 1, "Shown again once it has")
+
+        // A read installed meanwhile: Load Save, or a snapshot opened.
+        let installed = model(readOn: day(2029, 9, 12))
+        readsStarted = 0
+        installed.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
+        installed.windowShown()
+        installed.install(NewData(database(readOn: day(2029, 9, 15))))
+        installed.dateLooked(day(2029, 9, 22), at: 2, byPoll: true)
+        installed.dateLooked(day(2029, 9, 22), at: 12, byPoll: true)
+        XCTAssertEqual(readsStarted, 0, "What the window was shown for has been answered")
+
+        // A read going on when the day has held, or the player busy then.
+        for busy in [\AppModel.loading, \.editingFilter] {
+            let model = model(readOn: day(2029, 9, 12))
+            readsStarted = 0
+            model.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
+            model.windowShown()
+            model[keyPath: busy] = true
+            model.dateLooked(day(2029, 9, 22), at: 10, byPoll: true)
+            model[keyPath: busy] = false
+            model.dateLooked(day(2029, 9, 22), at: 12, byPoll: true)
+            XCTAssertEqual(readsStarted, 0, "As before: only waiting for the day keeps it waiting")
+        }
+    }
+
+    func testAHeldReadWaitsForAnotherReadToFinish() {
+        let model = model(readOn: day(2029, 9, 12))
+        let old = model.database
+        model.editingFilter = true
+        let held = database(readOn: day(2029, 9, 22))
+        model.finished(NewData(held), nil, automatic: true)
+        model.editingFilter = false
+        model.loading = true  // Load Save pressed meanwhile
+        XCTAssertFalse(model.useHeldRead())
+        model.pollGame()
+        XCTAssertTrue(model.loading, "The other read's progress stays up")
+        XCTAssertTrue(model.database === old, "And the older read isn't put in under it")
+        model.loading = false
+        model.pollGame()
+        XCTAssertTrue(model.database === held)
+    }
+
+    func testTheHeldReadAndQuietSelfChecksStayOnTheStatusLine() {
+        let model = model(readOn: day(2029, 9, 12))
+        model.go(to: .shortlists)
+        let targets = OpenShortlist(url: URL(fileURLWithPath: "/nowhere/Targets.fmf"), name: "Targets", isStaff: false, uids: [1])
+        model.showShortlist(targets)
+        model.finished(NewData(database(readOn: day(2029, 9, 22))), nil, automatic: true)
+        XCTAssertEqual(model.status, AppModel.heldReadNote)
+        XCTAssertTrue(model.idleStatus().hasPrefix(AppModel.heldReadNote), "Not overwritten by the shortlist's line")
+        model.go(to: .players)
+        XCTAssertTrue(model.idleStatus().hasPrefix(AppModel.heldReadNote), "Nor by the list's")
+        model.useHeldRead()
+        XCTAssertFalse(model.idleStatus().contains(AppModel.heldReadNote), "Gone once it's shown")
+
+        let failing = database(readOn: day(2029, 9, 23))
+        failing.checks = "FAIL: ages"
+        model.finished(NewData(failing), nil, automatic: true)
+        model.go(to: .shortlists)
+        model.showShortlist(targets)
+        XCTAssertTrue(model.idleStatus().hasPrefix("FM Starship's self-checks failed on this save (ages)"), model.idleStatus())
+        XCTAssertTrue(model.idleStatus().contains("Shortlist \"Targets\""))
+    }
+
+    func testThePollsCostLeavesOutInstallingAHeldRead() {
+        let model = model(readOn: day(2029, 9, 12))
+        model.editingFilter = true
+        let held = database(readOn: day(2029, 9, 22))
+        model.finished(NewData(held), nil, automatic: true)
+        model.editingFilter = false
+        // Installing it is slow here, as a search on a full save is.
+        model.sheetShown = { Thread.sleep(forTimeInterval: 0.05); return false }
+        model.pollGame()
+        XCTAssertTrue(model.database === held)
+        XCTAssertLessThan(model.checkGameCost.worst, 0.05, "The plugin logs the poll's cost, not the install's")
+    }
+
+    func testOnlyTheAppAndThePluginKeepDevelopmentSnapshots() {
+        XCTAssertNil(AppModel().developmentStore, "A model a test makes never writes to the player's Application Support")
     }
 
     func testTheWarningSaysNobodyIsKnownToWantToCome() {
