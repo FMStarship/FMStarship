@@ -165,7 +165,7 @@ final class AttributeRulesTests: XCTestCase {
             }
 
             var staff = StaffFilter(showHidden: true, showAbility: true)
-            staff.setRule(index, rule(Names.personality[0], "15"))
+            staff.setRule(index, rule(Names.personality[1], "15"))
             staff.showHidden = false
             XCTAssertEqual(staff.rule(at: index).attribute, AttrRule.noAttribute, "Staff row \(index)")
         }
