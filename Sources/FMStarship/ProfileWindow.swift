@@ -45,7 +45,9 @@ final class ProfileFacts: ObservableObject {
     @Published var staffInterest: String?
     @Published var preferredJob: String?
 
-    private nonisolated static let scopes = [(1, "League"), (3, "Cup"), (2, "Continental"), (4, "International"), (0, "Friendlies"), (GameScope.clubTotal, "Club total")]
+    /// FM's stats scopes: 2 is the domestic cup and 3 the continental competitions, as a player with six Champions League
+    /// matches and no cup matches shows in FM.
+    nonisolated static let scopes = [(1, "League"), (2, "Cup"), (3, "Continental"), (4, "International"), (0, "Friendlies"), (GameScope.clubTotal, "Club total")]
 
     func load(_ person: Person, session: AnalysisSession?) async {
         guard let session else { return }
