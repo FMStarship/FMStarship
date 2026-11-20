@@ -76,7 +76,9 @@ extension Toolbox {
         guard people.allSatisfy({ $0 is Player }) || people.allSatisfy({ $0 is Staff }) else {
             throw ToolError("compare takes players or staff, not both.")
         }
-        let club = try? context.ownClub(try args.string("club"))
+        // A club that's named must be one; with none named, the user's, if the save has one.
+        let named = try args.string("club")
+        let club = try named.map { try context.ownClub($0) } ?? (try? context.ownClub(nil))
         let report = CompareReport(people: people, session: context.session(for: club ?? ChosenClub()))
         let rows: [JSON] = report.rows().map { row in
             .array([.string(row.label)] + row.cells.map { Output.text($0) ?? .null })

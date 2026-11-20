@@ -52,7 +52,11 @@ public final class LiveGame: GameSource {
     private var game: GameProcess?
     /// The human clubs' names where the read found them, as the plugin tells another save from the one it read.
     private var clubsAtRead: [String] = []
+    private var readAt = Date.distantPast
     private var reads = 0
+
+    /// How long a read that found no game date stands, since the date can't say whether the save has moved on.
+    static let undatedLimit: TimeInterval = 300
 
     public init() {}
 
@@ -68,9 +72,10 @@ public final class LiveGame: GameSource {
             throw GameProblem.failed("\(error)")
         }
         do {
-            let (database, engine) = try GameReader.connect(to: process, status: { _ in }, log: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) })
+            let (database, engine) = try GameReader.connect(to: process, status: { _ in }, log: { try? FileHandle.standardError.write(contentsOf: Data(($0 + "\n").utf8)) })
             game = process
             clubsAtRead = clubs(database, in: process)
+            readAt = Date()
             reads += 1
             return GameRead(database: database, engine: engine, number: reads)
         } catch ReadError.noPlayers {
@@ -83,7 +88,16 @@ public final class LiveGame: GameSource {
     public func isCurrent(_ read: GameRead) -> Bool {
         guard let game, GameProcess.runningPID() == game.pid else { return false }
         let database = read.database
-        return GameReader.gameDate(of: database, in: game) == database.gameDate && clubs(database, in: game) == clubsAtRead
+        return Self.stillCurrent(dateNow: GameReader.gameDate(of: database, in: game), dateAtRead: database.gameDate,
+                                 clubsNow: clubs(database, in: game), clubsAtRead: clubsAtRead, age: Date().timeIntervalSince(readAt))
+    }
+
+    /// Whether a read is still the save FM has loaded: the same clubs where they were, and the same date. A read that found
+    /// no date can't tell a day going by, so it stands for `undatedLimit` only.
+    static func stillCurrent(dateNow: Date?, dateAtRead: Date?, clubsNow: [String], clubsAtRead: [String], age: TimeInterval) -> Bool {
+        guard clubsNow == clubsAtRead else { return false }
+        guard let dateAtRead else { return age < undatedLimit }
+        return dateNow == dateAtRead
     }
 
     private func clubs(_ database: Database, in game: GameProcess) -> [String] {
@@ -129,9 +143,20 @@ final class GameConnection {
         found.withUnsafeMutableBufferPointer { results in
             forms.withUnsafeMutableBufferPointer { formResults in
                 let results = results, formResults = formResults
-                DispatchQueue.concurrentPerform(iterations: players.count) { index in
-                    results[index] = engine.seasonStats(player: players[index], season: RulesEngine.clubTotal)
-                    if (results[index]?.apps ?? 0) > 0 { formResults[index] = engine.form(player: players[index]) ?? "" }
+                // Half the cores, as the app does, so FM, which runs on the same Mac, keeps the rest.
+                let workers = max(1, min(players.count, ProcessInfo.processInfo.activeProcessorCount / 2))
+                let lock = NSLock()
+                var next = 0
+                DispatchQueue.concurrentPerform(iterations: workers) { _ in
+                    while true {
+                        let index: Int = lock.withLock {
+                            defer { next += 1 }
+                            return next
+                        }
+                        guard index < players.count else { return }
+                        results[index] = engine.seasonStats(player: players[index], season: RulesEngine.clubTotal)
+                        if (results[index]?.apps ?? 0) > 0 { formResults[index] = engine.form(player: players[index]) ?? "" }
+                    }
                 }
             }
         }

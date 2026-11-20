@@ -19,7 +19,7 @@ final class HiddenOffTests: XCTestCase {
         ("search_players", [:]), ("search_players", ["club": "Testing", "sort": "Age"]), ("search_players", ["clause_max": 5_000_000]),
         ("search_staff", [:]), ("search_staff", ["rank_by": "Fitness"]),
         ("shortlists", [:]), ("shortlist", ["name": "Targets"]), ("shortlist", ["name": "Coaches"]),
-        ("club_overview", [:]), ("staff_overview", [:]), ("compare", ["uids": [1, 12, 21]]), ("compare", ["uids": [500, 502]]),
+        ("club_overview", [:]), ("squad_overview", [:]), ("staff_overview", [:]), ("compare", ["uids": [1, 12, 21]]), ("compare", ["uids": [500, 502]]),
         ("recommend_signings", ["upgrades_only": false]), ("recommend_signings", ["mode": "young", "upgrades_only": false]),
         ("recommend_signings", ["mode": "budget", "upgrades_only": false]),
         ("find_bargains", ["kind": "contracts_ending", "only_join": false]), ("find_bargains", ["kind": "free_agents"]),

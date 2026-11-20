@@ -1,4 +1,5 @@
 import Foundation
+import StarshipAnalysis
 import StarshipCore
 import StarshipFiles
 @testable import StarshipMCP
@@ -6,7 +7,15 @@ import StarshipSearch
 import XCTest
 
 /// FM's rules as a test wants them: everyone answers, and nothing runs FM's code.
-final class FakeEngine: GameRulesEngine {
+final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
+    /// Three stars in every role, in and out of possession, wherever they play.
+    func roleRows(player: Player, position: Int, team: Int64) -> [RoleRow]? {
+        (0..<64).flatMap { role in
+            [RoleRow(role: Names.rolesIp[role] ?? "Role \(role)", outOfPossession: false, minHalfStars: 6, maxHalfStars: 6, rating: 50),
+             RoleRow(role: Names.rolesOop[role] ?? "Role \(role)", outOfPossession: true, minHalfStars: 6, maxHalfStars: 6, rating: 50)]
+        }
+    }
+
     var supportsInjuryDays: Bool { true }
     func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? { (.interested, .doubtful) }
     func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? { level == 1 }
@@ -145,8 +154,20 @@ enum World {
         db.checks = "PASS"
         db.humanClubs = [(team: 1, name: World.club, manager: 500)]
         db.budgets = [1: (transfer: 5_000_000, wageRoom: 20_000)]
+        db.tactics = [1: tactic(players)]
         db.prepare()
         return db
+    }
+
+    /// A 4-4-2 with the first eleven in it.
+    static func tactic(_ players: [Player]) -> Tactic {
+        let places: [(String, TacticSlot.Side)] = [("GK", .centre), ("DR", .right), ("DC", .right), ("DC", .left), ("DL", .left),
+                                                   ("MR", .right), ("MC", .right), ("MC", .left), ("ML", .left), ("ST", .right), ("ST", .left)]
+        return Tactic(slots: places.enumerated().map { index, place in
+            let position = Names.positions.firstIndex(of: place.0)!
+            return TacticSlot(player: players.first { $0.uid == UInt32(index + 1) }, position: position, positionWithoutBall: position,
+                              side: place.1, sideWithoutBall: place.1, role: 0, roleWithoutBall: 0)
+        })
     }
 
     static func settings(hidden: Bool, reveal: Reveal = .exact) -> Settings {

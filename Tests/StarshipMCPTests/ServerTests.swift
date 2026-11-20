@@ -49,6 +49,17 @@ final class ServerTests: XCTestCase {
         XCTAssertTrue(result["supportedVersions"]?.array?.contains("2025-11-25") ?? false)
         XCTAssertNotNil(result["capabilities"]?["tools"])
         XCTAssertEqual(result["_meta"]?["io.modelcontextprotocol/serverInfo"]?["name"]?.string, "fmstarship-mcp")
+        // The 2026-07-28 schema requires both: the answers are this user's, so they're private and not kept.
+        XCTAssertEqual(result["ttlMs"], 0)
+        XCTAssertEqual(result["cacheScope"], "private")
+
+        let list = try send(["jsonrpc": "2.0", "id": "l-1", "method": "tools/list", "params": ["_meta": modern]])
+        XCTAssertEqual(list["result"]?["ttlMs"], 0)
+        XCTAssertEqual(list["result"]?["cacheScope"], "private")
+        let ping = try send(["jsonrpc": "2.0", "id": "p-1", "method": "ping", "params": ["_meta": modern]])
+        XCTAssertNil(ping["result"]?["ttlMs"], "only discover and the tool list are cacheable results")
+        // The older era has no such fields.
+        XCTAssertNil(try send(["jsonrpc": "2.0", "id": 2, "method": "tools/list"])["result"]?["cacheScope"])
     }
 
     func testAModernRequestNeedsAKnownVersionAndTheClientsCapabilities() throws {
@@ -65,6 +76,11 @@ final class ServerTests: XCTestCase {
 
         let discover = try send(["jsonrpc": "2.0", "id": 4, "method": "server/discover"])
         XCTAssertEqual(discover["error"]?["code"]?.int, -32602)
+
+        let number = try send(["jsonrpc": "2.0", "id": 5, "method": "tools/list",
+                               "params": ["_meta": ["io.modelcontextprotocol/protocolVersion": 7,
+                                                    "io.modelcontextprotocol/clientCapabilities": [:]]]])
+        XCTAssertEqual(number["error"]?["code"]?.int, -32602, "a version that isn't text is a bad parameter")
     }
 
     func testToolsListAndCallInBothEras() throws {
@@ -94,6 +110,9 @@ final class ServerTests: XCTestCase {
         XCTAssertEqual(garbled["error"]?["code"]?.int, -32700)
         XCTAssertEqual(garbled["id"], .null)
         XCTAssertEqual(try send(["jsonrpc": "2.0", "id": 11])["error"]?["code"]?.int, -32600)
+        let batch = try send([["jsonrpc": "2.0", "id": 12, "method": "ping"], ["jsonrpc": "2.0", "id": 13, "method": "ping"]])
+        XCTAssertEqual(batch["error"]?["code"]?.int, -32600)
+        XCTAssertEqual(batch["id"], .null)
     }
 
     func testJSONKeepsOrderAndWholeNumbersAndEscapesWhatWouldBreakALine() throws {
