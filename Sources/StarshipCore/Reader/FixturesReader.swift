@@ -313,11 +313,11 @@ public final class FixturesReader {
         if name != 0 {
             if fixtureNames[name] == nil {
                 typealias N = MacLayout.FixtureName
-                let comp = game.readPointer(name + N.comp)
-                let stage = game.readPointer(name + N.stage)
-                fixtureNames[name] = (comp == 0 ? "" : game.lengthPrefixedString(game.readPointer(comp + Int64(MacLayout.competitionName))),
+                let comp = game.readPointer(name &+ N.comp)
+                let stage = game.readPointer(name &+ N.stage)
+                fixtureNames[name] = (comp == 0 ? "" : game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName))),
                                       comp == 0 ? 0 : compIndex(comp),
-                                      stage == 0 ? "" : game.lengthPrefixedString(game.readPointer(stage + N.stageText)))
+                                      stage == 0 ? "" : game.lengthPrefixedString(game.readPointer(stage &+ N.stageText)))
             }
             if let named = fixtureNames[name] {
                 fixture.competition = named.competition
@@ -344,8 +344,8 @@ public final class FixturesReader {
     private func goals(_ vector: Int64, home: Int, away: Int) -> [MatchGoal] {
         typealias G = MacLayout.Goal
         guard vector != 0, home + away > 0 else { return [] }
-        let begin = game.readPointer(vector), end = game.readPointer(vector + 8)
-        guard begin != 0, end > begin, (end - begin) % Int64(G.size) == 0, end - begin <= 64 * Int64(G.size),
+        let begin = game.readPointer(vector), end = game.readPointer(vector &+ 8)
+        guard begin > 0, end > begin, (end - begin) % Int64(G.size) == 0, end - begin <= 64 * Int64(G.size),
               let e = game.read(begin, count: Int(end - begin)) else { return [] }
         var goals: [MatchGoal] = []
         for k in stride(from: 0, to: e.count, by: G.size) where G.countedKinds.contains(e[k + G.kind]) {
@@ -358,13 +358,13 @@ public final class FixturesReader {
     }
 
     private func compIndex(_ comp: Int64) -> UInt32 {
-        guard let b = game.read(comp + MacLayout.Comp.index, count: 4) else { return 0 }
+        guard let b = game.read(comp &+ MacLayout.Comp.index, count: 4) else { return 0 }
         return le32(b, 0)
     }
 
     /// The database index of the team's league.
     private func leagueIndex(team: Int64) -> UInt32? {
-        let comp = game.readPointer(team + Int64(MacLayout.Team.competition))
+        let comp = game.readPointer(team &+ Int64(MacLayout.Team.competition))
         return comp == 0 ? nil : compIndex(comp)
     }
 
@@ -372,19 +372,19 @@ public final class FixturesReader {
     /// Nil for a competition with no league stage.
     public func leagueTable(team: Int64) -> LeagueTable? {
         guard leagueStageVt != 0 else { return nil }
-        let comp = game.readPointer(team + Int64(MacLayout.Team.competition))
+        let comp = game.readPointer(team &+ Int64(MacLayout.Team.competition))
         guard comp != 0 else { return nil }
-        let actual = game.readPointer(comp + MacLayout.Comp.actual)
+        let actual = game.readPointer(comp &+ MacLayout.Comp.actual)
         guard actual != 0 else { return nil }
-        let stages = actual + MacLayout.ActualComp.stages
-        let begin = game.readPointer(stages), end = game.readPointer(stages + 8)
-        guard begin != 0, end > begin, end - begin <= 0x100 else { return nil }
+        let stages = actual &+ MacLayout.ActualComp.stages
+        let begin = game.readPointer(stages), end = game.readPointer(stages &+ 8)
+        guard begin > 0, end > begin, end - begin <= 0x100 else { return nil }
         // A competition can have more than one league stage, such as two groups: the table is the one the team is in.
         for slot in stride(from: begin, to: end, by: 8) {
             let stage = game.readPointer(slot)
             guard stage != 0, game.readPointer(stage) == leagueStageVt, let rows = tableRows(stage),
                   rows.contains(where: { $0.team == team }) else { continue }
-            return LeagueTable(competition: game.lengthPrefixedString(game.readPointer(comp + Int64(MacLayout.competitionName))),
+            return LeagueTable(competition: game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName))),
                                competitionIndex: compIndex(comp), rows: rows)
         }
         return nil
@@ -392,9 +392,9 @@ public final class FixturesReader {
 
     /// A league stage's rows, in FM's order.
     private func tableRows(_ stage: Int64) -> [LeagueTableRow]? {
-        let rowList = stage + MacLayout.LeagueStage.rows
-        let first = game.readPointer(rowList), last = game.readPointer(rowList + 8)
-        guard first != 0, last > first, last - first <= 0x200 else { return nil }
+        let rowList = stage &+ MacLayout.LeagueStage.rows
+        let first = game.readPointer(rowList), last = game.readPointer(rowList &+ 8)
+        guard first > 0, last > first, last - first <= 0x200 else { return nil }
         typealias T = MacLayout.TableRow
         var rows: [LeagueTableRow] = []
         for slot in stride(from: first, to: last, by: 8) {
@@ -455,20 +455,20 @@ public final class FixturesReader {
         typealias E = MacLayout.FormEntry
         typealias M = MacLayout.MatchRecord
         var history = MatchHistory()
-        let record = game.readPointer(block + Int64(MacLayout.Player.injuries))
+        let record = game.readPointer(block &+ Int64(MacLayout.Player.injuries))
         guard record != 0 else { return history }
-        let list = game.readPointer(record + Int64(MacLayout.History.matches))
+        let list = game.readPointer(record &+ Int64(MacLayout.History.matches))
         guard list != 0 else { return history }
-        let begin = game.readPointer(list), end = game.readPointer(list + 8)
-        guard begin != 0, end >= begin else { return history }
-        for slot in stride(from: begin, to: min(end, begin + 0x200), by: 8) {
+        let begin = game.readPointer(list), end = game.readPointer(list &+ 8)
+        guard begin > 0, end >= begin else { return history }
+        for slot in stride(from: begin, to: min(end, begin &+ 0x200), by: 8) {
             let group = game.readPointer(slot)
             guard group != 0, let head = game.read(group, count: G.entries) else { continue }
             let team = le64(head, G.team)
             let count = min(Int(head[G.count]), G.kept)
             var oldest: Date?
             for i in 0..<count {
-                let entry = game.readPointer(group + Int64(G.entries + 8 * i))
+                let entry = game.readPointer(group &+ Int64(G.entries + 8 * i))
                 guard entry != 0, let b = game.read(entry, count: E.size),
                       let date = GameDate.checked(year: le16(b, E.year), dayOfYear: le16(b, E.day) & 0x1ff) else { continue }
                 oldest = min(oldest ?? date, date)
