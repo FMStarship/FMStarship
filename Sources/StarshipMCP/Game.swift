@@ -9,11 +9,37 @@ public struct GameRead {
     public let engine: GameRulesEngine?
     /// Tells this read from the next, which may have the same date.
     public let number: Int
+    /// Fixtures, results and league tables, read when a tool asks for them. Nil where they can't be read.
+    public let matches: MatchSource?
 
-    public init(database: Database, engine: GameRulesEngine?, number: Int = 0) {
+    public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
+        self.matches = matches
+    }
+}
+
+/// A team's fixtures, results and league table, swept for when a tool asks: a couple of seconds for one team, so not
+/// with the save.
+public protocol MatchSource: AnyObject {
+    /// Nil when this build of FM doesn't have the classes they're found by.
+    func matches(team: Int64) -> TeamMatches?
+}
+
+/// The running game's, through `FixturesReader`, which is set up on the first question about a match.
+final class LiveMatches: MatchSource {
+    private let game: GameProcess
+    private var reader: FixturesReader??
+
+    init(game: GameProcess) {
+        self.game = game
+    }
+
+    func matches(team: Int64) -> TeamMatches? {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        guard let found = reader ?? nil else { return nil }
+        return found.teamMatches(team: team)
     }
 }
 
@@ -77,7 +103,7 @@ public final class LiveGame: GameSource {
             clubsAtRead = clubs(database, in: process)
             readAt = Date()
             reads += 1
-            return GameRead(database: database, engine: engine, number: reads)
+            return GameRead(database: database, engine: engine, number: reads, matches: LiveMatches(game: process))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {

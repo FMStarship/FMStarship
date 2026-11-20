@@ -25,6 +25,8 @@ final class HiddenOffTests: XCTestCase {
         ("find_bargains", ["kind": "contracts_ending", "only_join": false]), ("find_bargains", ["kind": "free_agents"]),
         ("find_bargains", ["kind": "release_clauses", "only_join": false]), ("find_bargains", ["kind": "transfer_listed"]),
         ("find_bargains", ["kind": "wonderkids", "only_join": false]),
+        ("fixtures", [:]), ("fixtures", ["from": "2026-09-01"]), ("fixtures", ["club": "Rivals FC", "from": "2026-09-01"]),
+        ("results", [:]), ("results", ["date": "2026-09-20"]), ("results", ["date": "2026-09-13"]), ("league_table", [:]),
     ]
 
     private static let abilityNames = ["CA", "PA", "Growth room", "Current ability", "Potential ability", "Likely peak",

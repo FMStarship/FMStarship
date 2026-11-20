@@ -42,7 +42,7 @@ final class BadMemoryTests: XCTestCase {
         list.set("begin", 0, Int64.min + 8)
         list.set("end", 8, Int64.max - 8)
         var player = FakeGame.PlayerValues()
-        player.injuries = list.address
+        player.history = list.address
         player.person.contract?.clausesAt = (Int64.min + 8, Int64.max - 8)
         game.player(player)
 

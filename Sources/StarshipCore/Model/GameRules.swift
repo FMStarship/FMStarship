@@ -68,6 +68,12 @@ public protocol GameRulesEngine: AnyObject {
     func seasonStats(player: Player, season: Int) -> SeasonStats?
     func form(player: Player) -> String?
     func injuryReturnDays(player: Player) -> Int?
+    /// The player's recent matches, from the same record as `form`.
+    func matchHistory(player: Player) -> MatchHistory?
+}
+
+extension GameRulesEngine {
+    public func matchHistory(player: Player) -> MatchHistory? { nil }
 }
 
 public enum GameRules {

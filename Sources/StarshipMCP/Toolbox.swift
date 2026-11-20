@@ -135,6 +135,10 @@ public final class Toolbox: ToolProvider {
     private var cachedSession: AnalysisSession?
     private var peopleRead: Int?
     private var peopleByUID: [UInt32: Person] = [:]
+    private var indexRead: Int?
+    private var peopleByIndex: [UInt32: Player] = [:]
+    private var matchesRead: Int?
+    private var matchesByTeam: [Int64: TeamMatches?] = [:]
 
     /// `settings` gives the settings as they are now: the live server reads FM Starship's settings file each call.
     public init(source: GameSource, settings: @escaping () -> Settings, shortlistRoots: @escaping () -> [URL]) {
@@ -196,6 +200,29 @@ public final class Toolbox: ToolProvider {
         return peopleByUID
     }
 
+    /// Players by the index FM's goal lists name them by.
+    func playersByIndex(_ read: GameRead) -> [UInt32: Player] {
+        if indexRead != read.number || peopleByIndex.isEmpty {
+            var all: [UInt32: Player] = [:]
+            for player in read.database.players { all[player.index] = player }
+            peopleByIndex = all
+            indexRead = read.number
+        }
+        return peopleByIndex
+    }
+
+    /// A team's matches, swept for once for each read of the save.
+    func cachedMatches(_ read: GameRead, team: Int64, source: MatchSource) -> TeamMatches? {
+        if matchesRead != read.number {
+            matchesByTeam = [:]
+            matchesRead = read.number
+        }
+        if let known = matchesByTeam[team] { return known }
+        let found = source.matches(team: team)
+        matchesByTeam[team] = .some(found)
+        return found
+    }
+
     // MARK: Game status
 
     private func status(refresh: Bool, _ visibility: Visibility) -> JSON {
@@ -236,12 +263,14 @@ public final class Toolbox: ToolProvider {
             ? "off: FM Starship hasn't been checked on this build of FM, so season stats, form, who'd join, role stars and injury days are switched off rather than guessed"
             : "on"
         let age = connection.readAt.map { Int(Date().timeIntervalSince($0).rounded()) }
+        let next = context.humanClubs.first.flatMap { nextFixture(read, club: $0, today: db.gameDate) }
         return .object(dropping: [
             ("fm", "running with FM Starship"),
             ("build", Output.text(db.build)),
             ("game_date", db.gameDate.map { .string(Output.iso($0)) }),
             ("clubs", .array(clubs)),
             ("club_used", context.humanClubs.first.map { .string($0.name) }),
+            (next?.0 ?? "next_fixture", next?.1),
             ("players", .int(db.players.count)),
             ("staff", .int(db.staff.count)),
             ("read_seconds_ago", age.map { .int($0) }),

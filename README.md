@@ -135,7 +135,8 @@ launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes th
 FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI agent you
 use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
-shortlists, and FM Starship's club, squad and staff overviews, recommended signings and bargains.
+shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match,
+and FM Starship's club, squad and staff overviews, recommended signings and bargains.
 
 - **It only reads.** It has no way to change anything in FM or your save, and it writes no files.
 - **It stays on your Mac.** Your agent's app starts it and talks to it through stdin and stdout. It opens no network connection and
@@ -186,8 +187,10 @@ claude mcp add --scope user fmstarship -- "/Applications/FM Starship.app/Content
 For the skill: `cp -R "/Applications/FM Starship.app/Contents/Resources/skills/fm-starship" ~/.claude/skills/`
 
 The first question after FM starts takes about 5 seconds on a big save, while the save is read, and so does the first question
-after the game date moves on, when it's read again. Other answers are instant. It doesn't know fixtures, results, the league
-table, team stats, condition, morale, suspensions or registration status yet.
+after the game date moves on, when it's read again. The first question about a club's matches takes a couple of seconds more.
+Other answers are instant. Fixtures and results are only given once a club's league results add up to its row in the league
+table, and FM keeps each player's last 20 matches for a team, so an older match can miss players. It doesn't know a match's team
+stats, such as shots, possession or team xG, or condition, morale, suspensions or registration status yet.
 
 ## Updates
 
@@ -410,6 +413,13 @@ FM Starship's own parts, and how to check them after a patch:
   When the rules are off, `TacticLibrary` falls back on the presets in the player's own install, whose file names carry the names
   (`4--4-2-3-1 DM AM Wide _ 4-4-2 2DM - gegenpress.tac`), and a shape no preset uses gets a plain count of its lines: `4-1-1-4-0`.
   The routine reads a language file from disk for an Asymmetric name, which the sandbox can't do, so lopsided shapes are counted too.
+- **Fixtures, results and league tables** are read by `FixturesReader`, on the first question about a club, not with the save.
+  It sweeps memory for the `sicomps::FIXTURE` and `FIXTURE_RESULT` objects naming the club's team, and reads the league's table
+  through `TEAM → COMP → sicomps::ACTUAL_COMP → LEAGUE_STAGE`, with offsets in `MacLayout`. Its self-check is the table: the
+  club's league results this season must add up to its row, or fixtures, results and the table switch off. A player's matches
+  come from the same record as his form. `tools/match_builds.py` lists these classes among the reader's. To find them again,
+  `fmprobe humanteams` gives each human club's team, and `fmprobe fx TEAM` reads that team's matches and table, and runs the
+  self-check.
 - **The dashboard** is `ClubDashboard` plus the two overviews, which it starts itself so their answers are ready when you open them.
 - **The look** lives in `AppColors` (colours by job, from a `Theme.Palette`, or the system's for the System theme), `DesignSystem.swift`
   (panels, pills, `Flow`, range bars) and `TableSupport.swift` (both grids). DESIGN.md is the reference. Grids never cut text off: `AnalysisGrid`

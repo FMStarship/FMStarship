@@ -59,6 +59,7 @@ public final class RulesEngine: GameRulesEngine {
     /// The human clubs that are women's sides, from `Database.womensTeams`.
     public var womensTeams: Set<Int64> = []
     private let interestAnswers = InterestAnswers()
+    private let teamNames = TeamNames()
     private let roleLock = NSLock()
     private var roleMasks: [Int: UInt64] = [:]
     private let failureLock = NSLock()
@@ -364,6 +365,12 @@ public final class RulesEngine: GameRulesEngine {
             .map { String(format: "%.1f", Double($0.rating) / 10) }.joined(separator: " ")
     }
 
+    /// The player's recent matches, each with his minutes, rating, goals, assists, cards and xG. Plain data from the
+    /// same record as `form`, so it's on where form is.
+    public func matchHistory(player: Player) -> MatchHistory? {
+        FixturesReader.history(player: player.block, in: game) { self.teamNames.name($0, in: self.game) }
+    }
+
     /// Days until the player is back, by FM's own reckoning. FM writes this into a "bag" of values for its
     /// injury text, so the two bag functions are watched rather than run, and the one value picked out.
     public func injuryReturnDays(player: Player) -> Int? {
@@ -413,5 +420,18 @@ final class InterestAnswers {
         guard let answer = ask() else { return nil }
         lock.withLock { answers[key] = answer }
         return answer
+    }
+}
+
+/// Team names, read once each: a squad's histories name the same few opponents many times.
+final class TeamNames: @unchecked Sendable {
+    private let lock = NSLock()
+    private var names: [Int64: String] = [:]
+
+    func name(_ team: Int64, in game: GameProcess) -> String {
+        if let known = lock.withLock({ names[team] }) { return known }
+        let name = GameReader.clubName(team: team, in: game)
+        lock.withLock { names[team] = name }
+        return name
     }
 }

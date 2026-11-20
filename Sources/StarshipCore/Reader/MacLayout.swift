@@ -88,6 +88,129 @@ enum MacLayout {
         static let matches = 88
     }
 
+    /// `History.matches` points at a vector of these, one for each team the player has played for:
+    /// `PLAYER_TEAM_FORM_CONCRETE<20>`, so only the last 20 matches for each team.
+    enum FormGroup {
+        static let team = 8
+        static let count = 16
+        static let entries = 24
+        static let kept = 20
+    }
+
+    /// One match in a player's history: 0x20 bytes.
+    enum FormEntry {
+        static let size = 0x20
+        static let opponent = 0
+        /// Zero when he was in the squad but didn't play.
+        static let record = 8
+        /// The day of the year in the low 9 bits, then the year.
+        static let day = 0x10
+        static let year = 0x12
+        /// The competition's database index, as at `Comp.index`.
+        static let competition = 0x14
+    }
+
+    /// The player's own match record, 0x28 bytes, which `FormEntry.record` points at.
+    enum MatchRecord {
+        static let size = 0x28
+        /// xG × 100, for outfield players only: a goalkeeper's means something else.
+        static let xG = 4
+        /// 0 for a goalkeeper.
+        static let position = 6
+        static let goals = 7
+        static let assists = 0x0b
+        static let red = 0x10
+        static let minutes = 0x15
+        /// Rating × 10.
+        static let rating = 0x16
+        /// 2 when sent off for a second yellow.
+        static let yellow = 0x24
+    }
+
+    /// `sicomps::FIXTURE`: one match, played or not.
+    enum Fixture {
+        static let size = 0x58
+        static let home = 8
+        static let away = 0x10
+        static let name = 0x20
+        /// The season it belongs to, by the year it starts in.
+        static let season = 0x30
+        /// 0-based, for league fixtures.
+        static let round = 0x3b
+        /// The day of the year in the low 9 bits and the kick-off code above them, then the year.
+        static let date = 0x4c
+        static let year = 0x4e
+    }
+
+    /// `sicomps::FIXTURE_RESULT`: a fixture with the result after it.
+    enum FixtureResult {
+        static let size = 0x80
+        /// Rises with the date. 0xffffffff in a half-made copy, whose score reads 0-0.
+        static let matchNumber = 0x58
+        static let attendance = 0x5c
+        static let homeGoals = 0x64
+        /// 0xff unless it's the second leg of a two-legged tie.
+        static let homeAggregate = 0x67
+        static let awayGoals = 0x69
+        static let awayAggregate = 0x6c
+        /// A vector of `Goal`s.
+        static let goals = 0x78
+    }
+
+    /// One entry of a result's goal list, 16 bytes.
+    enum Goal {
+        static let size = 16
+        static let scorer = 0
+        /// 0xffffffff for none.
+        static let assist = 4
+        /// 0 home, 1 away.
+        static let side = 12
+        /// 0, 1 and 2 count towards the score, 3 doesn't.
+        static let kind = 13
+        static let minute = 14
+        static let addedMinute = 15
+        static let countedKinds: Set<UInt8> = [0, 1, 2]
+    }
+
+    /// `db::FIXTURE_NAME`, which a fixture's `name` points at.
+    enum FixtureName {
+        static let comp: Int64 = 0x18
+        /// A `db::STAGE_NAME`, whose text is at `stageText`.
+        static let stage: Int64 = 0x20
+        static let stageText: Int64 = 0x18
+    }
+
+    /// `db::COMP`, which `Team.competition` and `FixtureName.comp` point at. Its name is at `competitionName`.
+    enum Comp {
+        static let index: Int64 = 8
+        /// The `sicomps::ACTUAL_COMP` that runs it this season.
+        static let actual: Int64 = 0xb0
+    }
+
+    enum ActualComp {
+        /// A vector of stage pointers. A league's table is its `sicomps::LEAGUE_STAGE`.
+        static let stages: Int64 = 0x1d8
+    }
+
+    enum LeagueStage {
+        /// A vector of `TableRow` pointers, in table order.
+        static let rows: Int64 = 0xc0
+    }
+
+    /// One club's row in a league table, 0x100 bytes. Each record is 0x18 bytes: u16 goals for, u16 against,
+    /// u16 points, u8 played, then won, drawn and lost at +8, +9 and +10.
+    enum TableRow {
+        static let size = 0x100
+        static let overall = 0x08
+        static let home = 0x20
+        static let away = 0x38
+        static let lastFive = 0x68
+        static let team = 0x88
+        enum Record {
+            static let goalsFor = 0, goalsAgainst = 2, points = 4, played = 6, won = 8, drawn = 9, lost = 10
+        }
+    }
+
     enum Team {
         static let index = 8
         static let type = 40

@@ -8,6 +8,11 @@ import XCTest
 final class FakeGame {
     /// The classes whose records the reader finds by their vtables.
     static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER"]
+    /// `FixturesReader`'s, which RTTI spells in the sicomps namespace.
+    static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE"]
+    /// Classes of the reader's names in the sicomps namespace, which FM doesn't have, laid out ahead of the real ones: the
+    /// reader must still pick its own.
+    static let decoys = ["TEAM", "ACTUAL_PLAYER"]
 
     private let image: UnsafeMutableRawPointer
     private let imageSize = 0x1000
@@ -31,11 +36,14 @@ final class FakeGame {
         image = FakeGame.map(imageSize)
         heap = FakeGame.map(heapSize)
         let base = FakeGame.address(image)
-        for (i, name) in FakeGame.classes.enumerated() {
+        let spelt = FakeGame.decoys.map { ("sicomps \($0)", "N7sicomps\($0.count)\($0)E") }
+            + FakeGame.classes.map { ($0, Rtti.mangled($0)[0]) }
+            + FakeGame.sicompsClasses.map { ($0, "N7sicomps\($0.count)\($0)E") }
+        for (i, (name, spelling)) in spelt.enumerated() {
             // Itanium RTTI, as `Rtti` walks it: the word before a vtable's address point points at the type_info, whose
             // second word points at the class's mangled name. The word before that is the offset to the top, here 0.
             let slot = i * 0x100
-            let mangled = Array(Rtti.mangled(name)[0].utf8)
+            let mangled = Array(spelling.utf8)
             (image + slot + 8).copyMemory(from: mangled, byteCount: mangled.count)
             image.storeBytes(of: base + Int64(slot + 8), toByteOffset: slot + 0x48, as: Int64.self)
             image.storeBytes(of: base + Int64(slot + 0x40), toByteOffset: slot + 0x68, as: Int64.self)
@@ -55,6 +63,9 @@ final class FakeGame {
         }
         return memory
     }
+
+    /// The vtable `record` gives a class's records, for a test to look for.
+    func vtable(_ name: String) -> Int64? { vtables[name] }
 
     private static func address(_ pointer: UnsafeMutableRawPointer) -> Int64 { Int64(Int(bitPattern: pointer)) }
     private static func pointer(_ address: Int64) -> UnsafeMutableRawPointer { UnsafeMutableRawPointer(bitPattern: Int(address))! }
@@ -228,8 +239,8 @@ final class FakeGame {
         var topRoles = [UInt8](repeating: 0, count: 6)
         var traits: UInt64 = 0
         var currentTeam: Int64 = 0
-        /// The record holding the player's injuries and recent matches. None by default.
-        var injuries: Int64 = 0
+        /// The record of injuries and recent matches, from `history`.
+        var history: Int64 = 0
     }
 
     struct StaffValues {
@@ -276,7 +287,7 @@ final class FakeGame {
         record.set("pa", a + L.pa, values.pa)
         record.set("topRoles", a + L.topRoles, bytes: values.topRoles)
         record.set("currentTeam", L.currentTeam, values.currentTeam)
-        record.set("injuries", L.injuries, values.injuries)
+        record.set("injuries", L.injuries, values.history)
         record.set("traits", person + MacLayout.Person.traits, values.traits)
     }
 

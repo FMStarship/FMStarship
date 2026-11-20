@@ -13,8 +13,8 @@ chosen in FM Starship.
 
 | Tool | Use it for |
 | --- | --- |
-| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, whether Hidden attributes and Ability are on, the money units. `refresh: true` reads the save again |
-| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all` |
+| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, the money units. `refresh: true` reads the save again |
+| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has the player's last match, his minutes in it and his rating |
 | `staff` | A club's staff, with jobs and their best coaching areas |
 | `person` | One player or member of staff in full, by `uid` |
 | `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
@@ -24,6 +24,9 @@ chosen in FM Starship.
 | `staff_overview` | Each backroom job and training area, and empty places |
 | `compare` | Two to four players, or two to four staff, side by side |
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
+| `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
+| `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG |
+| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home, away and last-five records |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
 YYYY-MM-DD. Money is text in the user's own currency, such as "£4.2M", and wages are per the period `wages` names, such as "p/w".
@@ -56,7 +59,13 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club
   won't loan him, so FM isn't asked.
 - **Loan status** is "Listed for loan" or "Not available for loan", which is the club's decision, not an injury.
-- Some features come from FM's own rules: season stats, form, who'd join, role stars and injury days. On a build of FM that FM
+- **Matches**: scores are home team first, as FM writes them, with `result` W, D or L for the club asked about. Competitions,
+  stages ("kvartfinale") and clubs are FM's names in the game's language. The match tools work for the user's club, the clubs in
+  its league and the clubs it plays, by their full names. FM keeps each player's last 20 matches for a team, so a player's stats
+  for an older match can be missing; `results` says when. Only players at the club now are listed for a match.
+- **Last match** in `squad` is the player's latest match in FM's record, for any team: compare its date with the club's last
+  result to see who was left out. Minutes 0 means he was an unused substitute.
+- Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars and injury days. On a build of FM that FM
   Starship hasn't been checked on, `game_status` says the rules are off, and those values aren't there. Don't fill them in.
 
 ## Hidden attributes
@@ -88,7 +97,10 @@ When they're off, they don't exist for you. They aren't sent at all, not as blan
 
 FM Starship doesn't read these yet, so don't state them, and don't work them out from something else:
 
-- Fixtures, results, the league table and team stats.
+- A match's team stats: shots, possession and team xG. Don't add up the players' xG and call it the team's.
+- Which goals were penalties, extra time and penalty shoot-outs, and the player of the match.
+- Fixtures and results when the tools switch them off: their check against the league table failed, or there's no league
+  match yet to check them against.
 - Condition, match sharpness, morale and suspensions.
 - Registration status: homegrown status, squad registration and foreign player rules. Don't count foreign players from their
   nations, because FM's rules for this depend on more than nationality.

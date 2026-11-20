@@ -67,11 +67,14 @@ KINDS = {
     'shapeName': ('function',),
 }
 
-# The classes GameReader finds by name (its vt(...) calls). ACTUAL_PLAYER_AND_NON_PLAYER's offsets to top are where
-# MacLayout.PlayerCoach finds its staff part, person and identity: 0, -0x278, -0x370, -0x480 on 27.1.0.
+# The classes GameReader finds by name (its vt(...) calls), then FixturesReader's, and the class of a player's form
+# history, which is a template and so is given as RTTI spells it. Their self-check is the league table.
+# ACTUAL_PLAYER_AND_NON_PLAYER's offsets to top are where MacLayout.PlayerCoach finds its staff part, person and identity:
+# 0, -0x278, -0x370, -0x480 on 27.1.0.
 READER_CLASSES = ['ACTUAL_PLAYER', 'ACTUAL_NON_PLAYER', 'ACTUAL_PLAYER_AND_NON_PLAYER', 'CLUB_HUMAN_MANAGER_DETAILS',
                   'CURRENCY_RECORD', 'TEAM', 'TRANSFER_MANAGER', 'HUMAN_NON_PLAYER', 'TACTIC_EDIT_SESSION',
-                  'PREPARED_TACTICS_CREATOR_ARRAY', 'LOAN_CONTRACT', 'B_CLUB_CONTRACT']
+                  'PREPARED_TACTICS_CREATOR_ARRAY', 'LOAN_CONTRACT', 'B_CLUB_CONTRACT',
+                  'FIXTURE', 'FIXTURE_RESULT', 'LEAGUE_STAGE', 'ACTUAL_COMP', 'N2db25PLAYER_TEAM_FORM_CONCRETEILm20EEE']
 
 RULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Sources', 'StarshipCore', 'Emu', 'RulesEngine.swift')
 
@@ -531,8 +534,9 @@ def change(a, b):
 
 
 def mangled(name):
-    """Class names as RTTI spells them, as Rtti.mangled does."""
-    return [f'N2db{len(name)}{name}E', f'N7simatch{len(name)}{name}E', f'{len(name)}{name}']
+    """Class names as RTTI spells them, as Rtti.mangled does. A name already spelt that way, such as a template's, is kept."""
+    if re.fullmatch(r'N\d+[a-z]+\d+\w+E', name): return [name]
+    return [f'N2db{len(name)}{name}E', f'N7simatch{len(name)}{name}E', f'{len(name)}{name}', f'N7sicomps{len(name)}{name}E']
 
 
 def vtables(B):

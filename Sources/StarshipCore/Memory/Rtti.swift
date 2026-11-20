@@ -57,9 +57,10 @@ public final class Rtti {
         return String(decoding: image[start..<end], as: UTF8.self)
     }
 
-    /// Class names as RTTI spells them: "N2db4TEAME", "N7simatch..." or "18GAME_ACTUAL_PLAYER".
+    /// Class names as RTTI spells them: "N2db4TEAME", "N7simatch...", "18GAME_ACTUAL_PLAYER" or "N7sicomps7FIXTUREE".
+    /// The sicomps spelling comes last, so a class of that name in another namespace keeps its place in `vtables`.
     public static func mangled(_ name: String) -> [String] {
-        ["N2db\(name.count)\(name)E", "N7simatch\(name.count)\(name)E", "\(name.count)\(name)"]
+        ["N2db\(name.count)\(name)E", "N7simatch\(name.count)\(name)E", "\(name.count)\(name)", "N7sicomps\(name.count)\(name)E"]
     }
 
     public struct VTable {

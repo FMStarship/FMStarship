@@ -50,6 +50,10 @@ extension Toolbox {
         + "Countries can share a league name, so check the Club nation column."
     private static let clubText = "Part of a club's name as FM shows it, ignoring case, or =Name for exactly. Matches where the person "
         + "plays and, for players, the club they're on loan at."
+    private static let matchClub = Parameter(name: "club", type: "string",
+                                             description: "The user's club if left out. Or a club in the user's league, or one the user's "
+                                                + "club plays, by its full name as FM shows it.")
+    private static let matchNames = "Competitions, stages and clubs are named as FM names them, in the game's language. "
     private static let limit = Parameter(name: "limit", type: "integer", description: "How many rows, 1-100. 25 if left out.")
     private static let sort = Parameter(name: "sort", type: "string",
                                         description: "A column to order by, by its name as in person, such as \"Value\", \"Age\", \"Finishing\" "
@@ -67,13 +71,14 @@ extension Toolbox {
     static let tools: [Tool] = [
         Tool(name: "game_status", title: "Game status",
              description: "Whether FM is running with FM Starship, the game date, the clubs human managers run with their budgets, "
-                + "which club the other tools use, whether Hidden attributes and Ability are on, the units money is in, and how "
-                + "old the read is. Call first. refresh reads the save again.",
+                + "which club the other tools use and its next fixture, whether Hidden attributes and Ability are on, the units "
+                + "money is in, and how old the read is. Call first. refresh reads the save again.",
              parameters: [Parameter(name: "refresh", type: "boolean", description: "Read the save again now.")],
              run: { _ in { _, _ in [:] } }),
         Tool(name: "squad", title: "Squad",
              description: "One squad of a club, one compact row per player with uid: first team, reserves or B team, a youth team, "
-                + "those out on loan, or all. Says which squads the club has.",
+                + "those out on loan, or all. Says which squads the club has. Last match is each player's latest match in FM's "
+                + "record of his form, with his minutes (0 if he was an unused substitute) and rating, which shows rotation.",
              parameters: [ownOrAnyClub,
                           Parameter(name: "squad", type: "string",
                                     description: "\"First team\", \"Reserves\", \"U21\", \"U19\", \"On loan\", ... or \"all\". First team if left out.")],
@@ -170,6 +175,30 @@ extension Toolbox {
              description: "Each backroom job and training area at the user's club: who's in post, how they stand against the league, and empty places.",
              parameters: [club],
              run: { $0.staffOverview }),
+        Tool(name: "fixtures", title: "Fixtures",
+             description: Toolbox.matchNames + "A club's matches, oldest first, from today unless from or to is given: date, kick-off, "
+                + "competition, stage, league round, home or away (H/A), opponent, and for played matches the score (home team "
+                + "first), the result for the club, the aggregate of a two-legged tie, attendance, and the goals with their minutes "
+                + "and assists. The first question about a club takes a few seconds.",
+             parameters: [matchClub,
+                          Parameter(name: "from", type: "string", description: "First date, YYYY-MM-DD. Today if neither from nor to is given."),
+                          Parameter(name: "to", type: "string", description: "Last date, YYYY-MM-DD."),
+                          limit],
+             run: { $0.fixtures }),
+        Tool(name: "results", title: "Results",
+             description: Toolbox.matchNames + "A club's played matches, newest first, with score, result, aggregate, attendance and "
+                + "goals. With date, one match, with each of the club's players who played: minutes, rating, goals, assists, cards "
+                + "and xG. FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
+             parameters: [matchClub,
+                          Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),
+                          Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out.")],
+             run: { $0.results }),
+        Tool(name: "league_table", title: "League table",
+             description: Toolbox.matchNames + "The table of a club's league, as FM has it now: position, played, won, drawn, lost, "
+                + "goals for and against, goal difference, points, and the home, away and last-five records.",
+             parameters: [Parameter(name: "club", type: "string",
+                                    description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league.")],
+             run: { $0.leagueTable }),
         Tool(name: "compare", title: "Compare",
              description: "Two to four players, or two to four staff, side by side.",
              parameters: [Parameter(name: "uids", type: "array", description: "Two to four uids, all players or all staff.",

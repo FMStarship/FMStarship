@@ -51,7 +51,26 @@ extension Toolbox {
         return .object([("club", .string(club)), ("squad", .string(shown ?? "all")),
                         ("squads", .array(squads.map { .string($0) })), ("players", .int(players.count)),
                         ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(players, columns))
+                       + Output.rows(players, columns + Self.lastMatch(context.read.engine)))
+    }
+
+    /// Each player's latest match in FM's record of his form: when, his minutes, 0 as an unused substitute, and his rating.
+    /// None when FM's rules are off, since the record comes with them.
+    static func lastMatch(_ engine: GameRulesEngine?) -> [Output.Field] {
+        guard let engine else { return [] }
+        final class Latest {
+            var found: [UInt32: PlayerMatch?] = [:]
+        }
+        let latest = Latest()
+        func match(_ person: Person) -> PlayerMatch? {
+            if let known = latest.found[person.uid] { return known }
+            let found = (person as? Player).flatMap { engine.matchHistory(player: $0)?.matches.first }
+            latest.found[person.uid] = .some(found)
+            return found
+        }
+        return [Output.Field(name: "Last match") { match($0).map { .string(Output.iso($0.date)) } },
+                Output.Field(name: "Last match minutes") { match($0).map { .int($0.minutes) } },
+                Output.Field(name: "Last match rating") { match($0)?.rating.map { .double($0) } }]
     }
 
     /// FM's order of positions, as its squad screen lists them.

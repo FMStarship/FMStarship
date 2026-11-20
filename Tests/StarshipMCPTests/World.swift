@@ -50,6 +50,50 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     }
     func form(player: Player) -> String? { "7.1 6.8 7.4" }
     func injuryReturnDays(player: Player) -> Int? { 14 }
+
+    /// The club's first eleven played both league matches, number 9 scoring in each and number 11 coming off after 64
+    /// minutes in the second, where 12 sat on the bench. Number 13's last 20 matches start after the first one.
+    func matchHistory(player: Player) -> MatchHistory? {
+        guard player.clubFull == World.club else { return MatchHistory() }
+        let uid = Int(player.uid)
+        func match(_ day: Int, opponent: Int64, played: Bool = true) -> PlayerMatch {
+            var match = PlayerMatch(date: GameDate.date(year: 2026, dayOfYear: day) ?? Date(), team: World.team, opponent: opponent)
+            match.competitionIndex = World.leagueIndex
+            guard played else { return match }
+            match.played = true
+            match.minutes = day == World.secondMatch && uid == 11 ? 64 : 90
+            match.rating = Double(60 + uid) / 10
+            match.goals = uid == 9 ? 1 : 0
+            match.assists = uid == 10 && day == World.firstMatch ? 1 : 0
+            match.yellow = uid == 4 ? 1 : 0
+            match.xG = uid == 1 ? nil : Double(uid) / 20
+            return match
+        }
+        switch uid {
+        case 1...11: return MatchHistory(matches: [match(World.secondMatch, opponent: World.otherTeam), match(World.firstMatch, opponent: World.rivalsTeam)])
+        case 12: return MatchHistory(matches: [match(World.secondMatch, opponent: World.otherTeam, played: false)])
+        case 13: return MatchHistory(fullFrom: [World.team: GameDate.date(year: 2026, dayOfYear: World.firstMatch + 2) ?? Date()])
+        default: return MatchHistory()
+        }
+    }
+}
+
+/// Fixtures, results and tables built by hand, as `MatchSource` gives them. Counts its sweeps.
+final class FakeMatches: MatchSource {
+    var teams: [Int64: TeamMatches]
+    /// False for a build of FM whose fixture classes weren't found.
+    var classesFound = true
+    private(set) var sweeps = 0
+
+    init(_ teams: [Int64: TeamMatches]) {
+        self.teams = teams
+    }
+
+    func matches(team: Int64) -> TeamMatches? {
+        sweeps += 1
+        guard classesFound else { return nil }
+        return teams[team] ?? TeamMatches(team: team, fixtures: [], table: nil, check: .noTable)
+    }
 }
 
 /// A save built by hand, as `GameSource` gives it. It counts its reads, and can say the save has moved on.
@@ -58,6 +102,7 @@ final class FakeSource: GameSource {
     var engine: GameRulesEngine?
     var problem: GameProblem?
     var current = true
+    var matches: FakeMatches? = World.matches()
     private(set) var reads = 0
 
     init(database: Database, engine: GameRulesEngine?) {
@@ -68,7 +113,7 @@ final class FakeSource: GameSource {
     func read() throws -> GameRead {
         if let problem { throw problem }
         reads += 1
-        return GameRead(database: database, engine: engine, number: reads)
+        return GameRead(database: database, engine: engine, number: reads, matches: matches)
     }
 
     func isCurrent(_ read: GameRead) -> Bool { current }
@@ -181,6 +226,69 @@ enum World {
             return TacticSlot(player: players.first { $0.uid == UInt32(index + 1) }, position: position, positionWithoutBall: position,
                               side: place.1, sideWithoutBall: place.1, role: 0, roleWithoutBall: 0)
         })
+    }
+
+    // MARK: Matches
+
+    static let team: Int64 = 1, rivalsTeam: Int64 = 2, otherTeam: Int64 = 3, minnowsTeam: Int64 = 4
+    static let otherTown = "Other Town", minnows = "Minnows FC"
+    static let leagueIndex: UInt32 = 9, cupIndex: UInt32 = 12
+    /// Days of 2026: 13 and 20 September, league; 23 September, cup; 4 October, league, and 11 October, cup, to come.
+    static let firstMatch = 256, secondMatch = 263, cupMatch = 266, nextMatch = 277, laterMatch = 284
+
+    static func fixture(_ day: Int, home: Int64, away: Int64, score: (Int, Int)? = nil, cup: Bool = false) -> MatchFixture {
+        let names = [team: club, rivalsTeam: rivals, otherTeam: otherTown, minnowsTeam: minnows]
+        var match = MatchFixture(date: GameDate.date(year: 2026, dayOfYear: day) ?? Date(), home: home, away: away)
+        match.season = 2026
+        match.homeName = names[home] ?? ""
+        match.awayName = names[away] ?? ""
+        match.competition = cup ? "Mock Cup" : "Mock League"
+        match.competitionIndex = cup ? cupIndex : leagueIndex
+        match.stage = cup ? "kvartfinale" : ""
+        match.kickOff = 15 * 60
+        if let score { (match.homeGoals, match.awayGoals) = score }
+        return match
+    }
+
+    /// Testing FC beat Rivals FC 2-0 and drew 1-1 at Other Town in the league, and won 4-2 at Minnows FC in the cup.
+    static func matches() -> FakeMatches {
+        var first = fixture(firstMatch, home: team, away: rivalsTeam, score: (2, 0))
+        first.round = 1
+        first.attendance = 8_500
+        // Scored by First 9, with First 10's assist, and First 11 in added time.
+        first.goals = [MatchGoal(scorer: 9, assist: 10, home: true, minute: 23, addedMinute: 0),
+                       MatchGoal(scorer: 11, assist: nil, home: true, minute: 45, addedMinute: 1)]
+        var second = fixture(secondMatch, home: otherTeam, away: team, score: (1, 1))
+        second.round = 2
+        // Other Town's scorer isn't one of the save's players.
+        second.goals = [MatchGoal(scorer: 9_999, assist: nil, home: true, minute: 60, addedMinute: 0),
+                        MatchGoal(scorer: 9, assist: nil, home: false, minute: 80, addedMinute: 0)]
+        var cupTie = fixture(cupMatch, home: minnowsTeam, away: team, score: (2, 4), cup: true)
+        (cupTie.homeAggregate, cupTie.awayAggregate) = (3, 6)
+        var next = fixture(nextMatch, home: team, away: otherTeam)
+        next.round = 3
+        next.kickOff = 20 * 60
+        var later = fixture(laterMatch, home: team, away: minnowsTeam, cup: true)
+        later.kickOff = nil
+
+        func record(_ p: Int, _ w: Int, _ d: Int, _ l: Int, _ f: Int, _ a: Int) -> TableRecord {
+            TableRecord(played: p, won: w, drawn: d, lost: l, goalsFor: f, goalsAgainst: a, points: 3 * w + d)
+        }
+        let none = record(0, 0, 0, 0, 0, 0)
+        let table = LeagueTable(competition: "Mock League", competitionIndex: leagueIndex, rows: [
+            LeagueTableRow(team: team, name: club, position: 1, overall: record(2, 1, 1, 0, 3, 1), home: record(1, 1, 0, 0, 2, 0),
+                           away: record(1, 0, 1, 0, 1, 1), lastFive: record(2, 1, 1, 0, 3, 1)),
+            LeagueTableRow(team: otherTeam, name: otherTown, position: 2, overall: record(1, 0, 1, 0, 1, 1), home: record(1, 0, 1, 0, 1, 1),
+                           away: none, lastFive: record(1, 0, 1, 0, 1, 1)),
+            LeagueTableRow(team: rivalsTeam, name: rivals, position: 3, overall: record(1, 0, 0, 1, 0, 2), home: none,
+                           away: record(1, 0, 0, 1, 0, 2), lastFive: record(1, 0, 0, 1, 0, 2)),
+        ])
+        let ours = [first, second, cupTie, next, later]
+        return FakeMatches([
+            team: TeamMatches(team: team, fixtures: ours, table: table, check: .passed),
+            rivalsTeam: TeamMatches(team: rivalsTeam, fixtures: [first], table: table, check: .passed),
+            otherTeam: TeamMatches(team: otherTeam, fixtures: [second, next], table: table, check: .passed),
+        ])
     }
 
     static func settings(hidden: Bool, reveal: Reveal = .exact) -> Settings {

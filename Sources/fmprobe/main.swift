@@ -1330,6 +1330,52 @@ case "dump":
         print(String(format: "%04x ", row) + slice.map { String(format: "%02x", $0) }.joined(separator: " ") + "  " + text)
     }
 
+case "humanteams":
+    // Each human club's team address, for `fx`, with its competition.
+    let rtti = Rtti(game)
+    guard let details = rtti.vtables("CLUB_HUMAN_MANAGER_DETAILS").first(where: { $0.offsetToTop == 0 }) else { print("no CLUB_HUMAN_MANAGER_DETAILS"); exit(1) }
+    let vt = game.pluginBase + Int64(details.addressPoint)
+    var teams = Set<Int64>()
+    for piece in game.pieces(size: 1 << 23, overlap: 0, writableOnly: true) {
+        guard let bytes = game.read(piece.address, count: piece.count) else { continue }
+        let hits = bytes.withUnsafeBytes { raw -> [Int64] in
+            (0..<raw.count / 8).compactMap { raw.loadUnaligned(fromByteOffset: $0 * 8, as: Int64.self) == vt ? piece.address + Int64($0 * 8) : nil }
+        }
+        for at in hits { teams.insert(game.readPointer(at + 64)) }  // MacLayout.Human.team
+    }
+    for team in teams.sorted() where team != 0 {
+        let comp = game.readPointer(team + 80)  // MacLayout.Team.competition
+        print("team", hex(team), GameReader.clubName(team: team, in: game), "|", game.lengthPrefixedString(game.readPointer(comp + 72)))
+    }
+
+case "fx":
+    // FixturesReader for one team, end to end: its fixtures and results, its league table and the self-check. TEAM is
+    // a team's address, from `humanteams`; YEAR picks the matches to list, the game's year if left out.
+    guard args.count > 2, let team = Int64(args[2].replacingOccurrences(of: "0x", with: ""), radix: 16) else { print("usage: fmprobe fx TEAM [YEAR]"); exit(2) }
+    guard let reader = FixturesReader(game: game, rtti: Rtti(game)) else { print("no sicomps FIXTURE or FIXTURE_RESULT vtable"); exit(1) }
+    let started = Date()
+    let found = reader.teamMatches(team: team)
+    print(String(format: "%d matches in %.1fs", found.fixtures.count, Date().timeIntervalSince(started)))
+    let year = args.count > 3 ? Int(args[3]) : found.fixtures.last(where: \.played).map { GameDate.calendar.component(.year, from: $0.date) }
+    for f in found.fixtures where year == nil || GameDate.calendar.component(.year, from: f.date) == year {
+        let day = ISO8601DateFormatter.string(from: f.date, timeZone: .gmt, formatOptions: [.withFullDate])
+        let time = f.kickOff.map { String(format: "%02d:%02d", $0 / 60, $0 % 60) } ?? "--:--"
+        let score = f.scoreUnknown ? "?-?" : f.homeGoals.map { "\($0)-\(f.awayGoals ?? 0)" } ?? "v"
+        let aggregate = f.homeAggregate.map { " (agg \($0)-\(f.awayAggregate ?? 0))" } ?? ""
+        print(day, time, f.homeName, score, f.awayName + aggregate, "|", f.competition, f.stage, f.round.map { "round \($0)" } ?? "",
+              "| season", f.season, "| att", f.attendance ?? 0, "| goals", f.goals.count)
+    }
+    if let table = found.table {
+        print(table.competition)
+        for row in table.rows {
+            let o = row.overall
+            print(row.position, row.name, "P\(o.played) W\(o.won) D\(o.drawn) L\(o.lost) \(o.goalsFor)-\(o.goalsAgainst) \(o.points)pts")
+        }
+    } else {
+        print("no league table")
+    }
+    print("self-check:", found.check)
+
 default:
     print("unknown command")
 }
