@@ -179,8 +179,11 @@ public struct StaffRecommender {
         let join = options.onlyJoin && onlyJoinEnabled
         let preference = StaffRoles.preferenceIndex(role.name)
 
+        // A job that belongs to one team, such as assistant manager, counts only that team's: the reserves' assistant isn't
+        // the first team's. Club-wide jobs count everyone at the club.
+        let team = role.teamJob >= 0 && level < levelNames.count ? levelNames[level] : nil
         let mine = session.db.staff.filter {
-            $0.clubFull == club && role.jobs.contains($0.job) && (role.level < 0 || $0.squad == levelNames[role.level])
+            $0.clubFull == club && role.jobs.contains($0.job) && (team == nil || $0.squad == team)
         }
         let best = mine.map { role.score($0, area: area) }.max() ?? 0
 
