@@ -9,8 +9,24 @@ extension Toolbox {
     /// The overview columns about who'd be hired, which ask the game place by place and aren't in this version.
     private static let hireColumns: Set<String> = ["Best who'd join", "Their rating", "Gain", "About them"]
 
+    /// The overview's footnote, without what it says about the hires column, which isn't sent.
+    static func withoutHires(_ footnote: String) -> String {
+        footnote.replacingOccurrences(of: " Each pick fits your budget on the wage they earn now.", with: "")
+            .replacingOccurrences(of: "Each pick fits your budget on the wage they earn now.", with: "")
+    }
+
     private static func rulesOff(_ what: String) -> ToolError {
         ToolError("\(what) needs FM's rules, which are off on this build of FM because FM Starship hasn't been checked on it.")
+    }
+
+    /// How keen each player is, in FM's words, from the answers the finder already got from FM. Nothing new is asked.
+    private static func keenness(_ session: AnalysisSession) -> [Output.Field] {
+        [Output.Field(name: "Transfer interest") { person in
+            (person as? Player).flatMap { session.checks.known($0) }.map { .string($0.transferInterest.text) }
+        },
+         Output.Field(name: "Loan interest") { person in
+            (person as? Player).flatMap { session.checks.known($0) }.map { .string($0.loanInterest.text) }
+        }]
     }
 
     func clubOverview(_ args: Arguments, _ context: CallContext) throws -> JSON {
@@ -50,7 +66,7 @@ extension Toolbox {
         }
         return .object([("club", .string(club.name)), ("headline", .string(Output.prose(report.headline)))]
                        + Output.table(report.table(hires: [:]), dropping: Self.hireColumns, withHead: false)
-                       + [("footnote", .string(Output.prose(report.footnote)))])
+                       + [("footnote", .string(Self.withoutHires(Output.prose(report.footnote))))])
     }
 
     func staffOverview(_ args: Arguments, _ context: CallContext) throws -> JSON {
@@ -85,6 +101,13 @@ extension Toolbox {
         let club = try named.map { try context.ownClub($0) } ?? (try? context.ownClub(nil))
         let report = CompareReport(people: people, session: context.session(for: club ?? ChosenClub()))
         let rows: [JSON] = report.rows().flatMap { row -> [JSON] in
+            // Whether someone would join the club they're already at means nothing.
+            if row.label == "Interest", !row.isSection, let club {
+                let cells: [JSON] = zip(people, row.cells).map { person, cell in
+                    person.clubFull == club.name ? .null : Output.text(cell) ?? .null
+                }
+                return cells.allSatisfy { $0 == .null } ? [] : [.array(["Interest"] + cells)]
+            }
             // "3 (2)" as two numbers, as in the lists.
             if row.label == "Appearances", !row.isSection {
                 return [.array(["Starts"] + people.map { Output.starts($0) ?? .null }),
@@ -114,10 +137,11 @@ extension Toolbox {
         options.includeLoans = try args.bool("include_loans") ?? false
         options.upgradesOnly = try args.bool("upgrades_only") ?? true
         let limit = try args.int("limit", in: 1...10) ?? 10
-        guard let table = SigningRecommender(session: context.session(for: club)).find(options) else {
+        let session = context.session(for: club)
+        guard let table = SigningRecommender(session: session).find(options) else {
             throw ToolError("The search was stopped.")
         }
-        return .object([("club", .string(club.name))] + Output.table(table, limit: limit))
+        return .object([("club", .string(club.name))] + Output.table(table, limit: limit, extra: Self.keenness(session)))
     }
 
     func findBargains(_ args: Arguments, _ context: CallContext) throws -> JSON {
@@ -139,9 +163,10 @@ extension Toolbox {
         if let fee = try args.number("max_fee") { options.maxFee = String(fee / 1_000_000) }
         options.onlyJoin = try args.bool("only_join") ?? true
         let limit = try args.int("limit", in: 1...25) ?? 25
-        guard let table = BargainFinder(session: context.session(for: club)).find(options) else {
+        let session = context.session(for: club)
+        guard let table = BargainFinder(session: session).find(options) else {
             throw ToolError("The search was stopped.")
         }
-        return .object([("club", .string(club.name))] + Output.table(table, limit: limit))
+        return .object([("club", .string(club.name))] + Output.table(table, limit: limit, extra: Self.keenness(session)))
     }
 }

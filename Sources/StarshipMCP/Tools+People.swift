@@ -9,7 +9,8 @@ extension Toolbox {
                                "Goals", "Assists", "Average rating", "Yellow cards", "Red cards", "Form (last 5 ratings)", "Injury",
                                "Days out", "Transfer status", "Loan status", "On loan at"]
     static let staffColumns = ["Name", "Job", "Age", "Squad", "CA", "PA", "Wage", "Contract end"]
-    static let playerListColumns = ["Name", "Age", "Position", "Club", "Nation", "CA", "PA", "Value", "Wage", "Contract end", "Appearances"]
+    static let playerListColumns = ["Name", "Age", "Position", "Club", "On loan at", "Nation", "CA", "PA", "Value", "Wage", "Contract end",
+                                    "Appearances"]
     static let staffListColumns = ["Name", "Job", "Age", "Club", "Nation", "CA", "PA", "Wage", "Contract end"]
 
     /// A club by the name it goes by in FM, any club, or the user's own.
@@ -105,9 +106,11 @@ extension Toolbox {
         if person.clubFull == person.club { leftOut.insert("Club (full)") }
         let columns = catalogue.filter { visibility.allows($0) && !leftOut.contains($0.name) }
         for group in groups {
-            let values = columns.filter { $0.group == group }.compactMap { col -> (String, JSON)? in
-                if col.name == "Appearances" { return Output.starts(person).map { ("Starts", $0) } }
-                return Output.value(col, person, visibility).map { (col.name, $0) }
+            let values = columns.filter { $0.group == group }.flatMap { col -> [(String, JSON)] in
+                if col.name == "Appearances" { return Output.starts(person).map { [("Starts", $0)] } ?? [] }
+                let value = Output.value(col, person, visibility).map { [(col.name, $0)] } ?? []
+                if col.name == "League", let nation = Output.clubNation.value(person) { return value + [(Output.clubNation.name, nation)] }
+                return value
             }
             if !values.isEmpty { pairs.append((group, .object(values))) }
         }

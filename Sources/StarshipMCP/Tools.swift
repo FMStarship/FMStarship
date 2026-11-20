@@ -42,7 +42,14 @@ extension Toolbox {
     private static let club = Parameter(name: "club", type: "string",
                                         description: "A club run by a human manager. Leave out for the user's own club.")
     private static let ownOrAnyClub = Parameter(name: "club", type: "string",
-                                                description: "Any club's full name. Leave out for the user's own club.")
+                                                description: "Any club's full name, as FM shows it in the game's language. Leave out for the user's own club.")
+    private static let names = "Names of people, clubs, nations, leagues and personalities are as FM shows them, in the game's language. "
+    private static let nationText = "The player's nationality, as FM names the nation in the game's language: Norge, not Norway, in a "
+        + "Norwegian game. Matches any nation whose name contains the text, ignoring case. Start with = for the exact name: =Norge."
+    private static let leagueText = "Part of a league's name as FM shows it in the game's language, ignoring case, or =Name for exactly. "
+        + "Countries can share a league name, so check the Club nation column."
+    private static let clubText = "Part of a club's name as FM shows it, ignoring case, or =Name for exactly. Matches where the person "
+        + "plays and, for players, the club they're on loan at."
     private static let limit = Parameter(name: "limit", type: "integer", description: "How many rows, 1-100. 25 if left out.")
     private static let sort = Parameter(name: "sort", type: "string",
                                         description: "A column to order by, by its name as in person, such as \"Value\", \"Age\" or \"Finishing\".")
@@ -80,7 +87,7 @@ extension Toolbox {
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true)],
              run: { $0.person }),
         Tool(name: "search_players", title: "Search players",
-             description: "Players anywhere in the save, filtered as in FM Starship's player search. Money is in the user's "
+             description: Toolbox.names + "Players anywhere in the save, filtered as in FM Starship's player search. Money is in the user's "
                 + "currency as full amounts, wages per the user's wage period (see game_status). Gives the number found and the top rows.",
              parameters: [
                 Parameter(name: "name", type: "string", description: "Part of a name."),
@@ -88,9 +95,9 @@ extension Toolbox {
                 Parameter(name: "min_rating", type: "integer", description: "Rating at the position at least, 1-20. 15 if left out."),
                 Parameter(name: "age_min", type: "integer", description: "Age at least."),
                 Parameter(name: "age_max", type: "integer", description: "Age at most."),
-                Parameter(name: "nation", type: "string", description: "Part of a nation's name, or =Name for exactly."),
-                Parameter(name: "league", type: "string", description: "Part of a league's name, or =Name for exactly."),
-                Parameter(name: "club", type: "string", description: "Part of a club's name, or =Name for exactly."),
+                Parameter(name: "nation", type: "string", description: Toolbox.nationText),
+                Parameter(name: "league", type: "string", description: Toolbox.leagueText),
+                Parameter(name: "club", type: "string", description: Toolbox.clubText),
                 Parameter(name: "squad", type: "string", description: "Only this squad.", choices: Names.squadOrder + ["On loan"]),
                 Parameter(name: "value_max", type: "number", description: "Value at most."),
                 Parameter(name: "wage_max", type: "number", description: "Wage at most."),
@@ -104,9 +111,11 @@ extension Toolbox {
                 Parameter(name: "fit_only", type: "boolean", description: "Leave out injured players."),
                 Parameter(name: "height_min", type: "integer", description: "Height at least, in cm."),
                 Parameter(name: "height_max", type: "integer", description: "Height at most, in cm."),
-                Parameter(name: "personality", type: "string", description: "FM's personality, such as Model Professional."),
-                Parameter(name: "trait", type: "string", description: "A player trait (preferred move), as FM names it."),
-                Parameter(name: "role", type: "string", description: "Suits this role, as \"Role (IP)\" or \"Role (OOP)\"."),
+                Parameter(name: "personality", type: "string", description: "FM's personality as the save names it, in the game's language."),
+                Parameter(name: "trait", type: "string",
+                          description: "A player trait (preferred move) by its English name, whatever the game's language. A wrong one is answered with the list."),
+                Parameter(name: "role", type: "string",
+                          description: "Suits this role, by its English name with (IP) or (OOP), whatever the game's language. A wrong one is answered with the list."),
                 Parameter(name: "ca_min", type: "integer", description: "CA at least. Only while Ability is on."),
                 Parameter(name: "ca_max", type: "integer", description: "CA at most. Only while Ability is on."),
                 Parameter(name: "pa_min", type: "integer", description: "PA at least. Only while Ability is on."),
@@ -120,21 +129,21 @@ extension Toolbox {
              ],
              run: { $0.searchPlayers }),
         Tool(name: "search_staff", title: "Search staff",
-             description: "Staff anywhere in the save, filtered as in FM Starship's staff search. Ordered by world reputation, "
+             description: Toolbox.names + "Staff anywhere in the save, filtered as in FM Starship's staff search. Ordered by world reputation, "
                 + "or by coaching stars in rank_by.",
              parameters: [
                 Parameter(name: "name", type: "string", description: "Part of a name."),
                 Parameter(name: "job", type: "string", description: "A job as FM names it, or \"Coaching staff\". Any job if left out."),
-                Parameter(name: "nation", type: "string", description: "Part of a nation's name, or =Name for exactly."),
-                Parameter(name: "league", type: "string", description: "Part of a league's name, or =Name for exactly."),
-                Parameter(name: "club", type: "string", description: "Part of a club's name, or =Name for exactly."),
+                Parameter(name: "nation", type: "string", description: Toolbox.nationText),
+                Parameter(name: "league", type: "string", description: Toolbox.leagueText),
+                Parameter(name: "club", type: "string", description: Toolbox.clubText),
                 Parameter(name: "age_min", type: "integer", description: "Age at least."),
                 Parameter(name: "age_max", type: "integer", description: "Age at most."),
                 Parameter(name: "rank_by", type: "string", description: "A coaching area to rank and show stars for.", choices: Names.areasLong),
                 Parameter(name: "min_stars", type: "number", description: "Stars in rank_by at least, 0.5-5."),
                 Parameter(name: "wage_max", type: "number", description: "Wage at most."),
                 Parameter(name: "contract_ends_by", type: "integer", description: "Contract ends in this year or before."),
-                Parameter(name: "personality", type: "string", description: "FM's personality."),
+                Parameter(name: "personality", type: "string", description: "FM's personality as the save names it, in the game's language."),
                 rules, sort, descending, limit,
              ],
              run: { $0.searchStaff }),

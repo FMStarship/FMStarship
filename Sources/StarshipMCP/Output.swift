@@ -40,6 +40,10 @@ enum Output {
     /// stars. The caller has already left out what the user hides; this never sees such a column.
     static func value(_ col: Col, _ person: Person, _ visibility: Visibility) -> JSON? {
         if col.name == "Date of birth" { return person.birth.map { .string(iso($0)) } }
+        // The app's column says Listed or Unavailable under a Loan heading; on its own, Unavailable reads as injured.
+        if col.name == "Loan status" {
+            return person.loanListed ? "Listed for loan" : person.loanUnavailable ? "Not available for loan" : nil
+        }
         let raw = col.get(person)
         if col.ability, case .int(let number) = raw {
             return visibility.reveal == .stars ? .string(Columns.abilityStars(number)) : .int(number)
@@ -86,9 +90,14 @@ enum Output {
                 continue
             }
             fields.append(Field(name: col.name) { value(col, $0, visibility) })
+            // League names are FM's, in the game's language, and can be the same in two countries.
+            if col.name == "League", !names.contains(clubNation.name) { fields.append(clubNation) }
         }
         return fields
     }
+
+    /// The nation of the person's club, which says whose league a league is.
+    static let clubNation = Field(name: "Club nation") { text($0.clubNation) }
 
     /// People as a list: `{"columns": ["uid", ...], "rows": [[uid, ...]]}`.
     static func rows(_ people: [Person], _ fields: [Field]) -> [(String, JSON)] {
@@ -114,12 +123,14 @@ enum Output {
     }
 
     /// One of the analysis screens' tables, as the screen shows it: they've already left out what the settings hide.
-    static func table(_ table: AnalysisTable, dropping: Set<String> = [], withHead: Bool = true, limit: Int? = nil) -> [(String, JSON)] {
+    static func table(_ table: AnalysisTable, dropping: Set<String> = [], withHead: Bool = true, limit: Int? = nil,
+                      extra: [Field] = []) -> [(String, JSON)] {
         let kept = table.columns.indices.filter { !dropping.contains(table.columns[$0].title) }
-        let titles: [JSON] = ["uid"] + kept.map { .string(table.columns[$0].title) }
+        let titles: [JSON] = ["uid"] + kept.map { .string(table.columns[$0].title) } + extra.map { .string($0.name) }
         let rows: [JSON] = table.rows.prefix(limit ?? table.rows.count).map { row in
             let uid: JSON = row.person.map { .int(Int($0.uid)) } ?? .null
-            return .array([uid] + kept.map { $0 < row.cells.count ? cell(row.cells[$0]) : .null })
+            return .array([uid] + kept.map { $0 < row.cells.count ? cell(row.cells[$0]) : .null }
+                          + extra.map { field in row.person.flatMap(field.value) ?? .null })
         }
         var pairs: [(String, JSON)] = []
         if withHead, !table.head.isEmpty { pairs.append(("head", .string(prose(table.head)))) }
