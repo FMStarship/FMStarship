@@ -84,9 +84,11 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   won't loan him, so FM isn't asked.
 - **Would join your club** for a member of staff, in `person`, is FM's own answer for the first team, the reserves and the youth
   team (`first_team`, `reserves`, `youth`: true or false). `recommend_staff` gives it as `Would join`: "First team", "Reserves", "Youth", those together, or "No". Its
-  `interest` says whether FM was asked: when FM couldn't be, the list isn't narrowed to people who'd come, so don't present it
-  as one; check each one's answer with `person`. FM only answers about staff for a club the user manages. `wage_max` starts at
-  the club's wage room when you leave it out.
+  `interest` says whether FM was asked: when FM couldn't be, or gave no answer, the list isn't narrowed to people who'd come, so
+  don't present it as one. When FM couldn't be asked at all, `person` can't ask it either; when it didn't answer for some people,
+  they're left out, and asking again or `person` may get their answers. FM is asked about the best 600 for the job at most, and
+  `interest` says when it stopped there. FM only answers about staff for a club the user manages. `wage_max` starts at the
+  club's wage room when you leave it out.
 - **Development** is FM Starship's own record, not FM's history: a snapshot of the club's squad on each game day FM Starship
   read the save, in the app or in its tab inside FM, for the club picked in FM Starship. A gap between dates is days nobody read
   the save with FM Starship, not days nothing changed, so say which dates you compared (`compared`). The newest record can be
