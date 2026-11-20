@@ -52,7 +52,8 @@ extension Toolbox {
         + "plays and, for players, the club they're on loan at."
     private static let limit = Parameter(name: "limit", type: "integer", description: "How many rows, 1-100. 25 if left out.")
     private static let sort = Parameter(name: "sort", type: "string",
-                                        description: "A column to order by, by its name as in person, such as \"Value\", \"Age\" or \"Finishing\".")
+                                        description: "A column to order by, by its name as in person, such as \"Value\", \"Age\", \"Finishing\" "
+                                            + "or \"Starts\". \"Appearances\" orders by starts and sub appearances together.")
     private static let descending = Parameter(name: "descending", type: "boolean",
                                               description: "Highest first. Numbers default to highest first, text to A-Z.")
     private static let position = Parameter(name: "position", type: "string", description: "One of FM's positions.",

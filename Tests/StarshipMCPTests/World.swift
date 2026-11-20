@@ -8,9 +8,13 @@ import XCTest
 
 /// FM's rules as a test wants them: everyone answers, and nothing runs FM's code.
 final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
+    /// False to stand in for FM giving no role table, as when one of its rules fails.
+    var roleRatings = true
+
     /// Three stars in every role, in and out of possession, wherever they play.
     func roleRows(player: Player, position: Int, team: Int64) -> [RoleRow]? {
-        (0..<64).flatMap { role in
+        guard roleRatings else { return nil }
+        return (0..<64).flatMap { role in
             [RoleRow(role: Names.rolesIp[role] ?? "Role \(role)", outOfPossession: false, minHalfStars: 6, maxHalfStars: 6, rating: 50),
              RoleRow(role: Names.rolesOop[role] ?? "Role \(role)", outOfPossession: true, minHalfStars: 6, maxHalfStars: 6, rating: 50)]
         }

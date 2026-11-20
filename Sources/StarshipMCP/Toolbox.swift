@@ -199,12 +199,14 @@ public final class Toolbox: ToolProvider {
     // MARK: Game status
 
     private func status(refresh: Bool, _ visibility: Visibility) -> JSON {
-        // Made after the read, which sets the save's currencies, so they're the units this call's answers are in.
-        var settings: [(String, JSON?)] {
-            [("hidden_attributes", .string(visibility.showHidden ? "on" : "off")),
-             ("ability", .string(visibility.abilityText)),
-             ("units", ["currency": .string(Units.money.name), "symbol": .string(Units.money.symbol),
-                        "wages": .string(Units.wageSuffix), "height": .string(Units.height == .feetInches ? "ft/in" : "cm")])]
+        // Made after the read, which sets the save's currencies, so they're the units this call's answers are in. With no
+        // save read, the user's currency isn't known yet, so it's left out rather than given as the pound.
+        func settings(currencyKnown: Bool) -> [(String, JSON?)] {
+            var units: [(String, JSON)] = []
+            if currencyKnown { units += [("currency", .string(Units.money.name)), ("symbol", .string(Units.money.symbol))] }
+            units += [("wages", .string(Units.wageSuffix)), ("height", .string(Units.height == .feetInches ? "ft/in" : "cm"))]
+            return [("hidden_attributes", .string(visibility.showHidden ? "on" : "off")),
+                    ("ability", .string(visibility.abilityText)), ("units", .object(units))]
         }
         let read: GameRead
         do {
@@ -212,9 +214,9 @@ public final class Toolbox: ToolProvider {
         } catch let problem as GameProblem {
             return .object(dropping: [("fm", .string(problem == .notRunning ? "not running" : problem == .noSave ? "no save loaded"
                                                      : problem == .withoutStarship ? "running without FM Starship" : "unreadable")),
-                                      ("what_to_do", .string(problem.sentence))] + settings)
+                                      ("what_to_do", .string(problem.sentence))] + settings(currencyKnown: false))
         } catch {
-            return .object(dropping: [("fm", "unreadable"), ("what_to_do", .string("\(error)"))] + settings)
+            return .object(dropping: [("fm", "unreadable"), ("what_to_do", .string("\(error)"))] + settings(currencyKnown: false))
         }
         let db = read.database
         let context = CallContext(read: read, visibility: visibility, toolbox: self)
@@ -245,7 +247,7 @@ public final class Toolbox: ToolProvider {
             ("read_seconds_ago", age.map { .int($0) }),
             ("rules", .string(rules)),
             ("self_checks", db.checkProblems.map { .string("failed: \($0)") }),
-        ] + settings)
+        ] + settings(currencyKnown: true))
     }
 
     // MARK: Shortlists

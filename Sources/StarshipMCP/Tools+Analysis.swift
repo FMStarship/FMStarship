@@ -61,9 +61,10 @@ extension Toolbox {
             throw ToolError("FM Starship couldn't find \(club.name)'s tactic in FM's memory. The user can try opening the tactic they "
                 + "play in FM's Tactics screen; then ask again with game_status refresh: true, which says whether it's found.")
         }
-        guard let report = SquadOverview(session: context.session(for: club)) else {
-            throw ToolError("The squad overview needs FM's role ratings, which FM didn't give for \(club.name). Ask again in a moment.")
-        }
+        let noRatings = ToolError("The squad overview needs FM's role ratings, which FM didn't give for \(club.name). Ask again in a moment.")
+        // Without FM's role ratings every place would come back unrated with "no real cover", which FM never said.
+        guard let report = SquadOverview(session: context.session(for: club)),
+              report.places.contains(where: { $0.slot.player != nil && $0.stars > 0 }) else { throw noRatings }
         return .object([("club", .string(club.name)), ("headline", .string(Output.prose(report.headline)))]
                        + Output.table(report.table(hires: [:]), dropping: Self.hireColumns, withHead: false)
                        + [("footnote", .string(Self.withoutHires(Output.prose(report.footnote))))])
