@@ -139,6 +139,8 @@ public final class Toolbox: ToolProvider {
     private var peopleByIndex: [UInt32: Player] = [:]
     private var matchesRead: Int?
     private var matchesByTeam: [Int64: (matches: TeamMatches?, at: Date)] = [:]
+    private var namesRead: Int?
+    private var namesByIndex: [UInt32: String] = [:]
     /// The time now, which a test can move on.
     var clock: () -> Date = Date.init
 
@@ -232,6 +234,16 @@ public final class Toolbox: ToolProvider {
             matchesByTeam[team] = (found, now)
         }
         return found
+    }
+
+    /// Competitions by database index, swept for once for each read of the save: a new competition comes with a new date.
+    func competitionNames(_ read: GameRead) -> [UInt32: String] {
+        guard let source = read.matches else { return [:] }
+        if namesRead != read.number {
+            namesByIndex = source.competitionNames()
+            namesRead = read.number
+        }
+        return namesByIndex
     }
 
     /// How long a sweep stands while it holds a match due today or earlier that isn't played yet.

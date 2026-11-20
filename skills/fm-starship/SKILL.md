@@ -14,9 +14,9 @@ chosen in FM Starship.
 | Tool | Use it for |
 | --- | --- |
 | `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions and home-grown status can be read (`player_state`), the money units. `refresh: true` reads the save again |
-| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has the player's last match, his minutes in it and his rating, and his condition, sharpness, morale, playing time, suspensions and home-grown status |
+| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has his season in the league, the cup and continental matches apart, his last match (competition, opponent, minutes, rating), and his condition, sharpness, morale, playing time, suspensions and home-grown status |
 | `staff` | A club's staff, with jobs and their best coaching areas |
-| `person` | One player or member of staff in full, by `uid`. For a player, `Fitness and morale` has each suspension in full |
+| `person` | One player or member of staff in full, by `uid`. For a player, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension in full |
 | `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
 | `shortlists`, `shortlist` | The user's FM shortlists, and the people on one |
 | `club_overview` | FM Starship's dashboard: facts, budget, who needs action now, the best prospects |
@@ -52,8 +52,16 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **CA and PA** (current and potential ability) are 1 to 200. With Ability set to Stars they come as stars, such as "3.5★", out
   of 5. PA is a ceiling most players never reach.
 - **Coaching stars** are out of 5, as FM shows them.
-- **Season stats** are this season's, for the player's club. **Starts** and **Sub appearances** are separate, as FM's "3 (2)"
-  means 3 starts and 2 as a substitute. **Form** is the last five match ratings.
+- **Season stats** are FM's club total for this season: league, cup and continental matches added up, at the club he plays
+  for now (a loanee's are his loan club's). FM keeps the three apart, and so do `squad`'s `League stats`, `Cup stats` and
+  `Continental stats` and `person`'s `Season stats by competition`. Look at those before you judge goals, assists or ratings:
+  three goals in the cup against a lower-league side aren't league goals. Friendlies and internationals aren't in any of them,
+  and a youth player's matches for a reserve or B team may be missing too. **Starts** and **Sub appearances** are separate,
+  as FM's "3 (2)" means 3 starts and 2 as a substitute. **Form** is the last five match ratings, in any competition.
+- **Recent matches** in `person` are the player's latest matches for every team he played for, friendlies, youth and
+  international matches too: date, team, competition, opponent, minutes, rating, goals, assists and cards. Use them to say
+  where a goal or a rating came from. `team` is the club's name, so a reserve team's match shows its club with the reserve
+  league as the competition; it's empty for a national team. An empty competition is one FM Starship couldn't name.
 - **Would join your club** is FM's own answer, with how keen they are: Interested, Persuadable, Doubtful or Not interested.
   `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`. Null there means FM wasn't asked
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club
@@ -70,8 +78,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked "(suspended)"
   from FM's own entry and "(injured)" when one of his injuries covered the day. The rest were on the bench or left out; which
   isn't known. Scorers marked "(own goal)" play for the side that conceded.
-- **Last match** in `squad` is the player's latest match in FM's record, for any team: compare its date with the club's last
-  result to see who was left out. A date with no minutes or rating means he didn't play: on the bench, left out or suspended.
+- **Last match** in `squad` is the player's latest match in FM's record, for any team, with its competition and opponent:
+  compare its date with the club's last result to see who was left out. A date with no minutes or rating means he didn't
+  play: on the bench, left out or suspended.
 - **Condition** and **Sharpness** (match sharpness) are FM's own numbers as percentages, 0 to 100 with one decimal. FM doesn't
   show them as numbers: condition is a heart with a word, sharpness a tick. Right after a match, FM lowers condition by the
   minutes played and raises sharpness. On the save they were checked on, the evening after a match, 80% condition showed "Bra"
@@ -140,6 +149,8 @@ FM Starship doesn't read these yet, so don't state them, and don't work them out
 - Condition, sharpness, morale, playing time, suspensions or home-grown status when `game_status` says one is off.
 - FM's words for condition and morale, wear ("very little wear" and the like), match load and training load.
 - How many more yellow cards a player can get before a ban.
+- A player's season totals for friendlies and internationals. Recent matches has those matches, but only the ones FM still
+  keeps, so don't add them up and call it his season.
 - The squad screen's badges for a player on a language course or supporting an unhappy teammate.
 - Registration status: squad registration and foreign player rules. Don't count foreign players from their nations, because
   FM's rules for this depend on more than nationality.

@@ -39,6 +39,8 @@ extension PlayerStateReader: PlayerStateSource {}
 public protocol MatchSource: AnyObject {
     /// Nil when this build of FM doesn't have the classes they're found by.
     func matches(team: Int64) -> TeamMatches?
+    /// Every competition with a fixture in FM's memory, by database index, which is all a player's match record holds.
+    func competitionNames() -> [UInt32: String]
 }
 
 /// The running game's, through `FixturesReader`, which is set up on the first question about a match.
@@ -54,6 +56,11 @@ final class LiveMatches: MatchSource {
         if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
         guard let found = reader ?? nil else { return nil }
         return found.teamMatches(team: team)
+    }
+
+    func competitionNames() -> [UInt32: String] {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.competitionNames() ?? [:]
     }
 }
 

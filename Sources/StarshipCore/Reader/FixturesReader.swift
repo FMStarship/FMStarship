@@ -158,8 +158,13 @@ public struct PlayerMatch: Sendable {
     public var team: Int64
     public var opponent: Int64
     public var opponentName = ""
+    /// The team he was in, by its club's name: empty for a national team.
+    public var teamName = ""
     /// The competition's database index, as `MatchFixture.competitionIndex`.
     public var competitionIndex: UInt32 = 0
+    /// The competition's name when it's his team's own league, which names a reserve league's matches that no fixture in
+    /// memory names. Empty otherwise: `FixturesReader.competitionNames` names the rest.
+    public var competitionName = ""
     /// False when he didn't play. FM keeps an entry with no record of his match for every player of the team who didn't:
     /// on the bench, left out or suspended.
     public var played = false
@@ -271,6 +276,50 @@ public final class FixturesReader {
             copies[Key(home: fixture.home, away: fixture.away, date: fixture.date), default: []].append(fixture)
         }
         return copies.values.compactMap(Self.choose).sorted { ($0.date, $0.kickOff ?? 0) < ($1.date, $1.kickOff ?? 0) }
+    }
+
+    /// The name of every competition FM holds a fixture or result of, by database index, from one sweep: a player's match
+    /// records only hold the index. A competition with no fixture left in memory, such as an old season's, isn't named.
+    /// Where two names come out for one index, as a copy in freed memory could give, the one most fixtures carry wins.
+    public func competitionNames() -> [UInt32: String] {
+        typealias F = MacLayout.Fixture
+        let lock = NSLock()
+        var fixturesByName: [Int64: Int] = [:]
+        let pieces = game.pieces(size: 1 << 23, overlap: 0x100, writableOnly: true)
+        let fixtureVt = fixtureVt, resultVt = resultVt
+        DispatchQueue.concurrentPerform(iterations: pieces.count) { i in
+            let (address, count) = pieces[i]
+            let found: [Int64: Int] = game.withBytes(address, count: count) { raw in
+                var found: [Int64: Int] = [:]
+                var o = Int((8 - address % 8) % 8)
+                while o + F.name + 8 <= count {
+                    let word = raw.loadUnaligned(fromByteOffset: o, as: Int64.self)
+                    if word == fixtureVt || word == resultVt {
+                        let name = raw.loadUnaligned(fromByteOffset: o + F.name, as: Int64.self)
+                        if name != 0 { found[name, default: 0] += 1 }
+                    }
+                    o += 8
+                }
+                return found
+            } ?? [:]
+            guard !found.isEmpty else { return }
+            lock.lock()
+            fixturesByName.merge(found, uniquingKeysWith: +)
+            lock.unlock()
+        }
+        // The pieces overlap, so a fixture in an overlap counts twice. That only weighs the vote, and both copies agree.
+        var fixturesByComp: [Int64: Int] = [:]
+        for (name, fixtures) in fixturesByName {
+            let comp = game.readPointer(name &+ MacLayout.FixtureName.comp)
+            if comp != 0 { fixturesByComp[comp, default: 0] += fixtures }
+        }
+        var votes: [UInt32: [String: Int]] = [:]
+        for (comp, fixtures) in fixturesByComp {
+            let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
+            guard !name.isEmpty else { continue }
+            votes[compIndex(comp), default: [:]][name, default: 0] += fixtures
+        }
+        return votes.compactMapValues { names in names.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key }
     }
 
     /// FM keeps from one to eight copies of a match, some made for its screens. A result wins over a fixture, and when two
@@ -466,6 +515,8 @@ public final class FixturesReader {
             let group = game.readPointer(slot)
             guard group != 0, let head = game.read(group, count: G.entries) else { continue }
             let team = le64(head, G.team)
+            let teamName = name(team)
+            let league = league(of: team, in: game)
             let count = min(Int(head[G.count]), G.kept)
             var oldest: Date?
             for i in 0..<count {
@@ -475,7 +526,9 @@ public final class FixturesReader {
                 oldest = min(oldest ?? date, date)
                 var match = PlayerMatch(date: date, team: team, opponent: le64(b, E.opponent))
                 match.opponentName = name(match.opponent)
+                match.teamName = teamName
                 match.competitionIndex = le32(b, E.competition)
+                if let league, league.index == match.competitionIndex { match.competitionName = league.name }
                 let stats = le64(b, E.record)
                 if stats == 0 { match.suspended = b[E.reason] == MacLayout.FormEntry.suspended }
                 if stats != 0, let r = game.read(stats, count: M.size) {
@@ -494,6 +547,14 @@ public final class FixturesReader {
         }
         history.matches.sort { $0.date > $1.date }
         return history
+    }
+
+    /// A team's own league: its database index and name.
+    private static func league(of team: Int64, in game: GameProcess) -> (index: UInt32, name: String)? {
+        let comp = game.readPointer(team &+ Int64(MacLayout.Team.competition))
+        guard comp != 0, let b = game.read(comp &+ MacLayout.Comp.index, count: 4) else { return nil }
+        let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
+        return name.isEmpty ? nil : (le32(b, 0), name)
     }
 }
 

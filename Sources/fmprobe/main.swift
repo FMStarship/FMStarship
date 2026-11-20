@@ -1345,6 +1345,38 @@ case "state":
                      (engine?.homeGrown(player: p)?.rawValue ?? "-") as NSString, named == nil ? "bans not read" : bans.joined(separator: " ")))
     }
 
+case "scopes":
+    // FM's stats scopes 0 to 7 for one club's players (default Molde FK), next to this year's matches in their form history
+    // by competition, so a patch that renumbers the scopes shows: the league's, cup's and continental scopes' appearances
+    // must match those competitions' matches, where FM still keeps them all. `detail` lists each player's matches too.
+    let (db, engine) = try GameReader.connect(to: game, status: { _ in })
+    guard let engine, let reader = FixturesReader(game: game, rtti: Rtti(game)) else { print("rules or fixtures off"); exit(1) }
+    let club = args.count > 2 ? args[2] : "Molde FK"
+    let detail = args.count > 3 && args[3] == "detail"
+    let year = db.gameDate.map { GameDate.calendar.component(.year, from: $0) }
+    let names = reader.competitionNames()
+    func day(_ date: Date) -> String { ISO8601DateFormatter.string(from: date, timeZone: .gmt, formatOptions: [.withFullDate]) }
+    for p in db.players where p.clubFull == club || p.loanClubFull == club {
+        let history = (engine.matchHistory(player: p)?.matches ?? []).filter { GameDate.calendar.component(.year, from: $0.date) == year }
+        func competition(_ m: PlayerMatch) -> String { names[m.competitionIndex] ?? (m.competitionName.isEmpty ? "#\(m.competitionIndex)" : m.competitionName) }
+        let scopes = (0...7).map { scope -> String in
+            guard let s = engine.seasonStats(player: p, season: scope) else { return "\(scope):-" }
+            return s.apps == 0 ? "\(scope):0" : String(format: "%d:%d(%d)/%dg/%da/%.2f", scope, s.starts, s.subs, s.goals, s.assists, s.rating)
+        }
+        var byCompetition: [String: (apps: Int, goals: Int, assists: Int)] = [:]
+        for m in history where m.played {
+            let sum = byCompetition[competition(m)] ?? (0, 0, 0)
+            byCompetition[competition(m)] = (sum.apps + 1, sum.goals + m.goals, sum.assists + m.assists)
+        }
+        let kept = byCompetition.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value.apps)/\($0.value.goals)g/\($0.value.assists)a" }
+        print(String(format: "%-24@ %@ | %@", p.name as NSString, scopes.joined(separator: " "), kept.joined(separator: ", ")))
+        guard detail else { continue }
+        print("    squad", p.squad, p.loanClubFull.isEmpty ? "" : "| on loan at \(p.loanClubFull)")
+        for m in history {
+            print("    ", day(m.date), m.teamName, "v", m.opponentName, "|", competition(m), "|", m.played ? "\(m.minutes)' \(m.goals)g \(m.assists)a" : "unused")
+        }
+    }
+
 case "dump":
     let address = Int64(args[2].replacingOccurrences(of: "0x", with: ""), radix: 16)!
     let count = args.count > 3 ? Int(args[3])! : 256

@@ -136,6 +136,7 @@ FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://mode
 use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
 shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match,
+each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
 each player's condition, sharpness, morale, playing time, suspensions and home-grown status, and FM Starship's club, squad and
 staff overviews, recommended signings and bargains.
 
@@ -443,6 +444,15 @@ FM Starship's own parts, and how to check them after a patch:
   date moving, so the MCP server reads each player's state again for each answer about him (`GameReader.refreshState`), with
   the read's verdict still deciding what's on. Home-grown status is FM's own two tests. `fmprobe state [CLUB]` prints all of it
   for one club, with the stored fitness beside the getters', and runs the getter check.
+- **Season stats by competition** are FM's own stats function (`RulesEngine.seasonStats`) asked for scopes other than the club
+  total (5): 1 is the league, 2 the domestic cups and 3 the continental competitions, at the club the player plays for now (his
+  loan club while on loan). On 27.1.0 the three add up to the club total, and the cup's and the Champions League's matched the
+  matches FM keeps for each of Molde's players. Friendlies (0, which also held the U19 cup) and internationals (4, with 7 next to
+  it) aren't split out, since what's in them wasn't settled. The MCP server asks for each again when it answers, as FM can play a
+  match without the date moving. A player's recent matches come from his form record, which only holds a competition's database
+  index: `FixturesReader.competitionNames` names every competition with a fixture in memory in one sweep, and a reserve league
+  that has none is named by the team's own league. `fmprobe scopes [CLUB] [detail]` prints scopes 0 to 7 next to each player's
+  matches this year by competition, so a patch that renumbers them shows.
 - **What a ban is for** is worked out by `PlayerStateReader`, only when the MCP server answers about a player, so the app's and
   the plugin's reads don't pay for it. FM hangs a ban on an association and one of its rule sets, which can cover several
   competitions, and doesn't say which rule set is which, so this is FM Starship's reasoning rather than FM's. A red card's match

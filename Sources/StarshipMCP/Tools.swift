@@ -78,8 +78,10 @@ extension Toolbox {
              run: { _ in { _, _ in [:] } }),
         Tool(name: "squad", title: "Squad",
              description: "One squad of a club, one compact row per player with uid: first team, reserves or B team, a youth team, "
-                + "those out on loan, or all. Says which squads the club has. Last match is each player's latest match in FM's "
-                + "record of his form, with his minutes and rating (both empty if he didn't play: on the bench, left out or suspended), which shows rotation. "
+                + "those out on loan, or all. Says which squads the club has. The season columns are the club total; League stats, "
+                + "Cup stats and Continental stats give each competition's apps, minutes, goals, assists and average rating apart. Last match is each "
+                + "player's latest match in FM's record of his form, with its competition and opponent and his minutes and rating "
+                + "(both empty if he didn't play: on the bench, left out or suspended), which shows rotation. "
                 + "Condition and Sharpness are percentages, Morale 1-20, Playing time his happiness with it from -100 to 100, "
                 + "Suspended the matches he's banned for in each competition, and Home-grown club, nation or no.",
              parameters: [ownOrAnyClub,
@@ -91,10 +93,12 @@ extension Toolbox {
              parameters: [ownOrAnyClub],
              run: { $0.staff }),
         Tool(name: "person", title: "Person",
-             description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats, form, "
-                + "injury, condition, sharpness, morale, playing time, each suspension, home-grown status, contract, wage, value, "
-                + "release clauses, personality and media handling, and whether they'd join the user's club.",
-             parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true)],
+             description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats in total and "
+                + "by competition (league, cup, continental), form, his recent matches with competition, opponent, minutes, rating, "
+                + "goals and assists, injury, condition, sharpness, morale, playing time, each suspension, home-grown status, contract, "
+                + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
+             parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
+                          Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out.")],
              run: { $0.person }),
         Tool(name: "search_players", title: "Search players",
              description: Toolbox.names + "Players anywhere in the save, filtered as in FM Starship's player search. Money is in the user's "
@@ -130,11 +134,11 @@ extension Toolbox {
                 Parameter(name: "ca_max", type: "integer", description: "CA at most. Only while Ability is on."),
                 Parameter(name: "pa_min", type: "integer", description: "PA at least. Only while Ability is on."),
                 Parameter(name: "pa_max", type: "integer", description: "PA at most. Only while Ability is on."),
-                Parameter(name: "apps_min", type: "integer", description: "This season's appearances for their club at least, starts and sub appearances together."),
-                Parameter(name: "minutes_min", type: "integer", description: "This season's minutes at least."),
-                Parameter(name: "goals_min", type: "integer", description: "This season's goals at least."),
-                Parameter(name: "assists_min", type: "integer", description: "This season's assists at least."),
-                Parameter(name: "rating_min", type: "number", description: "This season's average rating at least."),
+                Parameter(name: "apps_min", type: "integer", description: "This season's appearances for their club at least, starts and sub appearances together, league, cup and continental together."),
+                Parameter(name: "minutes_min", type: "integer", description: "This season's minutes for their club at least, all competitions together."),
+                Parameter(name: "goals_min", type: "integer", description: "This season's goals for their club at least, all competitions together."),
+                Parameter(name: "assists_min", type: "integer", description: "This season's assists for their club at least, all competitions together."),
+                Parameter(name: "rating_min", type: "number", description: "This season's average rating for their club at least, all competitions together."),
                 rules, sort, descending, limit,
              ],
              run: { $0.searchPlayers }),

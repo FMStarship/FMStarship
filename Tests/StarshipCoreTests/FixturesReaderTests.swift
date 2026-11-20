@@ -383,6 +383,32 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(first.xG, 0.63)
         XCTAssertNil(found.fullFrom[world.rovers])
         XCTAssertEqual(found.fullFrom[world.minnows], GameDate.date(year: 2028, dayOfYear: 20), "only a full list loses matches")
+
+        // His team's own league names its matches in it, as for a reserve league no fixture in memory names; not the cup.
+        XCTAssertEqual(latest.teamName, "Mockport Rovers")
+        XCTAssertEqual(latest.competitionName, "")
+        XCTAssertEqual(first.competitionName, "Mock League")
+        let lower = try XCTUnwrap(found.matches.last)
+        XCTAssertEqual(lower.teamName, "Little Minnows")
+        XCTAssertEqual(lower.competitionName, "Mock Lower League")
+    }
+
+    func testNamesEveryCompetitionAFixtureIsIn() throws {
+        let world = World()
+        world.playLeague()
+        var leg = world.values(home: world.rovers, away: world.minnows, day: 110, league: false)
+        leg.score = (4, 2)
+        world.game.match(leg)
+        XCTAssertEqual(try world.reader().competitionNames(), [World.leagueIndex: "Mock League", World.cupIndex: "Mock Cup"])
+    }
+
+    /// A copy in freed memory could point at another competition record with the same index: the name most fixtures carry wins.
+    func testTheNameMostFixturesCarryWins() throws {
+        let world = World()
+        world.playLeague()
+        let stale = world.game.fixtureName(competition: world.game.competition("Old Name", index: World.leagueIndex))
+        world.game.match(FakeGame.MatchValues(home: world.town, away: world.united, name: stale, day: 90))
+        XCTAssertEqual(try world.reader().competitionNames()[World.leagueIndex], "Mock League")
     }
 
     /// FM's entry for a player who didn't play says when it was because he was suspended.

@@ -35,19 +35,29 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     func preferredJob(staff: Staff) -> Int? { nil }
     func jobPreferences(staff: Staff) -> [UInt8]? { nil }
     func roleRows(player: Player, team: Int64) -> [RoleRow]? { nil }
+    /// Ten appearances this season: seven in the league, two in the cup and one in Europe, where Rivals FC aren't.
     func seasonStats(player: Player, season: Int) -> SeasonStats? {
         var stats = SeasonStats()
-        stats.apps = 10
-        stats.starts = 9
-        stats.subs = 1
-        stats.minutes = 900
-        stats.goals = 3
-        stats.assists = 2
-        stats.rating = 7.05
-        stats.yellow = 2
-        stats.red = 1
+        switch season {
+        case RulesEngine.clubTotal:
+            (stats.starts, stats.subs, stats.minutes, stats.goals, stats.assists, stats.rating, stats.yellow, stats.red) = (9, 1, 900, 3, 2, 7.05, 2, 1)
+        case RulesEngine.league:
+            (stats.starts, stats.subs, stats.minutes, stats.goals, stats.assists, stats.rating, stats.yellow, stats.red) = (6, 1, 630, 0, 1, 6.8, 2, 1)
+        case RulesEngine.cup:
+            (stats.starts, stats.subs, stats.minutes, stats.goals, stats.assists, stats.rating) = (2, 0, 180, 3, 0, 8.4)
+        case RulesEngine.continental where player.clubFull == World.club:
+            (stats.starts, stats.subs, stats.minutes, stats.assists, stats.rating) = (1, 0, 90, 1, 7)
+        default:
+            return stats
+        }
+        stats.apps = stats.starts + stats.subs
+        // A league goal in a match FM has played since the read.
+        if goalSinceRead, season == RulesEngine.clubTotal || season == RulesEngine.league { stats.goals += 1 }
         return stats
     }
+    var goalSinceRead = false
+    /// More matches in a player's record, ahead of the league ones, newest first.
+    var moreMatches: [UInt32: [PlayerMatch]] = [:]
     func form(player: Player) -> String? { "7.1 6.8 7.4" }
     func injuryReturnDays(player: Player) -> Int? { 14 }
     /// FM's getters, caught up to today: the stored values for a player FM brought up to date today, as FM's own give.
@@ -67,7 +77,10 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
         let uid = Int(player.uid)
         func match(_ day: Int, opponent: Int64, played: Bool = true) -> PlayerMatch {
             var match = PlayerMatch(date: GameDate.date(year: 2026, dayOfYear: day) ?? Date(), team: World.team, opponent: opponent)
+            match.teamName = World.club
+            match.opponentName = opponent == World.otherTeam ? World.otherTown : World.rivals
             match.competitionIndex = World.leagueIndex
+            match.competitionName = "Mock League"
             guard played else { return match }
             match.played = true
             match.minutes = day == World.secondMatch && uid == 11 ? 64 : 90
@@ -79,7 +92,8 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
             return match
         }
         switch uid {
-        case 1...11: return MatchHistory(matches: [match(World.secondMatch, opponent: World.otherTeam), match(World.firstMatch, opponent: World.rivalsTeam)])
+        case 1...11: return MatchHistory(matches: (moreMatches[player.uid] ?? []) + [match(World.secondMatch, opponent: World.otherTeam),
+                                                                                        match(World.firstMatch, opponent: World.rivalsTeam)])
         case 12: return MatchHistory(matches: [match(World.secondMatch, opponent: World.otherTeam, played: false)])
         case 13: return MatchHistory(fullFrom: [World.team: GameDate.date(year: 2026, dayOfYear: World.firstMatch + 2) ?? Date()])
         default: return MatchHistory()
@@ -102,6 +116,15 @@ final class FakeMatches: MatchSource {
         sweeps += 1
         guard classesFound else { return nil }
         return teams[team] ?? TeamMatches(team: team, fixtures: [], table: nil, check: .noTable)
+    }
+
+    /// The competitions one sweep of FM's memory names.
+    var names: [UInt32: String] = [World.leagueIndex: "Mock League", World.cupIndex: "Mock Cup"]
+    private(set) var nameSweeps = 0
+
+    func competitionNames() -> [UInt32: String] {
+        nameSweeps += 1
+        return classesFound ? names : [:]
     }
 }
 

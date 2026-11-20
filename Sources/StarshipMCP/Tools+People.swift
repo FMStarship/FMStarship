@@ -45,22 +45,76 @@ extension Toolbox {
         filter.openSquad(club: club, squad: shown)
         let players = filter.criteria().filter(context.db.players).stableSorted(by: Self.positionOrder)
         for player in players where player.injury != nil { _ = RulesState.shared.injuryCheck(player) }
-        // FM can play a match without the date moving, so each row's state is read again.
+        // FM can play a match without the date moving, so each row's state and season stats are read again.
         players.forEach { context.read.states?.refresh($0) }
+        players.forEach { Self.refreshSeason($0, context.read.engine) }
         var names = Self.squadColumns
         if shown == nil, let at = names.firstIndex(of: "Position") { names.insert("Squad", at: at + 1) }
         let columns = Output.columns(names, in: Columns.forPlayers(), context.visibility)
-        return .object([("club", .string(club)), ("squad", .string(shown ?? "all")),
-                        ("squads", .array(squads.map { .string($0) })), ("players", .int(players.count)),
-                        ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(players, columns + Self.lastMatch(context.read.engine)
-                                     + Self.stateFields(context.db, context.read.engine, context.read.states)))
+        let engine = context.read.engine
+        var pairs: [(String, JSON)] = [("club", .string(club)), ("squad", .string(shown ?? "all")),
+                                       ("squads", .array(squads.map { .string($0) })), ("players", .int(players.count)),
+                                       ("wages", .string(Units.wageSuffix))]
+        if engine != nil { pairs.append(("season_stats", .string(Self.seasonNote))) }
+        return .object(pairs + Output.rows(players, columns + Self.competitionFields(engine)
+                                           + Self.lastMatch(engine, competitions: engine == nil ? [:] : competitionNames(context.read))
+                                           + Self.stateFields(context.db, engine, context.read.states)))
     }
 
-    /// Each player's latest match in FM's record of his form: when, his minutes and his rating, both empty when he didn't
-    /// play (on the bench, left out or suspended).
+    static let seasonNote = "Starts, Sub appearances, Goals, Assists, Average rating and the cards are FM's club total for this season: "
+        + "league, cup and continental matches together, at the club he plays for now (his loan club while on loan). League stats, "
+        + "Cup stats and Continental stats give each apart. Friendlies and internationals aren't in either."
+
+    /// FM's own split of the club total, as it keeps a player's season: the league, the domestic cups and the continental
+    /// club competitions.
+    static let competitions = [("League", RulesEngine.league), ("Cup", RulesEngine.cup), ("Continental", RulesEngine.continental)]
+
+    /// FM can play a match without the date moving, so a row's season stats and form are asked for again when it's answered,
+    /// as its split by competition is, and the two agree. As the read does, a player with no appearances has none.
+    static func refreshSeason(_ player: Player, _ engine: GameRulesEngine?) {
+        guard let engine, let total = engine.seasonStats(player: player, season: RulesEngine.clubTotal) else { return }
+        player.season = total.apps > 0 ? total : nil
+        player.form = total.apps > 0 ? engine.form(player: player) ?? "" : ""
+    }
+
+    /// His season in each of FM's competitions apart, in a few words, so a cup goal isn't read as a league one. Empty where he
+    /// hasn't played in it. None when FM's rules are off, since season stats come with them.
+    static func competitionFields(_ engine: GameRulesEngine?) -> [Output.Field] {
+        guard let engine else { return [] }
+        // "League" alone is the club's league elsewhere in these answers.
+        return competitions.map { name, scope in
+            Output.Field(name: name + " stats") { person in
+                guard let player = person as? Player, let stats = engine.seasonStats(player: player, season: scope) else { return nil }
+                return seasonLine(stats)
+            }
+        }
+    }
+
+    /// "6 (2) apps, 540 min, 3 goals, 1 assist, 7.25 rating", FM's way of writing starts and sub appearances.
+    static func seasonLine(_ stats: SeasonStats) -> JSON? {
+        guard stats.apps > 0 else { return nil }
+        func count(_ number: Int, _ word: String) -> String { "\(number) \(word)\(number == 1 ? "" : "s")" }
+        return .string("\(stats.starts) (\(stats.subs)) apps, \(stats.minutes) min, \(count(stats.goals, "goal")), "
+                       + "\(count(stats.assists, "assist")), " + String(format: "%.2f", stats.rating) + " rating")
+    }
+
+    /// The same split in full, for `person`: only the competitions he's played in.
+    static func seasonByCompetition(_ player: Player, _ engine: GameRulesEngine?) -> JSON? {
+        guard let engine else { return nil }
+        let split: [(String, JSON)] = competitions.compactMap { name, scope in
+            guard let s = engine.seasonStats(player: player, season: scope), s.apps > 0 else { return nil }
+            return (name, .object([("Starts", .int(s.starts)), ("Sub appearances", .int(s.subs)), ("Minutes", .int(s.minutes)),
+                                   ("Goals", .int(s.goals)), ("Assists", .int(s.assists)),
+                                   ("Average rating", .double((s.rating * 100).rounded() / 100)), ("Yellow cards", .int(s.yellow)),
+                                   ("Red cards", .int(s.red)), ("Player of the Match", .int(s.playerOfTheMatch))]))
+        }
+        return split.isEmpty ? nil : .object(split)
+    }
+
+    /// Each player's latest match in FM's record of his form: when, which competition and opponent, his minutes and his
+    /// rating, both empty when he didn't play (on the bench, left out or suspended). `competitions` names the competitions by database index.
     /// None when FM's rules are off, since the record comes with them.
-    static func lastMatch(_ engine: GameRulesEngine?) -> [Output.Field] {
+    static func lastMatch(_ engine: GameRulesEngine?, competitions: [UInt32: String]) -> [Output.Field] {
         guard let engine else { return [] }
         final class Latest {
             var found: [UInt32: PlayerMatch?] = [:]
@@ -73,6 +127,8 @@ extension Toolbox {
             return found
         }
         return [Output.Field(name: "Last match") { match($0).map { .string(Output.iso($0.date)) } },
+                Output.Field(name: "Last match competition") { match($0).flatMap { competitionName($0, competitions) } },
+                Output.Field(name: "Last match opponent") { match($0).flatMap { Output.text($0.opponentName) } },
                 Output.Field(name: "Last match minutes") { match($0).flatMap { $0.played ? .int($0.minutes) : nil } },
                 Output.Field(name: "Last match rating") { match($0)?.rating.map { .double($0) } }]
     }
@@ -113,9 +169,11 @@ extension Toolbox {
         var pairs: [(String, JSON)] = [("uid", .int(Int(person.uid))), ("name", .string(person.name))]
         let catalogue: [Col]
         let groups: [String]
+        let recent = try args.int("matches", in: 0...40) ?? 10
         if let player = person as? Player {
             pairs.append(("kind", "player"))
             if player.injury != nil { _ = RulesState.shared.injuryCheck(player) }
+            Self.refreshSeason(player, context.read.engine)
             catalogue = Columns.forPlayers()
             groups = ["General", "Contract", "Ability", "Season stats", "Technical", "Mental", "Physical", "Goalkeeping", "Hidden",
                       "Positions", "Personality"]
@@ -138,15 +196,47 @@ extension Toolbox {
             if !values.isEmpty { pairs.append((group, .object(values))) }
         }
         if let player = person as? Player {
+            if let split = Self.seasonByCompetition(player, context.read.engine) {
+                let at = pairs.firstIndex { $0.0 == "Season stats" }.map { $0 + 1 } ?? pairs.count
+                pairs.insert(("Season stats by competition", split), at: at)
+            }
             context.read.states?.refresh(player)
             if let state = Self.stateGroup(player, context.db, context.read.engine, context.read.states) {
                 pairs.append(("Fitness and morale", state))
             }
+            if let matches = recentMatches(player, limit: recent, context) { pairs.append(("Recent matches", matches)) }
             let traits = player.traits.components(separatedBy: "; ").filter { !$0.isEmpty }
             if !traits.isEmpty { pairs.append(("Traits", .array(traits.map { .string($0) }))) }
         }
         if let session, let join = wouldJoin(person, session) { pairs.append(("Would join your club", join)) }
         return .object(pairs)
+    }
+
+    /// A match's competition by FM's name: from the fixtures in memory, else his team's own league.
+    static func competitionName(_ match: PlayerMatch, _ names: [UInt32: String]) -> JSON? {
+        Output.text(names[match.competitionIndex] ?? match.competitionName)
+    }
+
+    static let recentMatchColumns = ["date", "team", "competition", "opponent", "minutes", "rating", "goals", "assists", "yellow", "red"]
+
+    /// His latest matches in FM's record of his form, for any team, newest first: which competition and opponent a goal or a
+    /// rating came from.
+    private func recentMatches(_ player: Player, limit: Int, _ context: CallContext) -> JSON? {
+        guard limit > 0, let engine = context.read.engine, let history = engine.matchHistory(player: player),
+              !history.matches.isEmpty else { return nil }
+        let names = competitionNames(context.read)
+        let rows: [JSON] = history.matches.prefix(limit).map { match in
+            let head: [JSON] = [.string(Output.iso(match.date)), Output.text(match.teamName) ?? .null,
+                                Self.competitionName(match, names) ?? .null, Output.text(match.opponentName) ?? .null]
+            guard match.played else { return .array(head + Array(repeating: JSON.null, count: 6)) }
+            return .array(head + [.int(match.minutes), match.rating.map { .double($0) } ?? .null, .int(match.goals),
+                                  .int(match.assists), .int(match.yellow), .int(match.red)])
+        }
+        let note = "Newest first, for every team he played for, friendlies, youth and international matches too. team is the "
+            + "club's name, so a reserve or youth team shows as its club, and it's empty for a national team. FM keeps his last "
+            + "\(MatchHistory.kept) matches for each team. Empty minutes and rating: he was on the bench and didn't come on. "
+            + "An empty competition is one FM Starship couldn't name."
+        return .object([("columns", .array(Self.recentMatchColumns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }
 
     /// FM's own answer, asked for this one person. Nothing when FM's rules are off or they're already at the club.
