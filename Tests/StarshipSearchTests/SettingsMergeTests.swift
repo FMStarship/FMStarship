@@ -38,6 +38,7 @@ final class SettingsMergeTests: XCTestCase {
         savedLoaded = Settings.loaded
         savedSeen = Settings.seenModified
         savedWait = Settings.lockWait
+        Settings.logged = []
         Settings.pathOverride = file
     }
 
@@ -48,6 +49,7 @@ final class SettingsMergeTests: XCTestCase {
         Settings.loaded = savedLoaded
         Settings.seenModified = savedSeen
         Settings.lockWait = savedWait
+        Settings.logged = []
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -379,8 +381,71 @@ final class SettingsMergeTests: XCTestCase {
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: file.path)
         app.run {
             XCTAssertTrue(Settings.followFile())
-            XCTAssertFalse(Settings.current.showHidden, "Off, as loading such a file would have it")
-            XCTAssertEqual(Settings.current.reveal, Reveal.hidden.rawValue, "Clamped, as loading would have it")
+            XCTAssertFalse(Settings.current.showHidden, "Off. Loading such a file gives all the defaults, which has it off too")
+            XCTAssertEqual(Settings.current.reveal, Reveal.hidden.rawValue, "Clamped, as the model's Reveal(setting:) does")
         }
+    }
+
+    func testALockFileThisUserCantWriteStillLocks() throws {
+        try write(Settings())
+        let lock = folder.appendingPathComponent("settings.lock")
+        FileManager.default.createFile(atPath: lock.path, contents: nil, attributes: [.posixPermissions: 0o444])
+        var app = Process()
+        app.run {
+            Settings.load()
+            Settings.current.showHidden = true
+            Settings.save()
+        }
+        XCTAssertTrue(try onDisk().showHidden)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: log.path))
+    }
+
+    func testAFollowThatCantReadTheFileTriesAgainAndLogsOnce() throws {
+        try write(Settings())
+        var app = Process()
+        app.run { Settings.load() }
+        var plugin = Settings()
+        plugin.showHidden = true
+        try writeAsOther(plugin)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: file.path)
+        app.run {
+            XCTAssertFalse(Settings.followFile())
+            XCTAssertFalse(Settings.followFile())
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        let logged = try String(contentsOf: log, encoding: .utf8)
+        XCTAssertEqual(logged.components(separatedBy: "settings not followed").count - 1, 1, "Logged once")
+        app.run {
+            XCTAssertTrue(Settings.followFile(), "Read again, though its modification date hasn't changed since")
+            XCTAssertTrue(Settings.current.showHidden)
+        }
+    }
+
+    func testSaveIfPendingSavesOnlyAChangeLeftBehind() throws {
+        try write(Settings())
+        var app = Process()
+        app.run { Settings.load() }
+        let date = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date
+        app.run { Settings.saveIfPending() }
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date, date,
+                       "Nothing pending, nothing written")
+
+        Settings.lockWait = 0.05
+        let other = open(folder.appendingPathComponent("settings.lock").path, O_RDWR | O_CREAT, 0o644)
+        XCTAssertEqual(flock(other, LOCK_EX | LOCK_NB), 0)
+        app.run {
+            Settings.current.showHidden = true
+            Settings.save()
+            let started = Date()
+            Settings.saveIfPending()
+            XCTAssertLessThan(Date().timeIntervalSince(started), 0.04, "The poll's try doesn't wait for the lock")
+        }
+        flock(other, LOCK_UN)
+        close(other)
+        XCTAssertFalse(try onDisk().showHidden)
+        app.run { Settings.saveIfPending() }
+        XCTAssertTrue(try onDisk().showHidden)
+        let logged = try String(contentsOf: log, encoding: .utf8)
+        XCTAssertEqual(logged.components(separatedBy: "settings not saved").count - 1, 1, "The same failure is logged once")
     }
 }

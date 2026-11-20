@@ -105,6 +105,8 @@ public struct Settings: Codable, Equatable {
     static var lockWait: TimeInterval = 0.5
     /// Tests point this at a temporary folder.
     static var pathOverride: URL?
+    /// The kinds of failure logged since a save or a follow last worked, so the poll's tries every 2 seconds log each once.
+    static var logged: Set<String> = []
 
     /// ~/Library/Application Support/FMStarship/settings.json
     public static var path: URL {
@@ -128,8 +130,17 @@ public struct Settings: Codable, Equatable {
     /// Does nothing before `load()`, so a failed start can't overwrite the file with defaults. Under a lock, re-reads the
     /// file and changes only the keys this process has changed, keeping every other key the file has, even ones this build
     /// doesn't know. A missing file, or one that isn't JSON, gets all of `current`. A failed save, including a file that
-    /// can't be read or a lock not had in time, is logged, and its changes are saved next time.
-    public static func save() {
+    /// can't be read or a lock not had in time, is logged, and `saveIfPending` tries it again.
+    public static func save() { save(wait: lockWait) }
+
+    /// For the poll: saves a change a failed save left behind, so the file and the other window don't keep a setting the
+    /// player has changed. It doesn't wait for the lock, as the poll comes round again in 2 seconds.
+    public static func saveIfPending() {
+        guard loaded, current != baseline else { return }
+        save(wait: 0)
+    }
+
+    private static func save(wait: TimeInterval) {
         guard loaded else { return }
         do {
             let now = try fields(current)
@@ -138,7 +149,7 @@ public struct Settings: Codable, Equatable {
             if changed.isEmpty, FileManager.default.fileExists(atPath: path.path) { return }
             let folder = path.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let lock = try FileLock(folder.appendingPathComponent("settings.lock"), wait: lockWait)
+            let lock = try FileLock(folder.appendingPathComponent("settings.lock"), wait: wait)
             defer { lock.release() }
             var output = now
             if let file = try readFile() {
@@ -149,32 +160,39 @@ public struct Settings: Codable, Equatable {
             guard JSONSerialization.isValidJSONObject(output) else { throw CocoaError(.coderInvalidValue) }
             let data = try JSONSerialization.data(withJSONObject: output, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
             let temporary = folder.appendingPathComponent("\(path.lastPathComponent).\(getpid()).tmp")
-            try data.write(to: temporary)
+            do {
+                try data.write(to: temporary)
+            } catch {
+                unlink(temporary.path)
+                throw error
+            }
             guard rename(temporary.path, path.path) == 0 else {
                 let error = POSIXError(.init(rawValue: errno) ?? .EIO)
                 unlink(temporary.path)
                 throw error
             }
             baseline = current
+            logged = []
         } catch {
-            logFailure("settings not saved: \(error)")
+            logFailure("settings not saved", error)
         }
     }
 
     /// When the file has changed since this process loaded it or last looked, takes ShowHidden and Reveal from it, as the
     /// other process may have changed them, and says whether either changed here. What's taken becomes the baseline too, so
     /// it isn't this process's change to save. A key this process has changed but not saved yet keeps its own value. A
-    /// missing file changes nothing; one that can't be read is logged once per change.
+    /// missing file changes nothing. One that can't be read is read again at the next call, and logged once until it can.
     public static func followFile() -> Bool {
         guard loaded, var base = baseline, let modified = modified(), modified != seenModified else { return false }
-        seenModified = modified
         let shown: Visibility
         do {
             shown = try JSONDecoder().decode(Visibility.self, from: Data(contentsOf: path))
         } catch {
-            logFailure("settings not followed: \(error)")
+            logFailure("settings not followed", error)
             return false
         }
+        seenModified = modified
+        logged = []
         let defaults = Settings()
         let showHidden = shown.showHidden ?? defaults.showHidden
         let reveal = Reveal(setting: shown.reveal ?? defaults.reveal).rawValue
@@ -193,7 +211,8 @@ public struct Settings: Codable, Equatable {
         return changed
     }
 
-    /// The two keys `followFile` takes. One that's missing, or not of its type, is the default, as `load` would have it.
+    /// The two keys `followFile` takes. One that's missing, or not of its type, is the default: Hidden attributes off.
+    /// `load` reads a file with a key not of its type as all defaults, so it has Hidden attributes off too.
     private struct Visibility: Decodable {
         var showHidden: Bool?
         var reveal: Int?
@@ -243,7 +262,10 @@ public struct Settings: Codable, Equatable {
         let descriptor: Int32
 
         init(_ url: URL, wait: TimeInterval) throws {
-            descriptor = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+            var descriptor = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+            // flock works on a file opened only for reading, such as a lock file this user can't write.
+            if descriptor < 0 { descriptor = open(url.path, O_RDONLY | O_CLOEXEC) }
+            self.descriptor = descriptor
             guard descriptor >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
             let deadline = Date().addingTimeInterval(wait)
             while flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
@@ -262,7 +284,11 @@ public struct Settings: Codable, Equatable {
         }
     }
 
-    private static func logFailure(_ message: String) {
+    /// Once for each kind of failure, by its domain and code, as the error's description can differ every time.
+    private static func logFailure(_ what: String, _ error: Error? = nil) {
+        let kind = error.map { "\(what) \(($0 as NSError).domain) \(($0 as NSError).code)" } ?? what
+        guard logged.insert(kind).inserted else { return }
+        let message = error.map { "\(what): \($0)" } ?? what
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n\n"
         let log = path.deletingLastPathComponent().appendingPathComponent("errors.log")
         guard let data = line.data(using: .utf8) else { return }

@@ -194,6 +194,8 @@ package final class AppModel: ObservableObject {
     private var searchToken: CancelToken?
     private var seasonToken: CancelToken?
     private var poll: Timer?
+    /// While `followSettingsFile` sets what it took from the file, which saves nothing.
+    private var following = false
     private var playersByUID: [UInt32: Player] = [:]
     private var staffByUID: [UInt32: Staff] = [:]
     private var laterChecks = LaterChecks()
@@ -246,10 +248,14 @@ package final class AppModel: ObservableObject {
     func persist() { Settings.save() }
 
     /// Hidden attributes and Ability as last set in the other window, the app's or FM Starship's tab inside FM, once the
-    /// settings file changes. Through the setters, so the screens follow and Off means gone in both. Their save doesn't
-    /// write these back, as what's taken from the file isn't this window's change.
+    /// settings file changes. Through the setters, so the screens follow and Off means gone in both. A follow saves nothing:
+    /// what's taken from the file isn't this window's change, and capturing the columns would write this window's layout
+    /// over the other's. First, a change a failed save left behind is saved, so the other window follows it too.
     func followSettingsFile() {
+        Settings.saveIfPending()
         guard Settings.followFile() else { return }
+        following = true
+        defer { following = false }
         if showHidden != Settings.current.showHidden { showHidden = Settings.current.showHidden }
         let wanted = Reveal(setting: Settings.current.reveal)
         if reveal != wanted { reveal = wanted }
@@ -779,10 +785,10 @@ package final class AppModel: ObservableObject {
     }
 
     private func visibilityChanged() {
-        persist()
+        if !following { persist() }
         tellFilters()
         rebuildShownColumns()
-        captureColumns()
+        if !following { captureColumns() }
         displayChanged()
         search()
     }
