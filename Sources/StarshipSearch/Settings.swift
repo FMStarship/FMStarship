@@ -175,7 +175,8 @@ public struct Settings: Codable, Equatable {
     /// Does nothing before `load()`, so a failed start can't overwrite the file with defaults. Under a lock, re-reads the
     /// file and changes only the keys this process has changed, keeping every other key the file has, even ones this build
     /// doesn't know. A missing file, or one that isn't JSON, gets all of `current`. A failed save, including a file that
-    /// can't be read or a lock not had in time, is logged, and `saveIfPending` tries it again.
+    /// can't be read or a lock not had in time, is logged, and `saveIfPending` tries it again. While a failed save's
+    /// ShowHidden or Reveal waits and the file has changed unseen, it writes nothing and leaves it to the poll.
     public static func save() { save(wait: lockWait) }
 
     /// For the poll, after `followFile`: saves a change a failed save left behind, so the file and the other window don't
@@ -188,6 +189,7 @@ public struct Settings: Codable, Equatable {
 
     private static func save(wait: TimeInterval, byPoll: Bool = false) {
         guard loaded else { return }
+        let started = Date()
         notePending()
         do {
             let now = try fields(current)
@@ -200,6 +202,10 @@ public struct Settings: Codable, Equatable {
             defer { lock.release() }
             // Nothing the other process wrote is waiting to be followed, so this save's own write needn't be.
             let allSeen = modified() == seenModified
+            // A ShowHidden or Reveal left by an earlier failed save may be older than the other window's change, which this
+            // process hasn't followed yet. Nothing is written: the poll follows, then saves, within 2 seconds. A value set
+            // in this call is the player's latest choice, so it doesn't hold the save back.
+            if !allSeen, pending.values.contains(where: { $0.since < started }) { return }
             var output = now
             if let file = try readFile() {
                 output = file
