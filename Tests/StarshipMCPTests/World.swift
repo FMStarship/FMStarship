@@ -10,10 +10,12 @@ import XCTest
 final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     /// False to stand in for FM giving no role table, as when one of its rules fails.
     var roleRatings = true
+    /// When set, only these players get a role table, as when FM's rules fail for some players and not others.
+    var ratedPlayers: Set<UInt32>?
 
     /// Three stars in every role, in and out of possession, wherever they play.
     func roleRows(player: Player, position: Int, team: Int64) -> [RoleRow]? {
-        guard roleRatings else { return nil }
+        guard roleRatings, ratedPlayers?.contains(player.uid) ?? true else { return nil }
         return (0..<64).flatMap { role in
             [RoleRow(role: Names.rolesIp[role] ?? "Role \(role)", outOfPossession: false, minHalfStars: 6, maxHalfStars: 6, rating: 50),
              RoleRow(role: Names.rolesOop[role] ?? "Role \(role)", outOfPossession: true, minHalfStars: 6, maxHalfStars: 6, rating: 50)]
@@ -21,10 +23,12 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     }
 
     var supportsInjuryDays: Bool { true }
-    /// How many times FM was asked whether a player would join.
-    private(set) var interestCalls = 0
+    /// How many times FM was asked whether a player would join. The finders ask from several threads at once.
+    private var calls = 0
+    private let lock = NSLock()
+    var interestCalls: Int { lock.withLock { calls } }
     func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? {
-        interestCalls += 1
+        lock.withLock { calls += 1 }
         return (.interested, .doubtful)
     }
     func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? { level == 1 }
