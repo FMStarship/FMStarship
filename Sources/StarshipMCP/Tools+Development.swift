@@ -103,6 +103,17 @@ extension Toolbox {
         func live(_ uid: UInt32) -> Player? { (try? context.person(Int(uid))) as? Player }
         // By the squad he's in now, as `squad` names them, with "On loan" for those out on loan.
         let squad = try args.string("squad")
+        if let squad {
+            // Refused like squad refuses one, so an unknown name can't read as "nobody developed".
+            let atClub = context.db.players.filter { $0.clubFull == club }
+            var known = Set(atClub.filter { $0.loanClubFull.isEmpty && !$0.squad.isEmpty }.map(\.squad))
+            if atClub.contains(where: { !$0.loanClubFull.isEmpty }) { known.insert("On loan") }
+            guard known.contains(where: { $0.caseInsensitiveCompare(squad) == .orderedSame }) else {
+                let listed = Names.squadOrder.filter(known.contains) + ["On loan"].filter(known.contains)
+                    + known.subtracting(Names.squadOrder + ["On loan"]).sorted()
+                throw ToolError("\(club) has no squad called \(squad). Its squads: \(listed.joined(separator: ", ")).")
+            }
+        }
         func inSquad(_ uid: UInt32) -> Bool {
             guard let squad else { return true }
             guard let player = live(uid) else { return false }
@@ -159,10 +170,17 @@ extension Toolbox {
         let exact = visibility.reveal == .exact
         var titles: [JSON] = ["uid", "Name", "Age"]
         if visibility.showsAbility { titles += exact ? ["CA from", "CA to", "CA change", "PA", "PA change"] : ["CA from", "CA to", "PA"] }
-        titles += ["Up", "Down"]
+        titles += ["Up", "Down", "From"]
         var rows: [(row: JSON, order: Int, then: Int, name: String)] = []
         for (uid, new) in last.players where inSquad(uid) {
-            guard let old = first.players[uid] else { continue }
+            // A player who joined after `from` is compared from his first record in the window, and From says when.
+            var start = first.players[uid].map { (row: $0, date: Date?.none) }
+            if start == nil, let snap = window.first(where: { $0.players[uid] != nil && $0.gameDate < last.gameDate }),
+               let row = snap.players[uid] {
+                start = (row, snap.gameDate)
+            }
+            guard let start else { continue }
+            let old = start.row
             let moved = changes(old, new)
             var cells: [JSON] = [.int(Int(uid)), .string(new.name), live(uid).flatMap { $0.age >= 0 ? .int($0.age) : nil } ?? .null]
             if visibility.showsAbility {
@@ -171,7 +189,7 @@ extension Toolbox {
                 cells.append(ability(new.pa))
                 if exact { cells.append(.int(new.pa - old.pa)) }
             }
-            cells += [moved.up ?? .null, moved.down ?? .null]
+            cells += [moved.up ?? .null, moved.down ?? .null, start.date.map { .string(Output.iso($0)) } ?? .null]
             // With Ability off the order comes from the attributes in the row, which anyone can see, as the app's screen does.
             rows.append((.array(cells), visibility.showsAbility ? new.ca - old.ca : moved.net, visibility.showsAbility ? new.pa : 0, new.name))
         }
@@ -198,7 +216,9 @@ extension Toolbox {
                                             ("game_days", .int(days(first.gameDate, last.gameDate))),
                                             ("why", chosen.map { .string($0) })])),
             ("order", .string(visibility.showsAbility ? "CA gained, most first" : "attributes gained less those lost, most first")),
-            ("note", "Up and Down have every attribute that went up or down between from and to, by how much, largest first."),
+            ("note", .string("Up and Down have every attribute that went up or down between from and to, by how much, largest first. "
+                + "From is empty for a player compared from `from`; for one who joined after it, it's his first record, which he's "
+                + "compared from, and he's in joined too.")),
             ("columns", .array(titles)), ("rows", .array(rows.map(\.row))),
         ]
         if let squad { pairs.append(("squad", .string("\(squad): players in that squad now. Left is everyone who left, whatever squad."))) }

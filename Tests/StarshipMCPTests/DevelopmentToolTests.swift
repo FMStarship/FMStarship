@@ -29,7 +29,9 @@ final class DevelopmentToolTests: XCTestCase {
         let first = try h.answer("development", ["squad": "First team"])
         XCTAssertFalse(first.rowsByName.isEmpty)
         XCTAssertFalse(first.rowsByName.contains { $0["uid"] == 12 })
-        XCTAssertTrue(try h.answer("development", ["squad": "On loan"]).rowsByName.isEmpty, "nobody is out on loan")
+        XCTAssertTrue(try h.refusal("development", ["squad": "On loan"]).contains("no squad called On loan"), "nobody is out on loan")
+        let refusal = try h.refusal("development", ["squad": "Nonsense"])
+        XCTAssertTrue(refusal.contains("Testing FC has no squad called Nonsense. Its squads: First team, U19"), refusal)
     }
 
     func testTheOldestAndNewestRecordsAreComparedByDefault() throws {
@@ -43,7 +45,7 @@ final class DevelopmentToolTests: XCTestCase {
         XCTAssertEqual(answer["compared"]?["to"], "2026-09-20")
         XCTAssertEqual(answer["compared"]?["game_days"], 81)
         XCTAssertTrue(answer["newest_record"]?.string?.contains("7 days before the game date, 2026-09-27") ?? false)
-        XCTAssertEqual(answer.columnNames, ["uid", "Name", "Age", "CA from", "CA to", "CA change", "PA", "PA change", "Up", "Down"])
+        XCTAssertEqual(answer.columnNames, ["uid", "Name", "Age", "CA from", "CA to", "CA change", "PA", "PA change", "Up", "Down", "From"])
         XCTAssertEqual(answer["order"], "CA gained, most first")
 
         let young = try XCTUnwrap(row(answer, 12))
@@ -62,7 +64,9 @@ final class DevelopmentToolTests: XCTestCase {
         XCTAssertEqual(first["Down"], .object([("Stamina", -2)]))
         XCTAssertEqual(row(answer, 2)?["Up"], .null)
 
-        XCTAssertNil(row(answer, 13), "Hurt Player joined in between")
+        // Hurt Player joined in between: compared from his first record, which From gives, and listed in joined too.
+        XCTAssertEqual(row(answer, 13)?["From"], "2026-08-01")
+        XCTAssertEqual(row(answer, 1)?["From"], .null)
         XCTAssertNil(row(answer, 22), "Rival 22 left in between")
         let joined = try XCTUnwrap(answer["joined"]?.array)
         XCTAssertEqual(joined.count, 1)
@@ -168,7 +172,7 @@ final class DevelopmentToolTests: XCTestCase {
     func testHiddenOffLeavesOutCAPAAndHiddenAttributes() throws {
         let harness = try harness(hidden: false)
         let answer = try harness.answer("development")
-        XCTAssertEqual(answer.columnNames, ["uid", "Name", "Age", "Up", "Down"])
+        XCTAssertEqual(answer.columnNames, ["uid", "Name", "Age", "Up", "Down", "From"])
         XCTAssertEqual(answer["order"], "attributes gained less those lost, most first")
         XCTAssertEqual(row(answer, 1)?["Up"], .null, "Consistency is hidden")
         XCTAssertEqual(row(answer, 1)?["Down"], .object([("Stamina", -2)]))
@@ -183,7 +187,7 @@ final class DevelopmentToolTests: XCTestCase {
 
     func testStarsShowCAAndPAAsStarsWithNoChange() throws {
         let answer = try harness(reveal: .stars).answer("development")
-        XCTAssertEqual(answer.columnNames, ["uid", "Name", "Age", "CA from", "CA to", "PA", "Up", "Down"])
+        XCTAssertEqual(answer.columnNames, ["uid", "Name", "Age", "CA from", "CA to", "PA", "Up", "Down", "From"])
         XCTAssertEqual(row(answer, 12)?["CA from"], "3.5★")
         XCTAssertEqual(row(answer, 12)?["CA to"], "4.5★")
         let one = try harness(reveal: .stars).answer("development", ["uid": 12])
