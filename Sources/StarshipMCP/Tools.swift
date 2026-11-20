@@ -44,7 +44,7 @@ extension Toolbox {
     private static let ownOrAnyClub = Parameter(name: "club", type: "string",
                                                 description: "Any club's full name, as FM shows it in the game's language. Leave out for the user's own club.")
     private static let names = "Names of people, clubs, nations, leagues and personalities are as FM shows them, in the game's language. "
-    private static let nationText = "The player's nationality, as FM names the nation in the game's language: Norge, not Norway, in a "
+    private static let nationText = "The person's nationality, the first one FM lists, as FM names the nation in the game's language: Norge, not Norway, in a "
         + "Norwegian game. Matches any nation whose name contains the text, ignoring case. Start with = for the exact name: =Norge."
     private static let leagueText = "Part of a league's name as FM shows it in the game's language, ignoring case, or =Name for exactly. "
         + "Countries can share a league name, so check the Club nation column."

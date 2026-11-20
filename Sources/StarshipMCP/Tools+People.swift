@@ -127,7 +127,7 @@ extension Toolbox {
         guard person.clubFull != session.club.name else { return nil }
         if let player = person as? Player, let answer = session.checks.check(player) {
             return ["club": .string(session.club.name), "transfer": .string(answer.transferInterest.text),
-                    "loan": .string(answer.loanInterest.text)]
+                    "loan": .string(Self.loanText(player, answer))]
         }
         if let staff = person as? Staff, let answer = session.checks.staffCheck(staff) {
             return ["club": .string(session.club.name), "first_team": .bool(answer.firstTeam), "reserves": .bool(answer.reserves),

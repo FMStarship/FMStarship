@@ -9,6 +9,16 @@ extension Toolbox {
     /// The overview columns about who'd be hired, which ask the game place by place and aren't in this version.
     private static let hireColumns: Set<String> = ["Best who'd join", "Their rating", "Gain", "About them"]
 
+    /// The club's players who could cover a place: its own and those on loan to it, not those it has loaned out, and not
+    /// anyone out for three weeks or more, as the squad overview counts them.
+    static func fitSquad(_ session: AnalysisSession) -> [Player] {
+        let club = session.club.name
+        return session.db.players.filter { player in
+            (player.clubFull == club && player.loanClub.isEmpty || player.loanClubFull == club)
+                && (player.injury == nil || (session.checks.injuryKnown(player) ?? player.injuryDays) < 21)
+        }
+    }
+
     /// The overview's footnote, without what it says about the hires column, which isn't sent.
     static func withoutHires(_ footnote: String) -> String {
         footnote.replacingOccurrences(of: " Each pick fits your budget on the wage they earn now.", with: "")
@@ -25,8 +35,13 @@ extension Toolbox {
             (person as? Player).flatMap { session.checks.known($0) }.map { .string($0.transferInterest.text) }
         },
          Output.Field(name: "Loan interest") { person in
-            (person as? Player).flatMap { session.checks.known($0) }.map { .string($0.loanInterest.text) }
+            (person as? Player).flatMap { player in session.checks.known(player).map { .string(loanText(player, $0)) } }
         }]
+    }
+
+    /// FM isn't asked about a loan when the player's club won't loan him: that's the club's decision, not his.
+    static func loanText(_ player: Player, _ answer: JoinAnswer) -> String {
+        player.loanUnavailable ? "Not available for loan" : answer.loanInterest.text
     }
 
     func clubOverview(_ args: Arguments, _ context: CallContext) throws -> JSON {
@@ -62,9 +77,16 @@ extension Toolbox {
                 + "play in FM's Tactics screen; then ask again with game_status refresh: true, which says whether it's found.")
         }
         let noRatings = ToolError("The squad overview needs FM's role ratings, which FM didn't give for \(club.name). Ask again in a moment.")
-        // Without FM's role ratings every place would come back unrated with "no real cover", which FM never said.
-        guard let report = SquadOverview(session: context.session(for: club)),
-              report.places.contains(where: { $0.slot.player != nil && $0.stars > 0 }) else { throw noRatings }
+        let session = context.session(for: club)
+        guard let report = SquadOverview(session: session) else { throw noRatings }
+        guard report.places.contains(where: { $0.slot.player != nil }) else {
+            throw ToolError("\(club.name)'s tactic in FM has nobody picked for it. The user can pick a team in FM's Tactics screen; "
+                + "then ask again with game_status refresh: true.")
+        }
+        // Without FM's role ratings every place comes back unrated, or with "no real cover" from a bench FM didn't rate,
+        // and neither is something FM said.
+        guard report.places.contains(where: { $0.slot.player != nil && $0.stars > 0 }) else { throw noRatings }
+        if report.places.allSatisfy({ $0.cover == "Nobody" }), Self.fitSquad(session).count > 11 { throw noRatings }
         return .object([("club", .string(club.name)), ("headline", .string(Output.prose(report.headline)))]
                        + Output.table(report.table(hires: [:]), dropping: Self.hireColumns, withHead: false)
                        + [("footnote", .string(Self.withoutHires(Output.prose(report.footnote))))])

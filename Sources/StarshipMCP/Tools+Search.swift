@@ -125,6 +125,8 @@ extension Toolbox {
         }
         let ordered = byStarts ? Self.byStarts(found, descending: descending)
             : Columns.ordered(players: found, sortBy: sort, descending: descending, byAbility: visibility.showsAbility)
+        // A league filter can match leagues of one name in several countries, so the rows say whose league each is.
+        if filter.league != "Any" { shownNames.append("League") }
         if let sort, !shownNames.contains(sort.name) { shownNames.append(sort.name) }
         for rule in rules where !shownNames.contains(rule.attribute) { shownNames.append(rule.attribute) }
         let columns = Output.columns(shownNames, in: catalogue, visibility)
@@ -197,6 +199,7 @@ extension Toolbox {
             ordered = reputation.map { Columns.sortRows(found, by: $0, descending: true) } ?? found
         }
         var shownNames = Self.staffListColumns
+        if filter.league != "Any" { shownNames.append("League") }
         if filter.rankArea >= 0 { shownNames.append(Names.areas[filter.rankArea]) }
         if let sort, !shownNames.contains(sort.name) { shownNames.append(sort.name) }
         for rule in rules where !shownNames.contains(rule.attribute) { shownNames.append(rule.attribute) }

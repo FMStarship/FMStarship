@@ -253,6 +253,23 @@ final class ToolTests: XCTestCase {
         XCTAssertFalse(sentence.contains("cover"), sentence)
     }
 
+    func testSquadOverviewRefusesWhenFMRatesTheStartersButNotTheBench() throws {
+        let engine = FakeEngine()
+        engine.ratedPlayers = Set(1...11)
+        let sentence = try Harness(engine: engine).refusal("squad_overview")
+        XCTAssertTrue(sentence.contains("didn't give"), sentence)
+        // With every player rated, the same squad has cover.
+        XCTAssertFalse(try Harness().answer("squad_overview").text.contains("11 have no real cover"))
+    }
+
+    func testSquadOverviewSaysWhenNobodyIsPicked() throws {
+        let harness = Harness()
+        harness.source.database.tactics = [1: World.tactic([])]
+        let sentence = try harness.refusal("squad_overview")
+        XCTAssertTrue(sentence.contains("nobody picked"), sentence)
+        XCTAssertFalse(sentence.contains("role ratings"), sentence)
+    }
+
     func testSearchesOrderByStartsAndSayWhatAnAppearancesOrderMeans() throws {
         let harness = Harness()
         var many = SeasonStats()
@@ -322,6 +339,41 @@ final class ToolTests: XCTestCase {
         let bargains = try harness.answer("find_bargains", ["kind": "contracts_ending"])
         XCTAssertTrue(bargains.columnNames.contains("Transfer interest"))
         XCTAssertEqual(engine.interestCalls, 12, "the bargains asked nothing the session didn't already know")
+    }
+
+    func testARowTheFinderNeverAskedAboutHasNoKeennessAndAsksNothing() throws {
+        let engine = FakeEngine()
+        let harness = Harness(engine: engine)
+        let bargains = try harness.answer("find_bargains", ["kind": "contracts_ending", "only_join": false])
+        XCTAssertFalse(bargains.rowsByName.isEmpty)
+        XCTAssertEqual(engine.interestCalls, 0, "the keenness columns read what's known; they never ask")
+        for row in bargains.rowsByName {
+            XCTAssertEqual(row["Transfer interest"], .null)
+            XCTAssertEqual(row["Loan interest"], .null)
+        }
+    }
+
+    func testAPlayerHisClubWontLoanIsNotAvailableForLoanNotUninterested() throws {
+        let harness = Harness()
+        harness.source.database.players.filter { $0.clubFull == World.rivals }.forEach { $0.statusFlags = 64 }
+        let signings = try harness.answer("recommend_signings", ["upgrades_only": false])
+        XCTAssertFalse(signings.rowsByName.isEmpty)
+        for row in signings.rowsByName {
+            XCTAssertEqual(row["Loan interest"], "Not available for loan")
+            XCTAssertEqual(row["Transfer interest"], "Interested")
+        }
+        XCTAssertEqual(try harness.answer("person", ["uid": 21])["Would join your club"]?["loan"], "Not available for loan")
+    }
+
+    func testALeagueFilterShowsWhoseLeagueItIs() throws {
+        let harness = Harness()
+        for tool in ["search_players", "search_staff"] {
+            let found = try harness.answer(tool, ["league": "Mock"])
+            let league = try XCTUnwrap(found.columnNames.firstIndex(of: "League"), tool)
+            XCTAssertEqual(found.columnNames[league + 1], "Club nation", tool)
+            XCTAssertEqual(found.rowsByName.first?["Club nation"], "Mockovia", tool)
+        }
+        XCTAssertFalse(try harness.answer("search_players").columnNames.contains("League"))
     }
 
     func testNamesAreClearWhereFMsNamesClash() throws {
