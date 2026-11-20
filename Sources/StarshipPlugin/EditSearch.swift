@@ -214,7 +214,8 @@ struct FeeChoices {
             step *= 10
         }
         if let budget = Double(budget), budget > 0 { sums.append((budget, true)) }
-        if let current = Double(current), current > 0 { sums.append((current, false)) }
+        // Only a real amount within reach of the choices: a value no choice could hold isn't offered as one.
+        if let current = Double(current), current > 0, current.isFinite, current <= high * 1000 { sums.append((current, false)) }
         sums.sort { $0.millions < $1.millions || ($0.millions == $1.millions && $0.budget) }
         var kept: [(millions: Double, budget: Bool)] = []
         for sum in sums where !kept.contains(where: { abs($0.millions - sum.millions) < 0.000_001 }) { kept.append(sum) }

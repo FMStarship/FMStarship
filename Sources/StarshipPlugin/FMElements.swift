@@ -283,7 +283,7 @@ struct FMElements {
 
     /// A layout value in whole points, for the logs. FM's layout is NaN until FM has worked it out, which Int can't
     /// hold: converting it stops the process, and FM with it.
-    nonisolated static func whole(_ value: Float) -> String { value.isFinite ? String(Int(value)) : "?" }
+    nonisolated static func whole(_ value: Float) -> String { Int(exactly: value.rounded(.towardZero)).map(String.init) ?? "?" }
 
     /// Whether a point on FM's panel, in the panel's own units from its top left, is inside the element.
     func contains(_ element: Pointer, x: Float, y: Float) -> Bool {
