@@ -59,7 +59,27 @@ extension Toolbox {
         let histories = engine.map(Histories.init)
         return .object(pairs + Output.rows(players, columns + Self.competitionFields(engine, histories)
                                            + Self.lastMatch(histories, competitions: engine == nil ? [:] : competitionNames(context.read))
+                                           + Self.matchLoadField(histories, today: context.db.gameDate)
                                            + Self.stateFields(context.db, engine, context.read.states)))
+    }
+
+    static let matchLoadName = "Match load (14 days)"
+
+    /// FM's match load, as its condition tooltip gives it: "3 kamper (212/270 minutter) siste 14 dager" is 3 matches, 212
+    /// minutes of 270, in the 14 days up to today. That's his kept matches dated today - 14 days or later that he played in,
+    /// his minutes in them, and 90 a match. It matched FM for two players on 12 Sep 2029. FM's words for it ("Intensiv") and
+    /// where they start aren't known. Nil without a game date.
+    static func matchLoad(_ history: MatchHistory?, today: Date?) -> JSON? {
+        guard let history, let today, let from = GameDate.calendar.date(byAdding: .day, value: -14, to: today) else { return nil }
+        let played = history.matches.filter { $0.played && $0.date >= from && $0.date <= today }
+        guard !played.isEmpty else { return "no matches" }
+        let minutes = played.reduce(0) { $0 + $1.minutes }
+        return .string("\(played.count) match\(played.count == 1 ? "" : "es"), \(minutes) of \(played.count * 90) min")
+    }
+
+    static func matchLoadField(_ histories: Histories?, today: Date?) -> [Output.Field] {
+        guard let histories else { return [] }
+        return [Output.Field(name: matchLoadName) { person in (person as? Player).flatMap { matchLoad(histories.of($0), today: today) } }]
     }
 
     static let seasonNote = "Starts, Sub appearances, Goals, Assists, Average rating and the cards are FM's club total for this season: "
@@ -250,6 +270,7 @@ extension Toolbox {
             if let state = Self.stateGroup(player, context.db, context.read.engine, context.read.states) {
                 pairs.append(("Fitness and morale", state))
             }
+            if let load = Self.matchLoad(history, today: context.db.gameDate) { pairs.append((Self.matchLoadName, load)) }
             if let history, let matches = recentMatches(history, limit: recent, context) { pairs.append(("Recent matches", matches)) }
             let traits = player.traits.components(separatedBy: "; ").filter { !$0.isEmpty }
             if !traits.isEmpty { pairs.append(("Traits", .array(traits.map { .string($0) }))) }

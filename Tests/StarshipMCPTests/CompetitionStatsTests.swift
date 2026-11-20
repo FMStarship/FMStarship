@@ -130,6 +130,26 @@ final class CompetitionStatsTests: XCTestCase {
         XCTAssertEqual(try leagueName([loan], loanedTo: "Loan Club"), "Mock Lower League")
     }
 
+    // MARK: Match load
+
+    /// The game's day is 270, so matches on day 256 and after count: numbers 9 and 11 played both league matches, 11 coming
+    /// off after 64 minutes in the second, and 12 sat on the bench.
+    func testMatchLoadIsTheLastFourteenDaysMatchesAndMinutes() throws {
+        let rows = Self.rows(try Harness().answer("squad", ["squad": "all"]))
+        XCTAssertEqual(rows[9]?["Match load (14 days)"], "2 matches, 180 of 180 min")
+        XCTAssertEqual(rows[11]?["Match load (14 days)"], "2 matches, 154 of 180 min")
+        XCTAssertEqual(rows[12]?["Match load (14 days)"], "no matches", "an unused substitute didn't play")
+    }
+
+    func testAMatchMoreThanFourteenDaysAgoDoesntCount() throws {
+        let harness = Harness()
+        let engine = try XCTUnwrap(harness.source.engine as? FakeEngine)
+        engine.moreMatches[9] = [Self.match(255, team: World.club, index: World.cupIndex, opponent: World.minnows, goals: 0)]
+        XCTAssertEqual(try harness.answer("person", ["uid": 9])["Match load (14 days)"], "2 matches, 180 of 180 min")
+        engine.moreMatches[9] = [Self.match(269, team: World.club, index: World.cupIndex, opponent: World.minnows, goals: 0)]
+        XCTAssertEqual(try harness.answer("person", ["uid": 9])["Match load (14 days)"], "3 matches, 270 of 270 min")
+    }
+
     func testLastMatchSaysWhichCompetitionAndOpponent() throws {
         let first = try XCTUnwrap(Self.rows(try Harness().answer("squad"))[9])
         XCTAssertEqual(first["Last match competition"], "Mock League")
@@ -202,12 +222,13 @@ final class CompetitionStatsTests: XCTestCase {
         let harness = Harness(engine: nil)
         let squad = try harness.answer("squad")
         XCTAssertNil(squad["season_stats"])
-        for column in ["League stats", "Cup stats", "Continental stats", "Last match competition"] {
+        for column in ["League stats", "Cup stats", "Continental stats", "Last match competition", "Match load (14 days)"] {
             XCTAssertFalse(squad.columnNames.contains(column), column)
         }
         let person = try harness.answer("person", ["uid": 9])
         XCTAssertNil(person["Season stats by competition"])
         XCTAssertNil(person["Recent matches"])
+        XCTAssertNil(person["Match load (14 days)"])
         XCTAssertEqual(harness.source.matches?.nameSweeps, 0, "nothing to name")
     }
 }

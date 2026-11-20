@@ -86,6 +86,11 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked "(suspended)"
   from FM's own entry and "(injured)" when one of his injuries covered the day. The rest were on the bench or left out; which
   isn't known. Scorers marked "(own goal)" play for the side that conceded.
+- **Match load (14 days)** in `squad` and `person` is FM's match load: the matches he played in the 14 days up to today, his
+  minutes in them, and 90 a match. "3 matches, 212 of 270 min" is FM's "3 kamper (212/270 minutter) siste 14 dager", and it
+  matched FM's figure on the save it was checked on. FM's word for it ("Intensiv" and the like) and where the words start
+  aren't known, so judge by the numbers. Every match FM keeps counts, friendlies and youth matches too; whether FM counts
+  friendlies hasn't been checked yet.
 - **Last match** in `squad` is the player's latest match in FM's record, for any team, with its competition and opponent:
   compare its date with the club's last result to see who was left out. A date with no minutes or rating means he didn't
   play: on the bench, left out or suspended.

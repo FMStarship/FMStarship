@@ -84,7 +84,8 @@ extension Toolbox {
                 + "for a reserve or B-team player is the reserve league; Cup and Continental stats aren't named, since FM's split "
                 + "doesn't say which competition (person's Recent matches does). Last match is each "
                 + "player's latest match in FM's record of his form, with its competition and opponent and his minutes and rating "
-                + "(both empty if he didn't play: on the bench, left out or suspended), which shows rotation. "
+                + "(both empty if he didn't play: on the bench, left out or suspended), which shows rotation. Match load (14 days) is FM's: the matches he "
+                + "played in the last 14 days and his minutes, out of 90 a match. "
                 + "Condition and Sharpness are percentages, Morale 1-20, Playing time his happiness with it from -100 to 100, "
                 + "Suspended the matches he's banned for in each competition, and Home-grown club, nation or no.",
              parameters: [ownOrAnyClub,
@@ -98,7 +99,7 @@ extension Toolbox {
         Tool(name: "person", title: "Person",
              description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats in total and "
                 + "by competition (league, cup, continental), form, his recent matches with competition, opponent, minutes, rating, "
-                + "goals and assists, injury, condition, sharpness, morale, playing time, each suspension, home-grown status, contract, "
+                + "goals and assists, his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, home-grown status, contract, "
                 + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
                           Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out.")],

@@ -456,6 +456,9 @@ FM Starship's own parts, and how to check them after a patch:
   FM keeps at the club he plays for now, no more of them than scope 1 counts, leaving out youth teams (U23 to U18, whose
   league was in no scope on Molde's save), and stopping at the oldest match of a team whose list is full. `fmprobe scopes [CLUB] [detail]` prints scopes 0 to 7 next to each player's
   matches this year by competition, so a patch that renumbers them shows.
+- **Match load** is FM's "N kamper (M/90·N minutter) siste 14 dager": a player's kept matches dated today − 14 days or later
+  that he played in, and his minutes, summed by the MCP server from his form record with no more reads. It matched FM for two
+  players on 12 Sep 2029; whether FM counts friendlies wasn't settled then.
 - **What a ban is for** is worked out by `PlayerStateReader`, only when the MCP server answers about a player, so the app's and
   the plugin's reads don't pay for it. FM hangs a ban on an association and one of its rule sets, which can cover several
   competitions, and doesn't say which rule set is which, so this is FM Starship's reasoning rather than FM's. A red card's match
