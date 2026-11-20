@@ -44,7 +44,7 @@ struct FilterWindow<Filter: SearchFilter>: View {
                 Button("Reset tab") { filter.reset(tab: tab) }
                 Spacer()
                 Button("Cancel", role: .cancel) {
-                    if let original { filter = original }
+                    if let original { filter = filter.restoring(original) }
                     onSearch()
                     dismiss()
                 }
