@@ -81,12 +81,15 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **Playing time** is how happy the player is with his playing time, from -100 to 100, as FM keeps it in his contract. On the save
   it was checked on, FM's words were: -89 frozen out, -37 concerned, about -19 to 29 content, 42 to 51 very happy, and 64 to 100
   delighted. The edges between those bands aren't known, so for a value in a gap, give the number and the two bands it's between.
-- **Suspended** is the matches he's banned for in each competition, such as "1 Eliteserien, 1 Cupen". A ban only counts in its
-  own competition: a league ban doesn't stop him playing in the cup. A red card's ban names its competition. A ban for bookings
-  doesn't, so FM Starship names it from red cards under the same rules in a competition he plays in, and says "competition not
-  known" when it can't. A ban from another country's football association is most likely for his national team or a youth side:
-  FM's own squad screen didn't count those as suspended on the save this was checked on. `person` gives each ban with the matches
-  served so far, why (bookings or a red card, and the red card's opponent) and the day it was given.
+- **Suspended** is the matches he's banned for with his club in each competition, such as "1 Eliteserien, 1 Cupen". A ban only
+  counts in its own competition: a league ban doesn't stop him playing in the cup. A red card's ban names its competition. A ban
+  for bookings doesn't, so FM Starship works it out from FM's records: a red card under the same association's same rules in a
+  competition he plays in, or else the match he was last booked in, in the week up to the ban. Once a rule set has given a ban
+  in a team's own league, it's that association's league rules, so other bans under it from his club's own association are for
+  the league his team plays in. Suspended leaves out what FM's squad screen doesn't count: a ban from another country's
+  association, most likely for his national team or a youth side, and a ban whose competition FM Starship can't tell. `person`
+  has every ban, with the matches served so far, why (bookings or a red card, and the red card's opponent), the day it was given,
+  and a note on any that Suspended leaves out. Don't say a player is banned for his club because of one of those.
 - **Home-grown** is FM's own answer for the player's club: `club` (trained at the club), `nation` (trained in the club's nation)
   or `no`. Yes or no was checked against FM's squad screen; which of club and nation hasn't been yet.
 - None of these is hidden in FM, so they're there whatever Hidden attributes is set to. A field whose self-check failed for this

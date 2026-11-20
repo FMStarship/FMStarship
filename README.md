@@ -435,8 +435,13 @@ FM Starship's own parts, and how to check them after a patch:
   only one value, that field is off for the read. Condition and sharpness are only FM's for the day they were brought up to date,
   so on any other day they come from FM's getters (`conditionSlot`, `sharpnessSlot`), and are off without the rules engine.
   Home-grown status is FM's own two tests. `fmprobe state [CLUB]` prints all of it for one club, with the stored fitness beside
-  the getters'. A ban for bookings doesn't name its competition, so it's named from red cards under the same association's same
-  rule set, in a competition the player has played in, which is FM Starship's reasoning rather than FM's.
+  the getters'. A ban for bookings doesn't name its competition, so FM Starship works it out, which is its reasoning rather than
+  FM's: first from red cards under the same association's same rule set, in a competition the player has played in; else from
+  the match he was last booked in, in the week up to the ban, when that's his team's league or a competition a red card names.
+  A rule set that has given a ban in a team's own league is taken as that association's league rules, so other bans under it
+  from the association of the player's club's nation are for his team's league. What's left says "competition not known". The
+  MCP's squad rows count only bans whose competition is known, from the club's own association or for a red card in the club's
+  match, as FM's squad screen does; `person` has the rest.
 - **The dashboard** is `ClubDashboard` plus the two overviews, which it starts itself so their answers are ready when you open them.
 - **The look** lives in `AppColors` (colours by job, from a `Theme.Palette`, or the system's for the System theme), `DesignSystem.swift`
   (panels, pills, `Flow`, range bars) and `TableSupport.swift` (both grids). DESIGN.md is the reference. Grids never cut text off: `AnalysisGrid`

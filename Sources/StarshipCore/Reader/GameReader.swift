@@ -737,8 +737,11 @@ public final class GameReader {
     }
 
     /// Names each ban's association and competition. A red card's match names its competition. A ban for bookings
-    /// names none, so it takes the competition of red cards under the same association's same rule set, among the
-    /// competitions the player has played in or been picked for, where that leaves exactly one.
+    /// names none, so, in this order: the competition of red cards under the same association's same rule set, among the
+    /// competitions the player has played in or been picked for, where that leaves exactly one; else the competition of the
+    /// match he was last booked in, on the day the ban was given or the week before, where it's his team's league or one a
+    /// red card has named. A rule set that has given a ban in a team's own league is that association's league rule set, so
+    /// any other ban from his own club's association under it is for the league his team plays in.
     private func nameBans(_ players: [(player: Player, bans: [RawBan])]) {
         typealias M = MacLayout.BanMatch
         var associations: [UInt32: String] = [:]
@@ -777,17 +780,69 @@ public final class GameReader {
                 named.append((player, raw, ban))
             }
         }
-        var playedIn: [Int64: Set<UInt32>] = [:]
+        // The association of each player's clubs' nations, and the league each team is in.
+        func nationIndex(_ club: Int64) -> UInt32? {
+            let nation = club <= 0 ? 0 : game.readPointer(club &+ Int64(MacLayout.Club.nation))
+            guard nation > 0, let b = game.read(nation &+ Int64(MacLayout.Nation.index), count: 4) else { return nil }
+            return GameReader.u32(b, 0)
+        }
+        func league(_ team: Int64) -> (index: UInt32, name: String, association: UInt32?)? {
+            let comp = team <= 0 ? 0 : game.readPointer(team &+ Int64(MacLayout.Team.competition))
+            guard comp > 0, let b = game.read(comp &+ MacLayout.Comp.index, count: 4) else { return nil }
+            let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
+            return name.isEmpty ? nil : (GameReader.u32(b, 0), name, nationIndex(game.readPointer(team &+ Int64(MacLayout.Team.club))))
+        }
+        for index in named.indices {
+            let player = named[index].player
+            let own = Set([player.clubObject, player.loanClubObject].compactMap(nationIndex))
+            named[index].ban.domestic = own.contains(named[index].raw.association)
+        }
+        var histories: [Int64: [PlayerMatch]] = [:]
+        func history(_ player: Player) -> [PlayerMatch] {
+            if let known = histories[player.block] { return known }
+            let found = FixturesReader.history(player: player.block, in: game) { _ in "" }.matches
+            histories[player.block] = found
+            return found
+        }
+        func name(_ index: Int, _ competition: String, _ competitionIndex: UInt32) {
+            named[index].ban.competition = competition
+            named[index].ban.competitionIndex = competitionIndex
+        }
         for index in named.indices where named[index].ban.competition.isEmpty {
             let (player, raw, _) = named[index]
             guard let candidates = competitions[Scope(association: raw.association, scope: raw.scope)] else { continue }
-            let played = playedIn[player.block] ?? Set(FixturesReader.history(player: player.block, in: game) { _ in "" }.matches.map(\.competitionIndex))
-            playedIn[player.block] = played
+            let played = Set(history(player).map(\.competitionIndex))
             let left = candidates.filter { played.contains($0.key) }
-            if left.count == 1, let only = left.first {
-                named[index].ban.competition = only.value
-                named[index].ban.competitionIndex = only.key
+            if left.count == 1, let only = left.first { name(index, only.value, only.key) }
+        }
+        let redCardCompetitions = competitions.values.reduce(into: [UInt32: String]()) { $0.merge($1) { first, _ in first } }
+        var leagueScopes = Set<Scope>()
+        for index in named.indices {
+            let (player, raw, ban) = named[index]
+            let scope = Scope(association: raw.association, scope: raw.scope)
+            if ban.competition.isEmpty, raw.match == 0, let issued = raw.issued,
+               let weekBefore = GameDate.calendar.date(byAdding: .day, value: -7, to: issued) {
+                let booked = history(player).filter { $0.played && $0.yellow > 0 && $0.date <= issued && $0.date >= weekBefore }
+                guard let last = booked.max(by: { $0.date < $1.date }),
+                      Set(booked.filter { $0.date == last.date }.map(\.competitionIndex)).count == 1 else { continue }
+                if let team = league(last.team), team.index == last.competitionIndex {
+                    name(index, team.name, team.index)
+                    if team.association == raw.association { leagueScopes.insert(scope) }
+                } else if let found = redCardCompetitions[last.competitionIndex] {
+                    name(index, found, last.competitionIndex)
+                }
+            } else if let competition = ban.competitionIndex, ban.domestic,
+                      let team = league(game.readPointer(player.block &+ Int64(MacLayout.Player.currentTeam))),
+                      team.index == competition, team.association == raw.association {
+                leagueScopes.insert(scope)
             }
+        }
+        for index in named.indices where named[index].ban.competition.isEmpty && named[index].ban.domestic {
+            let (player, raw, _) = named[index]
+            guard leagueScopes.contains(Scope(association: raw.association, scope: raw.scope)),
+                  let team = league(game.readPointer(player.block &+ Int64(MacLayout.Player.currentTeam))),
+                  team.association == raw.association else { continue }
+            name(index, team.name, team.index)
         }
         for (player, _, ban) in named where ban.left > 0 { player.bans?.append(ban) }
         for (player, _) in players { player.bans?.sort { $0.issued < $1.issued } }

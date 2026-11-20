@@ -231,7 +231,7 @@ enum World {
 
     /// First 1 is tired, unhappy with his playing time and banned in the league and the cup. FM last brought First 2's
     /// condition up to date three days ago, so it takes FM's getters. The youngster has a ban from abroad, in a
-    /// competition the read couldn't name.
+    /// competition the read couldn't name, and the injured player one at home that it couldn't name either.
     static func state(_ players: [Player]) {
         let byUID = Dictionary(uniqueKeysWithValues: players.map { ($0.uid, $0) })
         let tired = byUID[1]!
@@ -242,11 +242,13 @@ enum World {
         bookings.competition = "Mock League"
         bookings.associationName = "Mockovia"
         bookings.reason = .bookings
+        bookings.domestic = true
         var red = Ban(issued: GameDate.date(year: 2026, dayOfYear: cupMatch)!, matches: 3, served: 1)
         red.competition = "Mock Cup"
         red.associationName = "Mockovia"
         red.reason = .redCard
         red.opponent = minnows
+        red.domestic = true
         tired.bans = [bookings, red]
 
         let stale = byUID[2]!
@@ -258,6 +260,11 @@ enum World {
         abroad.associationName = "Fixtureland"
         abroad.reason = .bookings
         byUID[12]!.bans = [abroad]
+        var unnamed = Ban(issued: GameDate.date(year: 2026, dayOfYear: 250)!, matches: 1, served: 0)
+        unnamed.associationName = "Mockovia"
+        unnamed.domestic = true
+        unnamed.reason = .bookings
+        byUID[13]!.bans = [unnamed]
     }
 
     /// A 4-4-2 with the first eleven in it.

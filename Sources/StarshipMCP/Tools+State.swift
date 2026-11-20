@@ -9,13 +9,22 @@ extension Toolbox {
     /// Condition and sharpness as a percentage with one decimal, as FM keeps them: 0-10000.
     static func percent(_ value: Int) -> JSON { .double((Double(value) / 10).rounded() / 10) }
 
-    /// The suspensions he still has to serve, as "1 Eliteserien, 1 Cupen". Nil when there are none.
+    /// The matches he's banned for with his club, as "1 Eliteserien, 1 Cupen". Nil when there are none. A ban from another
+    /// association, or one whose competition isn't known, isn't counted, as FM's squad screen doesn't: `person` has it.
     static func suspended(_ player: Player) -> JSON? {
-        guard let bans = player.bans, !bans.isEmpty else { return nil }
-        return .string(bans.map { ban in
-            if !ban.competition.isEmpty { return "\(ban.left) \(ban.competition)" }
-            return "\(ban.left) (" + (ban.associationName.isEmpty ? "" : "\(ban.associationName), ") + "competition not known)"
-        }.joined(separator: ", "))
+        let bans = (player.bans ?? []).filter(\.countsForClub)
+        guard !bans.isEmpty else { return nil }
+        return .string(bans.map { "\($0.left) \($0.competition)" }.joined(separator: ", "))
+    }
+
+    /// Why a ban isn't in the squad's Suspended.
+    static func uncounted(_ ban: Ban) -> String? {
+        if ban.countsForClub { return nil }
+        if !ban.domestic, ban.opponent.isEmpty {
+            return "not counted in the squad's Suspended: it's from another association than his club's, so most likely for his "
+                + "national team or a youth side, and FM's squad screen doesn't count it"
+        }
+        return "not counted in the squad's Suspended: FM Starship can't tell which competition it's for"
     }
 
     static func homeGrownText(_ value: HomeGrown) -> JSON { .string(value.rawValue) }
@@ -70,7 +79,7 @@ extension Toolbox {
                     ("matches_left", .int(ban.left)), ("matches", .int(ban.matches)), ("served", .int(ban.served)),
                     ("competition", Output.text(ban.competition)), ("association", Output.text(ban.associationName)),
                     ("reason", ban.reason.map { .string($0.rawValue) }), ("opponent", Output.text(ban.opponent)),
-                    ("issued", .string(Output.iso(ban.issued))),
+                    ("issued", .string(Output.iso(ban.issued))), ("note", uncounted(ban).map { .string($0) }),
                 ])
             })))
         }

@@ -43,8 +43,10 @@ final class StateToolTests: XCTestCase {
         XCTAssertEqual(fit["Suspended"], .null)
         XCTAssertEqual(fit["Home-grown"], "no")
 
+        // FM's squad screen doesn't count a ban from another association, or one whose competition isn't known.
         let youth = try harness.answer("squad", ["squad": "U19"])
-        XCTAssertEqual(youth.rowsByName.first?["Suspended"], "2 (Fixtureland, competition not known)")
+        XCTAssertEqual(youth.rowsByName.first?["Suspended"], .null)
+        XCTAssertEqual(rows[13]?["Suspended"], .null)
     }
 
     func testPersonGivesEachBanInFull() throws {
@@ -65,10 +67,15 @@ final class StateToolTests: XCTestCase {
         ]
         for (ban, wanted) in zip(bans, expected) { XCTAssertEqual(Self.pairs(ban), wanted) }
 
-        // A competition that isn't known isn't sent at all.
+        XCTAssertTrue(bans.allSatisfy { $0["note"] == nil }, "both count")
+
+        // A competition that isn't known isn't sent at all, and a ban the squad's Suspended leaves out says why.
         let youngster = try XCTUnwrap(try harness.answer("person", ["uid": 12])["Fitness and morale"]?["Suspensions"]?.array?.first)
         XCTAssertNil(youngster["competition"])
         XCTAssertEqual(youngster["association"], "Fixtureland")
+        XCTAssertTrue(youngster["note"]?.string?.contains("national team") ?? false)
+        let unnamed = try XCTUnwrap(try harness.answer("person", ["uid": 13])["Fitness and morale"]?["Suspensions"]?.array?.first)
+        XCTAssertTrue(unnamed["note"]?.string?.contains("can't tell which competition") ?? false)
         XCTAssertEqual(try harness.answer("person", ["uid": 3])["Fitness and morale"]?["Suspensions"], .array([]))
         XCTAssertNil(try harness.answer("person", ["uid": 500])["Fitness and morale"], "staff have none")
     }

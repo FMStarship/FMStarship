@@ -98,6 +98,7 @@ final class PlayerStateTests: XCTestCase {
             values.person.index = uid
             values.person.commonName = "Made-up Player \(uid)"
             values.person.contract?.team = roversFirst
+            values.currentTeam = roversFirst
             values.fitnessUpdated = PlayerStateTests.today
             values.morale = 12
             values.playingTime(10)
@@ -108,6 +109,15 @@ final class PlayerStateTests: XCTestCase {
         func played(_ competitions: [UInt32], bans: [Int64]) -> Int64 {
             game.history([(team: roversFirst, entries: competitions.enumerated().map { i, competition in
                 FakeGame.HistoryEntry(opponent: townFirst, day: UInt16(230 + i), competition: competition, played: FakeGame.PlayedValues())
+            })], bans: bans)
+        }
+
+        /// Rovers matches on these days, in these competitions, with his yellow cards in each.
+        func booked(_ matches: [(day: UInt16, competition: UInt32, yellow: UInt8)], bans: [Int64]) -> Int64 {
+            game.history([(team: roversFirst, entries: matches.map { match in
+                var played = FakeGame.PlayedValues()
+                played.yellow = match.yellow
+                return FakeGame.HistoryEntry(opponent: townFirst, day: match.day, competition: match.competition, played: played)
             })], bans: bans)
         }
 
@@ -146,11 +156,13 @@ final class PlayerStateTests: XCTestCase {
 
         let bans = try XCTUnwrap(player.bans)
         XCTAssertEqual(bans.count, 2)
-        // A ban for bookings names no match, so it takes its competition from the red card below in the same rule set...
-        // which is the cup's, not the league's: it stays unnamed until a league red card says which competition that is.
+        // A ban for bookings names no match. The red card below is under the cup's rule set, not the league's, and he
+        // wasn't booked in either match he played, so nothing says which competition it's for.
         XCTAssertEqual(bans[0].reason, .bookings)
         XCTAssertEqual(bans[0].competition, "")
         XCTAssertEqual(bans[0].associationName, "Mockovia")
+        XCTAssertTrue(bans[0].domestic)
+        XCTAssertFalse(bans[0].countsForClub)
         XCTAssertEqual(bans[0].issued, GameDate.checked(year: 2029, dayOfYear: 244))
         XCTAssertEqual(bans[1].reason, .redCard)
         XCTAssertEqual(bans[1].competition, "Mock Cup")
@@ -159,6 +171,7 @@ final class PlayerStateTests: XCTestCase {
         XCTAssertEqual(bans[1].associationName, "Mockovia")
         XCTAssertEqual(bans[1].scope, Int(PlayerStateTests.cupScope))
         XCTAssertEqual(bans[1].left, 1)
+        XCTAssertTrue(bans[1].countsForClub)
     }
 
     /// The league and the division below share a rule set. A ban for bookings under it is named after the one of the two
@@ -180,10 +193,15 @@ final class PlayerStateTests: XCTestCase {
         leagueBookings.history = world.played([World.leagueIndex, World.cupIndex], bans: [game.ban(FakeGame.BanValues(kind: 0, matches: 1))])
         game.player(leagueBookings)
 
-        // Plays in neither division, so neither can be said.
+        // Plays in neither division's matches here, but the league red card above makes this the league's rule set, and
+        // his team is in Mock League One.
         var cupOnly = world.values(3)
         cupOnly.history = world.played([World.cupIndex], bans: [game.ban(FakeGame.BanValues(kind: 0, matches: 2))])
         game.player(cupOnly)
+        // A rule set of his own association's that nothing names.
+        var unknownRules = world.values(5)
+        unknownRules.history = world.played([World.leagueIndex], bans: [game.ban(FakeGame.BanValues(scope: 9, kind: 0, matches: 1))])
+        game.player(unknownRules)
 
         // A rule set nobody has a red card under, from an association that isn't a nation the read knows, and one from
         // his own nation's.
@@ -203,12 +221,74 @@ final class PlayerStateTests: XCTestCase {
         XCTAssertEqual(reds.map(\.opponent), ["Fixture Town AFC", "Fixture Town AFC"])
 
         XCTAssertEqual(players[2]?.bans?.map(\.competition), ["Mock League One"])
-        XCTAssertEqual(players[3]?.bans?.map(\.competition), [""])
-        XCTAssertEqual(players[3]?.bans?.map(\.associationName), ["Mockovia"])
+        XCTAssertEqual(players[3]?.bans?.map(\.competition), ["Mock League One"])
+        XCTAssertEqual(players[5]?.bans?.map(\.competition), [""])
+        XCTAssertEqual(players[5]?.bans?.map(\.associationName), ["Mockovia"])
+        XCTAssertEqual(players[5]?.bans?.map(\.countsForClub), [false])
         let foreign = try XCTUnwrap(players[4]?.bans)
         XCTAssertEqual(foreign.map(\.competition), ["", ""])
         XCTAssertEqual(foreign.map(\.associationName), ["", "Fixtureland"])
+        XCTAssertEqual(foreign.map(\.domestic), [false, false])
         XCTAssertEqual(foreign.map(\.left), [2, 1])
+    }
+
+    /// No league red card in the save: a ban for bookings takes the competition of the match he was last booked in, up to
+    /// a week before it was given, when that's his team's league or a competition a red card has named. Once the league's
+    /// rule set is known that way, other bans from his club's association under it are for his team's league too.
+    func testABanForBookingsIsNamedFromTheMatchHeWasBookedIn() throws {
+        let world = World()
+        let game = world.game
+        typealias Match = (day: UInt16, competition: UInt32, yellow: UInt8)
+        let league = World.leagueIndex, cup = World.cupIndex
+        func add(_ uid: UInt32, _ matches: [Match], _ bans: [FakeGame.BanValues], at team: Int64? = nil) {
+            var values = world.values(uid)
+            if let team {
+                values.person.contract?.team = team
+                values.currentTeam = team
+            }
+            values.history = world.booked(matches, bans: bans.map(game.ban))
+            game.player(values)
+        }
+        // Booked in the league on the day of his league ban, and in the cup the day before his cup ban.
+        add(1, [(240, league, 0), (244, league, 1), (250, cup, 1)],
+            [FakeGame.BanValues(day: 244), FakeGame.BanValues(scope: PlayerStateTests.cupScope, day: 251)])
+        // A cup red card, which says what the cup's index is called.
+        let cupRed = game.banMatch(competition: world.cup, home: world.roversFirst, away: world.townFirst)
+        add(2, [], [FakeGame.BanValues(scope: PlayerStateTests.cupScope, match: cupRed, kind: 2)])
+        // His booking isn't in his record, but the league's rule set is known now.
+        add(3, [(244, league, 0)], [FakeGame.BanValues(day: 244)])
+        // Under a rule set nothing else names, booked in the league more than a week before: too long ago to be why.
+        add(4, [(236, league, 1)], [FakeGame.BanValues(scope: 9, day: 244)])
+        // A week before to the day is close enough, under another rule set, so as not to teach the one above.
+        add(6, [(237, league, 1)], [FakeGame.BanValues(scope: 10, day: 244)])
+        // At a club in another nation: a ban from Mockovia's association isn't for his league.
+        add(5, [], [FakeGame.BanValues(day: 244)], at: world.townFirst)
+
+        let players = try world.read()
+        XCTAssertEqual(players[1]?.bans?.map(\.competition), ["Mock League One", "Mock Cup"])
+        XCTAssertEqual(players[1]?.bans?.map(\.competitionIndex), [league, cup])
+        XCTAssertEqual(players[1]?.bans?.map(\.countsForClub), [true, true])
+        XCTAssertEqual(players[3]?.bans?.map(\.competition), ["Mock League One"])
+        XCTAssertEqual(players[4]?.bans?.map(\.competition), [""])
+        XCTAssertEqual(players[6]?.bans?.map(\.competition), ["Mock League One"])
+        let abroad = try XCTUnwrap(players[5]?.bans?.first)
+        XCTAssertEqual(abroad.competition, "")
+        XCTAssertFalse(abroad.domestic)
+        XCTAssertFalse(abroad.countsForClub)
+    }
+
+    /// What FM's squad screen counts: a ban whose competition is known, from his club's association or for a red card in
+    /// his club's match.
+    func testWhichBansCountForTheClub() {
+        var ban = Ban(issued: .distantPast, matches: 1, served: 0)
+        ban.domestic = true
+        XCTAssertFalse(ban.countsForClub, "no competition")
+        ban.competition = "Mock League One"
+        XCTAssertTrue(ban.countsForClub)
+        ban.domestic = false
+        XCTAssertFalse(ban.countsForClub, "another association's, as for his national team")
+        ban.opponent = "Fixture Town AFC"
+        XCTAssertTrue(ban.countsForClub, "a red card in his club's match abroad")
     }
 
     /// A ban already served is left out, a kind FM Starship doesn't know has no reason, and a red card in a match that

@@ -139,12 +139,18 @@ public struct Ban: Sendable {
     public var competitionIndex: UInt32?
     /// Nil for a kind of ban FM Starship doesn't know.
     public var reason: Reason?
-    /// The red card's match: the other side's club, as FM names it.
+    /// The red card's match: the other side's club, as FM names it. Only set when it was his club's match.
     public var opponent = ""
+    /// From the football association of his club's nation.
+    public var domestic = false
     public var issued: Date
     public var matches: Int
     public var served: Int
     public var left: Int { matches - served }
+    /// Whether it keeps him out of his club's matches, as FM's squad screen counts them: a ban from his club's own
+    /// association, or a red card in his club's match, whose competition is known. A ban from another association is most
+    /// likely for his national team or a youth side, and FM's squad screen doesn't count it.
+    public var countsForClub: Bool { !competition.isEmpty && (domestic || !opponent.isEmpty) }
 
     public init(issued: Date, matches: Int, served: Int) {
         self.issued = issued
