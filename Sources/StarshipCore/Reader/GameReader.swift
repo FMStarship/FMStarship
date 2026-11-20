@@ -452,7 +452,13 @@ public final class GameReader {
         person.secondName = name(item.second)
         person.commonName = name(item.common)
         person.nation = nationName(item.nation)
-        guard item.contract != 0, let b = game.read(item.contract, count: C.size) else { return }
+        guard item.contract != 0 else { return }
+        // A live person's contract can always be read. One that can't, such as text where the pointer should be, is a
+        // leftover copy: kept as contracted, it got past the dead-copy check below and gave three copies with uid 0.
+        guard let b = game.read(item.contract, count: C.size) else {
+            item.stale = true
+            return
+        }
 
         // FM can hold a second, dead copy of the world. Its records still point at the live contracts,
         // but a contract only names the live person as its owner.

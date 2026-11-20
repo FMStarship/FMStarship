@@ -91,6 +91,11 @@ final class FakeGame {
     }
 
     /// A byte-for-byte copy of a record somewhere else, as FM's dead second copy of the world holds.
+    /// Writes over eight bytes a record already holds, as a copy FM leaves can hold something else where a pointer was.
+    func overwrite(_ address: Int64, with value: Int64) {
+        FakeGame.pointer(address).storeBytes(of: value, as: Int64.self)
+    }
+
     func copy(_ record: FakeRecord) -> Int64 {
         let at = allocate(record.size)
         FakeGame.pointer(at).copyMemory(from: FakeGame.pointer(record.address), byteCount: record.size)

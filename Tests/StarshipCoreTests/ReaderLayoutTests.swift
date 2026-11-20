@@ -289,6 +289,24 @@ final class ReaderLayoutTests: XCTestCase {
         XCTAssertEqual(database.staff.map(\.block), [liveStaff.address])
     }
 
+    /// FM can leave copies whose contract field holds something that isn't a pointer, such as text. They're left out,
+    /// rather than read as contracted players.
+    func testLeavesOutACopyWhoseContractCantBeRead() throws {
+        let world = World()
+        var player = FakeGame.PlayerValues()
+        player.person.uid = 1
+        player.person.contract?.team = world.roversFirst
+        let live = world.game.player(player)
+        var junk = FakeGame.PlayerValues()
+        junk.person.uid = 0
+        junk.person.contract = nil
+        let copy = world.game.player(junk)
+        world.game.overwrite(copy.address + Int64(MacLayout.Player.person + MacLayout.Person.contract), with: 0x0042_002e_0049_0053)
+
+        let database = try world.game.read()
+        XCTAssertEqual(database.players.map(\.block), [live.address])
+    }
+
     func testReadsAFreeAgent() throws {
         let world = World()
         var player = FakeGame.PlayerValues()
