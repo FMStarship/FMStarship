@@ -194,7 +194,7 @@ public final class Player: Person {
     /// Condition and sharpness as FM stored them, only when FM brought them up to date on the game's day. Nil otherwise,
     /// since they're FM's for that day only: see `fitness(_:)`.
     public var fitness: Fitness?
-    /// The day FM last brought them up to date, when it isn't the game's day, so FM's getters have to catch them up.
+    /// The day FM last brought them up to date, when it isn't the game's day, so they come from FM's getters.
     public var fitnessUpdated: Date?
     public var fitnessNeedsCatchUp = false
     /// 1-20.
@@ -212,7 +212,8 @@ public final class Player: Person {
     public var notForSale: Bool { value == 300_000_000 }
 
     /// Condition and sharpness as FM would show them today: as stored when FM brought them up to date today, else from
-    /// FM's own getters, which catch them up first. Nil when neither can say, never a number from another day.
+    /// FM's own getters, which gave FM's last stored values for players it hadn't updated for days. Nil when neither can
+    /// say.
     public func fitness(_ engine: GameRulesEngine?) -> Fitness? {
         if let fitness { return fitness }
         guard fitnessNeedsCatchUp, let engine else { return nil }

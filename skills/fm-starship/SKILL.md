@@ -73,9 +73,10 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **Last match** in `squad` is the player's latest match in FM's record, for any team: compare its date with the club's last
   result to see who was left out. A date with no minutes or rating means he didn't play: on the bench, left out or suspended.
 - **Condition** and **Sharpness** (match sharpness) are FM's own numbers as percentages, 0 to 100 with one decimal. FM doesn't
-  show them as numbers: condition is a heart with a word for energy, sharpness a tick. On the save they were checked on, 85.7%
-  condition showed a green heart and "well rested". Where the heart turns orange or red, and FM's other words, aren't known, so
-  don't say which word FM would use. Don't tell the user FM shows a percentage either; say it's FM Starship's reading of FM's figure.
+  show them as numbers: condition is a heart with a word, sharpness a tick. Right after a match, FM lowers condition by the
+  minutes played and raises sharpness. On the save they were checked on, the evening after a match, 80% condition showed "Bra"
+  (good) with "tired after the last match" and a high injury risk, and 86% showed "Utmerket" (excellent) with "tired". Where
+  the heart turns orange or red, and FM's other words, aren't known, so don't say which word FM would use. Don't tell the user FM shows a percentage either; say it's FM Starship's reading of FM's figure.
 - **Morale** is FM's 1 to 20. FM shows it as a coloured icon. On the save it was checked on, 2 showed red, 8 and 10 orange, and
   18 to 20 green. The edges between those, and FM's words for them, aren't known.
 - **Playing time** is how happy the player is with his playing time, from -100 to 100, as FM keeps it in his contract. On the save
@@ -99,8 +100,8 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - None of these is hidden in FM, so they're there whatever Hidden attributes is set to. A field whose self-check failed for this
   read isn't sent at all, and `game_status` says why.
 - Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars, injury days and
-  home-grown status. Condition and sharpness are too, for a player FM hasn't brought up to date today, since FM catches them up
-  before it shows them. On a build of FM that FM Starship hasn't been checked on, `game_status` says the rules are off, and those
+  home-grown status. Condition and sharpness are too, for a player FM hasn't brought up to date today: FM's getters give them,
+  as of FM's last update for him, and other clubs' players can go days without one. On a build of FM that FM Starship hasn't been checked on, `game_status` says the rules are off, and those
   values aren't there. Don't fill them in, and don't use an older condition instead.
 
 ## Hidden attributes

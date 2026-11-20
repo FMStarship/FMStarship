@@ -31,8 +31,8 @@ public final class RulesEngine: GameRulesEngine {
         package static let bagClear: Int64 = 0x4447e28
         package static let injuryDaysKey: UInt64 = 0x5050_4d69  // "PPMi" in the bag FM fills for its injury text
         package static let shapeName: Int64 = 0x4ab2570
-        package static let conditionSlot = 0x458 / 8
-        package static let sharpnessSlot = 0x450 / 8
+        package static let conditionSlot = 0x450 / 8
+        package static let sharpnessSlot = 0x458 / 8
         package static let trainedAtClub: Int64 = 0xd1e590
         package static let trainedInNation: Int64 = 0xd1c1c4
     }
@@ -384,8 +384,9 @@ public final class RulesEngine: GameRulesEngine {
         FixturesReader.history(player: player.block, in: game) { self.teamNames.name($0, in: self.game) }
     }
 
-    /// Condition and sharpness through FM's own getters, asked to catch the player up to today first, as FM does before
-    /// it shows them. The catch-up only happens in the sandbox's copy.
+    /// Condition and sharpness through FM's own getters, which first make the call FM makes to bring a player up to date.
+    /// On 27.1.0 they gave the stored values unchanged for 4,000 players FM last updated 1 to 15+ days before, so for those
+    /// it's FM's last update. Anything the call changes only happens in the sandbox's copy.
     public func fitness(player: Player) -> Fitness? {
         guard conditionFunction != 0, sharpnessFunction != 0 else { return nil }
         do {

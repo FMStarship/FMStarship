@@ -9,10 +9,11 @@ enum MacLayout {
         static let identity = 0x388
         static let currentTeam = attributes - 24
         static let injuries = attributes - 80   // also holds the recent matches and bans, see History
-        /// Relative to the start of the record. Condition and sharpness are 0-10000, and only FM's for the day in
-        /// `fitnessUpdated`: FM's getters catch them up to today first.
-        static let condition = 0x250
-        static let sharpness = 0x254
+        /// Relative to the start of the record. Condition and sharpness are 0-10000, as FM stored them on the day in
+        /// `fitnessUpdated`. They were told apart right after a match, when FM writes both for everyone who played:
+        /// condition fell with the minutes played and sharpness went to 100 (FM 27.1.0, the user's screens agreeing).
+        static let condition = 0x254
+        static let sharpness = 0x250
         /// The day of the year in the low 9 bits, then the year.
         static let fitnessUpdated = 0x1f8
         /// 1-20.

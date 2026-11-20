@@ -374,7 +374,7 @@ how each value was first found:
 | `staffNumbersGlobal`, slots | `fmprobe huntlimits`: the per-team tables must add up to the club's real staff |
 | `staffModeFlags` | The two bytes the staff-number functions compare against 2 and 3 |
 | `shapeName` | Takes eleven sorted place numbers in `x0` and returns a string through `x8`. `fmprobe shapenames` shows when it's right |
-| `conditionSlot`, `sharpnessSlot` | `ACTUAL_PLAYER` vtable slots whose code is `ldrsh w0, [x19, #0x250]` and `#0x254` after a call through `GAME_ACTUAL_PLAYER` slot 0x278, FM's daily catch-up of condition and sharpness |
+| `conditionSlot`, `sharpnessSlot` | `ACTUAL_PLAYER` vtable slots whose code is `ldrsh w0, [x19, #0x254]` (condition) and `#0x250` (sharpness) after a call through `GAME_ACTUAL_PLAYER` slot 0x278 |
 | `trainedAtClub`, `trainedInNation` | The two `bl` targets in slot 2 of `OWN_PLAYER_RULE_PLAYER_IS_HOMEGROWN_PLAYER_FOR_CLUB`, which answers 2 for the first and 1 for the second |
 
 The optimizer reads FM's own tactic data from `game_plugin.bundle/Contents/Resources/shared/data/simatch.fmf`, so it follows
@@ -433,9 +433,12 @@ FM Starship's own parts, and how to check them after a patch:
   that holds his injuries, with offsets in `MacLayout`. That costs the read two more reads for each ban, and `clock` logs its
   time as "player state". Each field has a self-check: when more than one player in a hundred at a club has a value it can't
   have (condition or sharpness outside 0-10000, morale outside 1-20, playing time outside -100 to 100, a ban with no real date),
-  or a big save has only one value, or no ban at all, that field is off for the read. Condition and sharpness are only FM's for
-  the day they were brought up to date, so on any other day they come from FM's getters (`conditionSlot`, `sharpnessSlot`), and
-  are off without the rules engine. The MCP server asks the getters for 50 players brought up to date today, which must give
+  or a big save has only one value, or no ban at all, that field is off for the read. Condition is at +0x254 and sharpness at
+  +0x250: they were told apart right after a match, when FM writes both for everyone who played, condition falling with the
+  minutes and sharpness going to 100, as the user's screens agreed. Before a match the two can be within 0.1 of each other, so
+  check them after one. On any day but the one they were brought up to date, they come from FM's getters (`conditionSlot`,
+  `sharpnessSlot`), and are off without the rules engine. On 27.1.0 the getters gave the stored values unchanged for players
+  FM last updated days before, so for other clubs' players they're FM's last update. The MCP server asks the getters for 50 players brought up to date today, which must give
   the stored values: if not, a slot or an offset has moved, and condition and sharpness are off. FM can play a match without the
   date moving, so the MCP server reads each player's state again for each answer about him (`GameReader.refreshState`), with
   the read's verdict still deciding what's on. Home-grown status is FM's own two tests. `fmprobe state [CLUB]` prints all of it

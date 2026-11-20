@@ -70,7 +70,7 @@ public protocol GameRulesEngine: AnyObject {
     func injuryReturnDays(player: Player) -> Int?
     /// The player's recent matches, from the same record as `form`.
     func matchHistory(player: Player) -> MatchHistory?
-    /// Condition and sharpness as FM would show them today, from FM's own getters, which catch them up first.
+    /// Condition and sharpness as FM's own getters give them today.
     func fitness(player: Player) -> Fitness?
     /// Whether he's home-grown for his club, by FM's own tests. Nil for a player with no club.
     func homeGrown(player: Player) -> HomeGrown?

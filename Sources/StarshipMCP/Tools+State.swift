@@ -73,7 +73,7 @@ extension Toolbox {
                 pairs += [("Condition", percent(fitness.condition)), ("Sharpness", percent(fitness.sharpness))]
             } else if player.fitnessNeedsCatchUp, engine == nil, let updated = player.fitnessUpdated {
                 pairs.append(("Condition and sharpness", .string("not known: FM last brought them up to date on \(Output.iso(updated)), "
-                                                                 + "and FM's rules, which catch them up to today, are off")))
+                                                                 + "and FM's rules, whose getters give them on other days, are off")))
             }
         }
         if db.stateIsOn(.morale) { pairs.append(("Morale", player.morale.map { .int($0) })) }
@@ -98,8 +98,8 @@ extension Toolbox {
         func status(_ field: PlayerStateField) -> String { db.stateOff[field].map { "off: \($0)" } ?? "on" }
         var fitness = status(.fitness)
         if db.stateIsOn(.fitness), engine == nil {
-            fitness = "on for players FM has brought up to date today. For the others it's left out, since FM's rules, which catch "
-                + "them up, are off"
+            fitness = "on for players FM has brought up to date today. For the others it's left out, since FM's rules, whose getters "
+                + "give them, are off"
         }
         let homeGrown = engine == nil ? "off: it comes from FM's own rules, which are off on this build" : "on"
         return .object([("condition", .string(fitness)), ("sharpness", .string(fitness)), ("morale", .string(status(.morale))),
