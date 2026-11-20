@@ -102,6 +102,7 @@ final class Plugin: NSObject, NSWindowDelegate {
         window.level = NSWindow.Level(rawValue: max(NSWindow.Level.floating.rawValue, gameLevel + 1))
         window.makeKeyAndOrderFront(nil)
         PluginLog.write("Showing \(model.title(of: kind))")
+        if kind == .main { model.windowShown() }
     }
 
     private func makeWindow(_ kind: StarshipWindow, model: AppModel) -> NSWindow {

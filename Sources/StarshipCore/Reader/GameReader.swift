@@ -254,6 +254,7 @@ public final class GameReader {
         database.build = (try? buildName()) ?? ""
         database.readAt = Date()
         database.gameDate = transferManagers.compactMap(readGameDate).max()
+        database.dateRecords = transferManagers.sorted()
         readCurrencies(currencies.sorted(), into: database)
         readHumans(humans.sorted(), managers: managers.sorted(), into: database)
         separateSides(pending.map(\.person), in: database)
@@ -599,9 +600,17 @@ public final class GameReader {
         return result
     }
 
-    private func readGameDate(_ transferManager: Int64) -> Date? {
+    private func readGameDate(_ transferManager: Int64) -> Date? { GameReader.gameDate(transferManager, in: game) }
+
+    private static func gameDate(_ transferManager: Int64, in game: GameProcess) -> Date? {
         guard transferManager != 0, let b = game.read(transferManager + Int64(MacLayout.gameDate), count: 4) else { return nil }
         return GameDate.checked(year: GameReader.u16(b, 2), dayOfYear: GameReader.u16(b, 0))
+    }
+
+    /// The game date as the game's memory holds it now, read where `database` found it: two small reads, where reading
+    /// again takes seconds. Nil once that memory holds no date, as when FM has let go of the save that was read.
+    public static func gameDate(of database: Database, in game: GameProcess) -> Date? {
+        database.dateRecords.compactMap { gameDate($0, in: game) }.max()
     }
 
     /// The clubs run by human managers, and their budgets.

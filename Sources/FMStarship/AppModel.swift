@@ -131,6 +131,8 @@ package final class AppModel: ObservableObject {
     @Published var selection: [Person] = [] { didSet { updateMenuState() } }
     /// People the last interest check got no answer for.
     @Published var unanswered = 0
+    /// Set while FM's save is on a later day than the one loaded here.
+    @Published private(set) var saveMovedOn: SaveProgress?
     @Published var focusSearch = 0
 
     @Published private(set) var playerSort = SortState()
@@ -194,6 +196,8 @@ package final class AppModel: ObservableObject {
     private var playersByUID: [UInt32: Player] = [:]
     private var staffByUID: [UInt32: Staff] = [:]
     private var laterChecks = LaterChecks()
+    /// The day a read was started for on showing the window, so that showing it again starts no more for that day.
+    private var readOnShowFor: Date?
     /// What the poll below costs. Inside FM it runs on FM's main thread, and the plugin logs it.
     package let checkGameCost = TimerCost()
 
@@ -414,6 +418,7 @@ package final class AppModel: ObservableObject {
         readingSeasonStats = false
         seasonStatsAvailable = true
         laterChecks = LaterChecks()
+        saveMovedOn = nil
 
         RulesState.shared.reset()
         RulesState.shared.fill(database)
@@ -444,12 +449,45 @@ package final class AppModel: ObservableObject {
     /// closes they go, and what was loaded stays on screen as plain data.
     private func checkGame() {
         gameState = GameLauncher.state
-        guard let engine = GameRules.engine as? RulesEngine, GameProcess.runningPID() != engine.pid else { return }
+        guard let engine = GameRules.engine as? RulesEngine else { return }
+        guard GameProcess.runningPID() != engine.pid else {
+            followSaveDate(engine.game)
+            return
+        }
         seasonToken?.cancel()
         GameRules.engine = nil
         RulesState.shared.reset()
+        saveMovedOn = nil
         status = "Football Manager closed. Showing what was last loaded."
         cellsVersion += 1
+    }
+
+    /// Looks at FM's game date where the read found it: two small reads, where reading everything again takes seconds,
+    /// so it's done on the poll and the save is only read again when the window is shown or Load Save is pressed.
+    private func followSaveDate(_ game: GameProcess) {
+        guard !loading, let database else { return }
+        saveDateSeen(GameReader.gameDate(of: database, in: game))
+    }
+
+    /// FM's game date as it is now, nil when it can't be told, as once FM has let go of the save that was read.
+    func saveDateSeen(_ now: Date?) {
+        let progress = SaveProgress(readOn: database?.gameDate, now: now)
+        if progress != saveMovedOn { saveMovedOn = progress }
+    }
+
+    /// FM Starship's window has been shown, or the app has come to the front. If the save has moved on since it was
+    /// read, it's read again.
+    package func windowShown() {
+        if let engine = GameRules.engine as? RulesEngine, GameProcess.runningPID() == engine.pid { followSaveDate(engine.game) }
+        if takeReadOnShow() { loadSave() }
+    }
+
+    /// Whether showing the window should start a read: once for each day the save has moved on to, so a read that
+    /// fails, or a window shown again and again, doesn't start one after another.
+    func takeReadOnShow() -> Bool {
+        guard let saveMovedOn, !loading, saveMovedOn.now != readOnShowFor else { return false }
+        readOnShowFor = saveMovedOn.now
+        return true
     }
 
     func loadSeasonStats(_ database: Database, _ engine: GameRulesEngine) {
