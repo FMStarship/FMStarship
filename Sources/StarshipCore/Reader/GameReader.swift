@@ -21,6 +21,8 @@ public final class GameReader {
         var contract: Int64 = 0, currentTeam: Int64 = 0, injuryList: Int64 = 0
         var identity: Int64 = 0
         var stale = false
+        /// Its contract pointer leads nowhere readable: a leftover copy, left out, and no vote on whether its region is dead.
+        var unreadable = false
         init(_ person: Person) { self.person = person }
     }
 
@@ -454,9 +456,10 @@ public final class GameReader {
         person.nation = nationName(item.nation)
         guard item.contract != 0 else { return }
         // A live person's contract can always be read. One that can't, such as text where the pointer should be, is a
-        // leftover copy: kept as contracted, it got past the dead-copy check below and gave three copies with uid 0.
+        // leftover copy: kept as contracted, it got past the dead-copy check below and gave three copies with uid 0. It
+        // isn't counted as stale, since a few of them could then make a region with real free agents look dead.
         guard let b = game.read(item.contract, count: C.size) else {
-            item.stale = true
+            item.unreadable = true
             return
         }
 
@@ -570,9 +573,9 @@ public final class GameReader {
     /// from the region that holds the most confirmed records, and none from a dead region. One found only there
     /// is someone FM no longer has: its pointers lead into freed memory, where FM's rules can loop for ever.
     private static func liveRecords(_ pending: [Pending]) -> [Pending] {
-        let live = pending.filter { !$0.stale }
+        let live = pending.filter { !$0.stale && !$0.unreadable }
         var confirmed: [Int64: Int] = [:], stale: [Int64: Int] = [:]
-        for item in pending where item.contract != 0 {
+        for item in pending where item.contract != 0 && !item.unreadable {
             if item.stale { stale[item.person.block >> 32, default: 0] += 1 } else { confirmed[item.person.block >> 32, default: 0] += 1 }
         }
         let dead = deadRegions(confirmed: confirmed, stale: stale)

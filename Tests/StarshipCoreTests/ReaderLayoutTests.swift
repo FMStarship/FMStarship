@@ -307,6 +307,31 @@ final class ReaderLayoutTests: XCTestCase {
         XCTAssertEqual(database.players.map(\.block), [live.address])
     }
 
+    /// Such copies don't count against their region: two of them beside one contracted player mustn't make the region look
+    /// dead, which would leave out its free agents too.
+    func testCopiesWhoseContractCantBeReadDontLeaveOutFreeAgents() throws {
+        let world = World()
+        var player = FakeGame.PlayerValues()
+        player.person.uid = 1
+        player.person.contract?.team = world.roversFirst
+        let live = world.game.player(player)
+        var free = FakeGame.PlayerValues()
+        free.person.uid = 3
+        free.person.commonName = "Made-up Free Agent"
+        free.person.contract = nil
+        let freeAgent = world.game.player(free)
+        for _ in 0..<2 {
+            var junk = FakeGame.PlayerValues()
+            junk.person.uid = 0
+            junk.person.contract = nil
+            let copy = world.game.player(junk)
+            world.game.overwrite(copy.address + Int64(MacLayout.Player.person + MacLayout.Person.contract), with: 0x0042_002e_0049_0053)
+        }
+
+        let database = try world.game.read()
+        XCTAssertEqual(Set(database.players.map(\.block)), [live.address, freeAgent.address])
+    }
+
     func testReadsAFreeAgent() throws {
         let world = World()
         var player = FakeGame.PlayerValues()
