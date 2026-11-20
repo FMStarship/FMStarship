@@ -118,12 +118,22 @@ public protocol SearchFilter {
     var region: String { get set }
     var rules: [AttrRule] { get set }
     var showHidden: Bool { get set }
-    var showAbility: Bool { get }
+    var showAbility: Bool { get set }
     var defaults: [String: String] { get set }
 }
 
 extension SearchFilter {
     public static func sections(inTab tab: String) -> [FilterSection<Self>] { sections.filter { $0.tab == tab } }
+
+    /// What Cancel in the filter window puts back: the copy taken when the window opened, but with Hidden attributes and
+    /// Ability as they are now. Inside FM, FM Starship's tab can change them while the window is open, and switching Hidden
+    /// attributes off must not be undone by Cancel bringing back a rule on a hidden attribute.
+    public func restoring(_ original: Self) -> Self {
+        var restored = original
+        restored.showHidden = showHidden
+        restored.showAbility = showAbility
+        return restored
+    }
 
     /// The sections to draw in a tab, leaving out hidden-attribute ones when `showHidden` is off and ability ones when `showAbility` is.
     public func visibleSections(inTab tab: String) -> [FilterSection<Self>] {
