@@ -32,7 +32,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
     public var seasonAssists = ""
     public var seasonRating = ""
     // Attributes
-    public var rules = [AttrRule](repeating: AttrRule(), count: 8)
+    public var rules = [AttrRule](repeating: AttrRule(), count: AttrRule.startCount)
     // Contract
     public var valueMax = ""
     public var wageMax = ""
@@ -118,7 +118,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterField("seasonAssists", "Assists at least", .text(\.seasonAssists)),
             FilterField("seasonRating", "Average rating at least", .text(\.seasonRating), placeholder: .text("e.g. 7.0")),
         ]),
-        FilterSection("Attributes", tab: "Attributes", fields: (0..<8).map { FilterField("rule\($0)", "", .rule($0)) }),
+        FilterSection("Attributes", tab: "Attributes", fields: (0..<AttrRule.maxCount).map { FilterField("rule\($0)", "", .rule($0)) }),
         FilterSection("Contract", tab: "Contract & interest", fields: [
             FilterField("valueMax", "Value up to", .text(\.valueMax), placeholder: .moneyMillions),
             FilterField("wageMax", "Wage up to", .text(\.wageMax), placeholder: .wageThousands),
@@ -196,6 +196,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
         trait2 = "Any"
         role = "Any"
         for index in rules.indices { rules[index].clear() }
+        trimRules()
         markDefaults()
     }
 

@@ -24,7 +24,7 @@ public struct StaffFilter: SearchFilter, Equatable {
     public var rank = Names.areasLong[1]
     public var minStars = "Any"
     // Attributes
-    public var rules = [AttrRule](repeating: AttrRule(), count: 8)
+    public var rules = [AttrRule](repeating: AttrRule(), count: AttrRule.startCount)
     // Contract
     public var wageMax = ""
     public var contractEndsBy = ""
@@ -77,7 +77,7 @@ public struct StaffFilter: SearchFilter, Equatable {
             FilterField("minStars", "At least (stars)",
                         .choice(\.minStars, .fixed(["Any", "3.5", "4", "4.5", "5"]), editable: false)),
         ]),
-        FilterSection("Attributes", tab: "Attributes", fields: (0..<8).map { FilterField("rule\($0)", "", .rule($0)) }),
+        FilterSection("Attributes", tab: "Attributes", fields: (0..<AttrRule.maxCount).map { FilterField("rule\($0)", "", .rule($0)) }),
         FilterSection("Contract", tab: "Contract & more", fields: [
             FilterField("wageMax", "Wage up to", .text(\.wageMax), placeholder: .wageThousands),
             FilterField("contractEndsBy", "Contract ends by", .text(\.contractEndsBy), placeholder: .text("year")),
@@ -114,6 +114,7 @@ public struct StaffFilter: SearchFilter, Equatable {
         region = "Any"
         squad = "Any"
         for index in rules.indices { rules[index].clear() }
+        trimRules()
         markDefaults()
     }
 

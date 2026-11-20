@@ -26,6 +26,9 @@ struct FilterWindow<Filter: SearchFilter>: View {
                         GroupBox(section.title) {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(section.fields, id: \.id) { field(section: section, $0) }
+                                if hasRules(section) {
+                                    Button("Add a rule") { filter.addRule() }.disabled(!filter.canAddRule)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(6)
@@ -93,21 +96,35 @@ struct FilterWindow<Filter: SearchFilter>: View {
         case .toggle(let path):
             Toggle(field.label, isOn: $filter[dynamicMember: path]).disabled(disabled)
         case .rule(let index):
-            HStack {
-                Picker("", selection: $filter.rules[index].attribute) {
-                    ForEach(filter.ruleChoices, id: \.self) { Text($0).tag($0) }
+            // The section lists every row up to the most there can be; only those the filter has are drawn.
+            if index < filter.rules.count {
+                let rule = ruleBinding(index)
+                HStack {
+                    Picker("", selection: rule.attribute) {
+                        ForEach(filter.ruleChoices, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    Picker("", selection: rule.operatorText) {
+                        ForEach(AttrRule.operators, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 60)
+                    TextField("", text: rule.value).frame(width: 60)
                 }
-                .labelsHidden()
-                Picker("", selection: $filter.rules[index].operatorText) {
-                    ForEach(AttrRule.operators, id: \.self) { Text($0).tag($0) }
-                }
-                .labelsHidden()
-                .frame(width: 60)
-                TextField("", text: $filter.rules[index].value).frame(width: 60)
             }
         case .note(let note):
             Text(note.text).font(.callout).foregroundStyle(.secondary)
         }
+    }
+
+    private func hasRules(_ section: FilterSection<Filter>) -> Bool {
+        section.fields.contains { if case .rule = $0.kind { return true } else { return false } }
+    }
+
+    /// A row's rule that stays safe if Reset tab shortens the list while a control still holds it: this also runs
+    /// inside FM, where an index out of range would close the game.
+    private func ruleBinding(_ index: Int) -> Binding<AttrRule> {
+        Binding(get: { filter.rule(at: index) }, set: { filter.updateRule(index, $0) })
     }
 
     private func row<Content: View>(_ field: FilterField<Filter>, @ViewBuilder content: () -> Content) -> some View {
