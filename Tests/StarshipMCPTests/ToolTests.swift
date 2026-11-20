@@ -1,3 +1,4 @@
+import StarshipAnalysis
 import StarshipCore
 @testable import StarshipMCP
 import StarshipSearch
@@ -91,7 +92,7 @@ final class ToolTests: XCTestCase {
         let status = try harness.answer("game_status")
         XCTAssertTrue(status["rules"]?.string?.hasPrefix("off:") ?? false)
         let squad = try harness.answer("squad")
-        XCTAssertTrue(squad.rowsByName.allSatisfy { $0["Appearances"] == .null && $0["Days out"] == .null })
+        XCTAssertTrue(squad.rowsByName.allSatisfy { $0["Starts"] == .null && $0["Days out"] == .null })
         XCTAssertNil(try harness.answer("person", ["uid": 21])["Would join your club"])
         XCTAssertTrue(try harness.refusal("squad_overview").contains("rules"))
     }
@@ -105,7 +106,7 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(squad["squads"]?.array, ["First team", "U19"])
         XCTAssertEqual(squad["players"], 12)
         XCTAssertEqual(Array(squad.columnNames.prefix(5)), ["uid", "Name", "Age", "Nation", "Position"])
-        for name in ["CA", "PA", "Value", "Wage", "Contract end", "Appearances", "Yellow cards", "Red cards", "Injury", "Days out"] {
+        for name in ["CA", "PA", "Value", "Wage", "Contract end", "Starts", "Sub appearances", "Yellow cards", "Red cards", "Injury", "Days out"] {
             XCTAssertTrue(squad.columnNames.contains(name), name)
         }
         let hurt = try XCTUnwrap(squad.rowsByName.first { $0["uid"] == 13 })
@@ -116,7 +117,10 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(hurt["Value"], "£1.3M")
         XCTAssertEqual(hurt["Injury"], "Hamstring strain")
         XCTAssertEqual(hurt["Days out"], 14)
-        XCTAssertEqual(hurt["Appearances"], 10)
+        // FM's "9 (1)": nine starts and one as a substitute, never the two added up as if they were starts.
+        XCTAssertFalse(squad.columnNames.contains("Appearances"))
+        XCTAssertEqual(hurt["Starts"], 9)
+        XCTAssertEqual(hurt["Sub appearances"], 1)
         XCTAssertEqual(hurt["Yellow cards"], 2)
         XCTAssertEqual(hurt["Red cards"], 1)
         XCTAssertEqual(hurt["Average rating"], 7.05)
@@ -187,6 +191,72 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(coach["Attributes"]?["Adaptability"], 12)
         XCTAssertEqual(coach["Would join your club"]?["first_team"], true)
         XCTAssertEqual(coach["Would join your club"]?["reserves"], false)
+    }
+
+    func testStartsAndSubAppearancesAreTwoNumbersEverywhere() throws {
+        let harness = Harness()
+        try harness.saveShortlist("Targets", isStaff: false, uids: [21])
+        let lists = [try harness.answer("search_players", ["club": "Rivals", "limit": 1]),
+                     try harness.answer("search_players", ["sort": "Appearances", "limit": 1]),
+                     try harness.answer("shortlist", ["name": "Targets"])]
+        for list in lists {
+            XCTAssertFalse(list.columnNames.contains("Appearances"), list.text)
+            XCTAssertEqual(list.rowsByName.first?["Starts"], 9, list.text)
+            XCTAssertEqual(list.rowsByName.first?["Sub appearances"], 1, list.text)
+        }
+        let person = try harness.answer("person", ["uid": 21])
+        XCTAssertEqual(person["Season stats"]?["Starts"], 9)
+        XCTAssertEqual(person["Season stats"]?["Sub appearances"], 1)
+        XCTAssertNil(person["Season stats"]?["Appearances"])
+        let rows = try harness.answer("compare", ["uids": [1, 21]])["rows"]?.array ?? []
+        XCTAssertTrue(rows.contains(["Starts", 9, 9]))
+        XCTAssertTrue(rows.contains(["Sub appearances", 1, 1]))
+        XCTAssertFalse(rows.contains { $0.array?.first == "Appearances" })
+    }
+
+    func testMoneyIsInTheUsersCurrencyFromTheFirstAnswer() throws {
+        // A fresh server knows only the pound until a save is read.
+        Units.currencies = [Units.pound]
+        Units.money = Units.pound
+        defer {
+            Units.currencies = [Units.pound]
+            Units.money = Units.pound
+        }
+        let harness = Harness()
+        harness.source.database.currencies = [Currency(name: "United Kingdom Pound", symbol: "£", rate: 1),
+                                              Currency(name: "Norwegian Krone", symbol: "", rate: 13)]
+        harness.settings.currencyName = "Norwegian Krone"
+
+        let status = try harness.answer("game_status")
+        XCTAssertEqual(status["units"]?["currency"], "Norwegian Krone")
+        XCTAssertEqual(status["clubs"]?.array?.first?["transfer_budget"], "Kr 65M")
+        XCTAssertEqual(try harness.answer("squad").rowsByName.first?["Value"], "Kr 1.3M")
+
+        // The call that reads again after a new day, and a money argument read in that same call.
+        Units.money = Units.pound
+        harness.source.current = false
+        let cheap = try harness.answer("search_players", ["value_max": 1_300_000])
+        XCTAssertEqual(cheap.rowsByName.map { $0["uid"] }, [1], "1.3M kroner is £100K")
+        XCTAssertEqual(cheap.rowsByName.first?["Value"], "Kr 1.3M")
+        XCTAssertEqual(harness.source.reads, 2)
+    }
+
+    func testNoAnswerTalksAboutTheAppsMouse() throws {
+        let harness = Harness()
+        for (tool, arguments) in [("recommend_signings", ["upgrades_only": false]), ("find_bargains", ["only_join": false]),
+                                  ("squad_overview", [:]), ("staff_overview", [:]), ("club_overview", [:])] as [(String, JSON)] {
+            let text = try harness.answer(tool, arguments).text
+            XCTAssertNil(text.range(of: "click", options: .caseInsensitive), "\(tool): \(text)")
+        }
+        XCTAssertEqual(Output.prose("Top 10 who would join Molde FK. Double-click a player for the full profile."), "Top 10 who would join Molde FK.")
+        XCTAssertEqual(Output.prose("In FM: offer him for loan. Right-click to add to a shortlist."), "In FM: offer him for loan.")
+        XCTAssertEqual(Output.prose("Double-click for the full profile; right-click to compare."), "")
+    }
+
+    func testTheMCPHasFMsRoleRatingsAndStaffLimits() {
+        // Without these, the squad overview and the staff limits are off whatever FM answers.
+        XCTAssertTrue((RulesEngine.self as Any) is PositionalRoleEngine.Type)
+        XCTAssertTrue((RulesEngine.self as Any) is StaffLimitsEngine.Type)
     }
 
     func testAMisspeltArgumentIsSaidNotIgnored() throws {
@@ -299,9 +369,12 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(overview.columnNames, ["uid", "Position", "Playing now", "Rating", "Standing", "Notes"])
         XCTAssertNil(overview["head"], "the headline is said once")
 
+        XCTAssertEqual(try harness.answer("game_status")["clubs"]?.array?.first?["tactic"], "found: 4-4-2")
+
         harness.source.database.tactics = [:]
         harness.source.current = false
-        XCTAssertTrue(try harness.refusal("squad_overview").contains("tactic"))
+        XCTAssertTrue(try harness.refusal("squad_overview").contains("Tactics screen"))
+        XCTAssertTrue(try harness.answer("game_status")["clubs"]?.array?.first?["tactic"]?.string?.hasPrefix("not found") ?? false)
     }
 
     func testStaffOverview() throws {
@@ -333,6 +406,13 @@ final class ToolTests: XCTestCase {
         XCTAssertTrue(signings.columnNames.contains("CA"))
         let bargains = try harness.answer("find_bargains", ["kind": "contracts_ending", "only_join": false])
         XCTAssertNotNil(bargains["columns"])
+        let two = try harness.answer("recommend_signings", ["upgrades_only": false, "limit": 2])
+        XCTAssertEqual(two.rowsByName.count, 2)
+        XCTAssertEqual(two["found"], 10)
+        XCTAssertEqual(two["shown"], 2)
+        let one = try harness.answer("find_bargains", ["kind": "contracts_ending", "only_join": false, "limit": 1])
+        XCTAssertEqual(one.rowsByName.count, 1)
+        XCTAssertTrue(try harness.refusal("recommend_signings", ["limit": 11]).contains("1 to 10"))
         XCTAssertTrue(try harness.refusal("find_bargains", ["kind": "cheap"]).contains("wonderkids"))
     }
 }

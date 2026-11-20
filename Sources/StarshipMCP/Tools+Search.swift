@@ -128,7 +128,7 @@ extension Toolbox {
         let order = sort?.name ?? (visibility.showsAbility ? "CA" : "Value")
         return .object([("found", .int(found.count)), ("shown", .int(min(limit, found.count))), ("order", .string(order)),
                         ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(Array(ordered.prefix(limit)), columns, visibility))
+                       + Output.rows(Array(ordered.prefix(limit)), columns))
     }
 
     /// The release clause a club from `buyerNation` would pay: the general one, or the one for buyers from home or abroad,
@@ -191,6 +191,6 @@ extension Toolbox {
         let order = sort?.name ?? rank.map { "\($0) stars" } ?? "World reputation"
         return .object([("found", .int(found.count)), ("shown", .int(min(limit, found.count))), ("order", .string(order)),
                         ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(Array(ordered.prefix(limit)), columns, visibility))
+                       + Output.rows(Array(ordered.prefix(limit)), columns))
     }
 }

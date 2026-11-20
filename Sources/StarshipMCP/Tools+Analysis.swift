@@ -18,7 +18,7 @@ extension Toolbox {
         let session = context.session(for: club)
         let dashboard = ClubDashboard(session: session)
         var pairs: [(String, JSON)] = [("club", .string(dashboard.club))]
-        if let line = Output.text(dashboard.line) { pairs.append(("line", line)) }
+        if !dashboard.line.isEmpty { pairs.append(("line", .string(Output.prose(dashboard.line)))) }
         pairs.append(("facts", .object(dashboard.facts.map { ($0.label, Output.text($0.value) ?? .null) })))
         pairs.append(("players_needing_action_now", .int(dashboard.actions)))
         pairs.append(("issues", .array(dashboard.issues.map { issue in
@@ -41,18 +41,22 @@ extension Toolbox {
     func squadOverview(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let club = try context.ownClub(try args.string("club"))
         guard context.read.engine != nil else { throw Self.rulesOff("The squad overview") }
-        guard let report = SquadOverview(session: context.session(for: club)) else {
-            throw ToolError("The squad overview needs \(club.name)'s tactic, which FM Starship couldn't find in this save.")
+        guard context.db.tactics[club.team] != nil else {
+            throw ToolError("FM Starship couldn't find \(club.name)'s tactic in FM's memory. The user can try opening the tactic they "
+                + "play in FM's Tactics screen; then ask again with game_status refresh: true, which says whether it's found.")
         }
-        return .object([("club", .string(club.name)), ("headline", .string(Output.isoDates(report.headline)))]
+        guard let report = SquadOverview(session: context.session(for: club)) else {
+            throw ToolError("The squad overview needs FM's role ratings, which FM didn't give for \(club.name). Ask again in a moment.")
+        }
+        return .object([("club", .string(club.name)), ("headline", .string(Output.prose(report.headline)))]
                        + Output.table(report.table(hires: [:]), dropping: Self.hireColumns, withHead: false)
-                       + [("footnote", .string(Output.isoDates(report.footnote)))])
+                       + [("footnote", .string(Output.prose(report.footnote)))])
     }
 
     func staffOverview(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let club = try context.ownClub(try args.string("club"))
         let report = StaffOverview(session: context.session(for: club))
-        var pairs: [(String, JSON)] = [("club", .string(club.name)), ("headline", .string(Output.isoDates(report.headline)))]
+        var pairs: [(String, JSON)] = [("club", .string(club.name)), ("headline", .string(Output.prose(report.headline)))]
         pairs += Output.table(report.table(hires: [:]), dropping: Self.hireColumns, withHead: false)
         pairs.append(("training", .array(report.areas.map { area in
             .object(dropping: [("area", .string(area.name)), ("stars", area.stars > 0 ? .double(area.stars) : nil),
@@ -61,8 +65,8 @@ extension Toolbox {
         if !report.places.isEmpty {
             pairs.append(("places", .array(report.places.map { ["job": .string($0.name), "filled": .int($0.filled), "allowed": .int($0.allowed)] })))
         }
-        if let note = report.coachNote { pairs.append(("coach_note", .string(note))) }
-        pairs.append(("footnote", .string(report.footnote)))
+        if let note = report.coachNote { pairs.append(("coach_note", .string(Output.prose(note)))) }
+        pairs.append(("footnote", .string(Output.prose(report.footnote))))
         return .object(pairs)
     }
 
@@ -80,8 +84,13 @@ extension Toolbox {
         let named = try args.string("club")
         let club = try named.map { try context.ownClub($0) } ?? (try? context.ownClub(nil))
         let report = CompareReport(people: people, session: context.session(for: club ?? ChosenClub()))
-        let rows: [JSON] = report.rows().map { row in
-            .array([.string(row.label)] + row.cells.map { Output.text($0) ?? .null })
+        let rows: [JSON] = report.rows().flatMap { row -> [JSON] in
+            // "3 (2)" as two numbers, as in the lists.
+            if row.label == "Appearances", !row.isSection {
+                return [.array(["Starts"] + people.map { Output.starts($0) ?? .null }),
+                        .array(["Sub appearances"] + people.map { person in (person as? Player)?.season.map { .int($0.subs) } ?? .null })]
+            }
+            return [.array([.string(row.label)] + row.cells.map { Output.text($0) ?? .null })]
         }
         return ["people": .array(people.map { ["uid": .int(Int($0.uid)), "name": .string($0.name)] }),
                 "note": "A row with only a label starts a section.", "rows": .array(rows)]
@@ -104,10 +113,11 @@ extension Toolbox {
         }
         options.includeLoans = try args.bool("include_loans") ?? false
         options.upgradesOnly = try args.bool("upgrades_only") ?? true
+        let limit = try args.int("limit", in: 1...10) ?? 10
         guard let table = SigningRecommender(session: context.session(for: club)).find(options) else {
             throw ToolError("The search was stopped.")
         }
-        return .object([("club", .string(club.name))] + Output.table(table))
+        return .object([("club", .string(club.name))] + Output.table(table, limit: limit))
     }
 
     func findBargains(_ args: Arguments, _ context: CallContext) throws -> JSON {
@@ -128,9 +138,10 @@ extension Toolbox {
         options.maxAge = try args.int("max_age").map(String.init) ?? ""
         if let fee = try args.number("max_fee") { options.maxFee = String(fee / 1_000_000) }
         options.onlyJoin = try args.bool("only_join") ?? true
+        let limit = try args.int("limit", in: 1...25) ?? 25
         guard let table = BargainFinder(session: context.session(for: club)).find(options) else {
             throw ToolError("The search was stopped.")
         }
-        return .object([("club", .string(club.name))] + Output.table(table))
+        return .object([("club", .string(club.name))] + Output.table(table, limit: limit))
     }
 }

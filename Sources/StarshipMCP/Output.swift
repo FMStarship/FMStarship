@@ -63,19 +63,48 @@ enum Output {
         }
     }
 
+    /// One column of a list as it goes out: a name, and each person's value.
+    struct Field {
+        let name: String
+        let value: (Person) -> JSON?
+    }
+
+    /// FM shows appearances as starts with sub appearances in brackets, "3 (2)". The catalogue's Appearances is the two
+    /// added up, which reads as starts, so it goes out as the two numbers.
+    static func starts(_ person: Person) -> JSON? { (person as? Player)?.season.map { .int($0.starts) } }
+
     /// The columns of `catalogue` named in `names`, in that order, that may go out now.
-    static func columns(_ names: [String], in catalogue: [Col], _ visibility: Visibility) -> [Col] {
-        names.compactMap { name in catalogue.first { $0.name == name } }.filter(visibility.allows)
+    static func columns(_ names: [String], in catalogue: [Col], _ visibility: Visibility) -> [Field] {
+        var fields: [Field] = []
+        for name in names {
+            guard let col = catalogue.first(where: { $0.name == name }), visibility.allows(col) else { continue }
+            if col.name == "Appearances" {
+                fields.append(Field(name: "Starts", value: starts))
+                if !names.contains("Sub appearances"), let subs = catalogue.first(where: { $0.name == "Sub appearances" }) {
+                    fields.append(Field(name: subs.name) { value(subs, $0, visibility) })
+                }
+                continue
+            }
+            fields.append(Field(name: col.name) { value(col, $0, visibility) })
+        }
+        return fields
     }
 
     /// People as a list: `{"columns": ["uid", ...], "rows": [[uid, ...]]}`.
-    static func rows(_ people: [Person], _ columns: [Col], _ visibility: Visibility,
-                     extra: [(title: String, value: (Person) -> JSON?)] = []) -> [(String, JSON)] {
-        let titles: [JSON] = ["uid"] + columns.map { .string($0.name) } + extra.map { .string($0.title) }
-        let rows: [JSON] = people.map { person in
-            .array([.int(Int(person.uid))] + columns.map { value($0, person, visibility) ?? .null } + extra.map { $0.value(person) ?? .null })
-        }
+    static func rows(_ people: [Person], _ fields: [Field]) -> [(String, JSON)] {
+        let titles: [JSON] = ["uid"] + fields.map { .string($0.name) }
+        let rows: [JSON] = people.map { person in .array([.int(Int(person.uid))] + fields.map { $0.value(person) ?? .null }) }
         return [("columns", .array(titles)), ("rows", .array(rows))]
+    }
+
+    /// Sentences about the app's mouse, such as "Double-click for the full profile", which mean nothing to an agent.
+    static func prose(_ text: String) -> String {
+        let sentences = text.components(separatedBy: ". ")
+        let kept = sentences.filter { $0.range(of: "click", options: .caseInsensitive) == nil }
+        guard kept.count < sentences.count else { return isoDates(text) }
+        var joined = kept.joined(separator: ". ")
+        if !joined.isEmpty, !joined.hasSuffix("."), !joined.hasSuffix("!"), !joined.hasSuffix("?") { joined += "." }
+        return isoDates(joined)
     }
 
     /// A table's cell: a whole number as a number, as in the lists, and anything else as its text.
@@ -85,17 +114,19 @@ enum Output {
     }
 
     /// One of the analysis screens' tables, as the screen shows it: they've already left out what the settings hide.
-    static func table(_ table: AnalysisTable, dropping: Set<String> = [], withHead: Bool = true) -> [(String, JSON)] {
+    static func table(_ table: AnalysisTable, dropping: Set<String> = [], withHead: Bool = true, limit: Int? = nil) -> [(String, JSON)] {
         let kept = table.columns.indices.filter { !dropping.contains(table.columns[$0].title) }
         let titles: [JSON] = ["uid"] + kept.map { .string(table.columns[$0].title) }
-        let rows: [JSON] = table.rows.map { row in
+        let rows: [JSON] = table.rows.prefix(limit ?? table.rows.count).map { row in
             let uid: JSON = row.person.map { .int(Int($0.uid)) } ?? .null
             return .array([uid] + kept.map { $0 < row.cells.count ? cell(row.cells[$0]) : .null })
         }
         var pairs: [(String, JSON)] = []
-        if withHead, let head = text(table.head) { pairs.append(("head", head)) }
+        if withHead, !table.head.isEmpty { pairs.append(("head", .string(prose(table.head)))) }
+        if let limit, table.rows.count > limit { pairs += [("found", .int(table.rows.count)), ("shown", .int(limit))] }
         pairs += [("columns", .array(titles)), ("rows", .array(rows))]
-        if let status = text(table.status) { pairs.append(("status", status)) }
+        let status = prose(table.status)
+        if !status.isEmpty { pairs.append(("status", .string(status))) }
         return pairs
     }
 }

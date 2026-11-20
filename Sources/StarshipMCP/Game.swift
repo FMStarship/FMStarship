@@ -131,7 +131,10 @@ final class GameConnection {
         GameRules.engine = read.engine
         RulesState.shared.reset()
         RulesState.shared.fill(database)
+        // The user's currency is one of the save's, so the units are set again once those are known, before anything
+        // in this call is written out or a money argument is read.
         Units.setCurrencies(database.currencies)
+        Units.apply()
         database.prepare()
         guard let engine = read.engine else { return }
         let players = database.players.filter { $0.block > 0 && $0.season == nil }
