@@ -58,6 +58,8 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   three goals in the cup against a lower-league side aren't league goals. `League stats` starts with the league they're in
   (`Competition` in `person`): a reserve or B-team player's are his reserve league's, such as a "3. divisjon", not the first
   team's, and a loanee's are his loan club's. No name means FM keeps none of his league matches, so don't assume which league.
+  `Cup stats` and `Continental stats` aren't named, because FM's split doesn't say which cup or continental competition the
+  matches were in; `Recent matches` names each match's competition.
   Youth leagues (U19 and the like) aren't in FM's season stats at all: a youth player's matches are only in Recent matches.
   Empty means he hasn't played in it; "not available" means FM's stats didn't answer, so don't read it as no matches. The split was checked on a Norwegian save
   (its league, its cup and the Champions League); other cups and continental competitions are expected in it but weren't
