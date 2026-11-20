@@ -230,6 +230,35 @@ extension Toolbox {
                 club,
              ],
              run: { $0.recommendSignings }),
+        Tool(name: "recommend_staff", title: "Recommended staff",
+             description: Toolbox.names + "FM Starship's recommended staff for the user's club, as its Recommended staff screen: the best "
+                + "people for one backroom job, best first, and unless only_join is false only those FM says would join, from FM's own "
+                + "answer (as person's Would join your club). Each row: age, job now, club, score for the job (stars for coaching "
+                + "jobs), FM's stars, key attributes, wage, how much they want the job (FM's 1-20 and its word), the job they prefer, "
+                + "would join (first team, reserves, youth or No), and against the club's best in that job. head says who the club has "
+                + "and how many places the board allows; interest says whether FM was asked who'd join. Wages are in the user's "
+                + "currency per the user's wage period (see game_status).",
+             parameters: [
+                Parameter(name: "role", type: "string", description: "The job, as the app names it.", choices: Toolbox.staffRoleNames,
+                          required: true),
+                Parameter(name: "level", type: "string",
+                          description: "The team the job is at: first_team if left out, reserves (the club's second team, such as its "
+                            + "reserves, B team or U21) or youth (such as its U19). Manager is only reserves or youth.",
+                          choices: Toolbox.staffLevels),
+                Parameter(name: "wage_max", type: "number",
+                          description: "Wage at most, a full amount in the user's currency. The club's wage room if left out, as the app's screen starts."),
+                Parameter(name: "age_max", type: "integer", description: "Age at most."),
+                Parameter(name: "wants_job", type: "string",
+                          description: "How much they must want the job, as FM rates it: open_to_it (10+, if left out), keen (15+), "
+                            + "favourite (20) or anyone.",
+                          choices: Toolbox.staffKeenness),
+                Parameter(name: "only_join", type: "boolean",
+                          description: "Only staff FM says would join the club at that level. true if left out. With false, would join is "
+                            + "still FM's answer for each one listed."),
+                Parameter(name: "limit", type: "integer", description: "How many rows, 1-25. 10 if left out."),
+                club,
+             ],
+             run: { $0.recommendStaff }),
         Tool(name: "find_bargains", title: "Bargains",
              description: "FM Starship's bargain finder for the user's club: contracts ending, free agents, release clauses, the transfer list, or wonderkids.",
              parameters: [

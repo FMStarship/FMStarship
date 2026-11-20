@@ -24,6 +24,7 @@ chosen in FM Starship.
 | `staff_overview` | Each backroom job and training area, and empty places |
 | `compare` | Two to four players, or two to four staff, side by side |
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
+| `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
 | `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records |
@@ -80,6 +81,11 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`. Null there means FM wasn't asked
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club
   won't loan him, so FM isn't asked.
+- **Would join your club** for a member of staff, in `person`, is FM's own answer for the first team, the reserves and the youth
+  team (`first_team`, `reserves`, `youth`: true or false). `recommend_staff` gives it as `Would join`: "First team", "Reserves", "Youth", those together, or "No". Its
+  `interest` says whether FM was asked: when FM couldn't be, the list isn't narrowed to people who'd come, so don't present it
+  as one; check each one's answer with `person`. FM only answers about staff for a club the user manages. `wage_max` starts at
+  the club's wage room when you leave it out.
 - **Loan status** is "Listed for loan" or "Not available for loan", which is the club's decision, not an injury.
 - **Matches**: scores are home team first, as FM writes them, with `result` W, D or L for the club asked about. An
   `aggregate` names the teams, home team of that leg first: "Apoel Nikosia 2-4 Molde FK" means Molde lead 4-2. A scorer FM

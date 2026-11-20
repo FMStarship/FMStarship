@@ -25,6 +25,8 @@ final class HiddenOffTests: XCTestCase {
         ("find_bargains", ["kind": "contracts_ending", "only_join": false]), ("find_bargains", ["kind": "free_agents"]),
         ("find_bargains", ["kind": "release_clauses", "only_join": false]), ("find_bargains", ["kind": "transfer_listed"]),
         ("find_bargains", ["kind": "wonderkids", "only_join": false]),
+        ("recommend_staff", ["role": "Coach", "only_join": false]), ("recommend_staff", ["role": "Assistant Manager"]),
+        ("recommend_staff", ["role": "Director of Football", "only_join": false]), ("recommend_staff", ["role": "Manager", "level": "youth"]),
         ("fixtures", [:]), ("fixtures", ["from": "2026-09-01"]), ("fixtures", ["club": "Rivals FC", "from": "2026-09-01"]),
         ("results", [:]), ("results", ["date": "2026-09-20"]), ("results", ["date": "2026-09-13"]), ("league_table", [:]),
     ]
@@ -76,6 +78,8 @@ final class HiddenOffTests: XCTestCase {
                 || (tool == "shortlist" && answer["kind"] == "staff") || (tool == "compare" && arguments.text.contains("500"))
             let sent = Self.valueNames(answer, staffOnly: false)
             for name in names where sent.contains(name) {
+                // Recommended staff's "vs your best" is the job's score against the club's best, which CA plays no part in.
+                if tool == "recommend_staff", name == "vs your best" { continue }
                 let staffName = StaffFilter.hiddenRuleAttributes.contains(name) && !Names.hidden.contains(name) && !Names.personality.contains(name)
                 if staffName, !staff { continue }
                 XCTFail("\(what) sends \(name): \(result.text)", file: file, line: line)

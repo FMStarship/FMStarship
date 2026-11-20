@@ -31,7 +31,12 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
         lock.withLock { calls += 1 }
         return (.interested, .doubtful)
     }
-    func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? { level == 1 }
+    /// Staff FM says wouldn't join at any level, and false for FM not answering about staff at all.
+    var staffWontJoin: Set<UInt32> = []
+    var staffAnswers = true
+    func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? {
+        staffAnswers ? level == 1 && !staffWontJoin.contains(staff.uid) : nil
+    }
     func preferredJob(staff: Staff) -> Int? { nil }
     func jobPreferences(staff: Staff) -> [UInt8]? { nil }
     func roleRows(player: Player, team: Int64) -> [RoleRow]? { nil }
