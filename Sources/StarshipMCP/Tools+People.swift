@@ -211,8 +211,21 @@ extension Toolbox {
         filter.openClub(club)
         let people = filter.criteria().filter(context.db.staff).stableSorted { $0.job < $1.job }
         let columns = Output.columns(Self.staffColumns, in: Columns.forStaff(), context.visibility)
-        return .object([("club", .string(club)), ("staff", .int(people.count)), ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(people, columns + [Output.Field(name: "Best coaching", value: Self.bestCoaching)]))
+        var pairs: [(String, JSON)] = [("club", .string(club)), ("staff", .int(people.count)), ("wages", .string(Units.wageSuffix))]
+            + Output.rows(people, columns + [Output.Field(name: "Best coaching", value: Self.bestCoaching)])
+        // FM can keep only a few key people for a club no human runs, such as one in a league it runs in the background.
+        let human = context.humanClubs.contains { $0.name == club }
+        if !human, !people.contains(where: { Self.coachingOrMedical($0.job) }) {
+            pairs.append(("note", .string("FM Starship's read has no coaching or medical staff at \(club), only these. FM most likely "
+                + "keeps only these for this club, as it can for a club in a league it runs in the background, so the rest of "
+                + "\(club)'s staff isn't known. Don't read it as a club without coaches.")))
+        }
+        return .object(pairs)
+    }
+
+    /// A coaching or medical job, as FM names it. Not the manager, as a club FM keeps only a few people for still has one.
+    static func coachingOrMedical(_ job: String) -> Bool {
+        ["Coach", "Assistant Manager", "Physio", "Doctor", "Sports Scien"].contains { job.contains($0) }
     }
 
     /// A coach's two best areas in FM's stars, from the same stars as the staff list's columns.

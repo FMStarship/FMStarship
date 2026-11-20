@@ -151,6 +151,27 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(coach["Job"], "Coach")
         XCTAssertEqual(coach["Best coaching"], "Att Tac 4.5★, Att Tec 3.5★")
         XCTAssertEqual(coach["CA"], 171)
+        XCTAssertNil(staff["note"])
+    }
+
+    /// An AI club whose read has only its key people, as Leverkusen's had in a league FM ran in the background, isn't given
+    /// as its whole staff. A human manager's club is never told this.
+    func testAClubWithOnlyKeyStaffSaysTheRestIsntKnown() throws {
+        let harness = Harness()
+        let staff = harness.source.database.staff
+        staff.first { $0.uid == 502 }?.job = "Chairperson"
+        harness.source.database.staff.append(World.staff(503, name: "Rival Manager", job: "Manager", block: 503, at: World.rivals))
+        let rivals = try harness.answer("staff", ["club": .string(World.rivals)])
+        XCTAssertEqual(rivals["staff"], 2)
+        let note = try XCTUnwrap(rivals["note"]?.string)
+        XCTAssertTrue(note.contains("no coaching or medical staff at \(World.rivals)"), note)
+        XCTAssertTrue(note.contains("isn't known"), note)
+
+        staff.first { $0.uid == 502 }?.job = "Head Physio"
+        XCTAssertNil(try harness.answer("staff", ["club": .string(World.rivals)])["note"], "a physio is enough")
+
+        staff.first { $0.uid == 501 }?.job = "Chief Scout"
+        XCTAssertNil(try harness.answer("staff")["note"], "the user's own club")
     }
 
     // MARK: One person

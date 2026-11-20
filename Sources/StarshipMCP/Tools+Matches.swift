@@ -62,6 +62,11 @@ extension Toolbox {
             : "\(club)'s competition has no league table FM Starship can read, so it can't check the results against one, and leaves them out."
     }
 
+    /// Why there's no league table to give.
+    static func noTableSentence(_ club: String) -> String {
+        "There's no league table FM Starship can read for \(club)'s competition."
+    }
+
     // MARK: Fixtures
 
     func fixtures(_ args: Arguments, _ context: CallContext) throws -> JSON {
@@ -154,7 +159,7 @@ extension Toolbox {
         let (club, matches) = try matchTeam(try args.string("club"), context)
         if case .failed(let why) = matches.check { throw ToolError(Self.failedSentence(club, why)) }
         guard let table = matches.table, table.rows.contains(where: { $0.team == matches.team }) else {
-            throw ToolError(Self.uncheckedSentence(club, .noTable))
+            throw ToolError(Self.noTableSentence(club))
         }
         func record(_ r: TableRecord) -> JSON {
             .string("P\(r.played) W\(r.won) D\(r.drawn) L\(r.lost) \(r.goalsFor)-\(r.goalsAgainst) \(r.points)pts")

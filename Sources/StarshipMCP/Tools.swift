@@ -93,7 +93,8 @@ extension Toolbox {
                                     description: "\"First team\", \"Reserves\", \"U21\", \"U19\", \"On loan\", ... or \"all\". First team if left out.")],
              run: { $0.squad }),
         Tool(name: "staff", title: "Staff",
-             description: "A club's staff, one compact row each with uid, job and their best coaching areas.",
+             description: "A club's staff, one compact row each with uid, job and their best coaching areas. For a club no human "
+                + "runs whose read has no coaching or medical staff, a note says the rest of its staff isn't known.",
              parameters: [ownOrAnyClub],
              run: { $0.staff }),
         Tool(name: "person", title: "Person",
@@ -208,7 +209,8 @@ extension Toolbox {
         Tool(name: "league_table", title: "League table",
              description: Toolbox.matchNames + "The table of a club's league, as FM has it now: position, played, won, drawn, lost, "
                 + "goals for and against, goal difference, points, and the home and away records. Leagues with several stages, "
-                + "such as play-offs, a split or groups, aren't checked yet.",
+                + "such as play-offs, a split or groups, aren't checked yet. It says when a club's competition has no table "
+                + "FM Starship can read.",
              parameters: [Parameter(name: "club", type: "string",
                                     description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league.")],
              run: { $0.leagueTable }),
@@ -220,14 +222,17 @@ extension Toolbox {
         Tool(name: "development", title: "Development",
              description: "How a club's players have developed, from FM Starship's own record, not FM's: a snapshot of the squad on "
                 + "each game day FM Starship read the save, in the app or in its tab inside FM, so a gap between dates is days nobody "
-                + "read it. Compares two records, the oldest and newest unless since or until is given: each player's CA and PA "
-                + "(while Ability is on) and the attributes that went up or down, by how much, with those who joined or left in "
-                + "between listed apart. With uid, one player at every recorded date: CA, PA and the attributes that moved most, "
-                + "and every change over those dates.",
+                + "read it. Compares two records, the newest (or the last up to until) and the oldest in the 90 days before it "
+                + "unless since is given, as compared says: each player's CA and PA (while Ability is on) and every attribute that "
+                + "went up or down, by how much, with those who joined or left in between listed apart. With uid, one player at "
+                + "every recorded date from since to until, the whole record if neither is given: CA, PA and the attributes that "
+                + "moved most, and every change over those dates.",
              parameters: [Parameter(name: "club", type: "string",
                                     description: "The user's club if left out. Or another club FM Starship has a record of, by its full name."),
                           Parameter(name: "since", type: "string",
-                                    description: "Compare from the first record on or after this date, YYYY-MM-DD. The oldest if left out."),
+                                    description: "Compare from the first record on or after this date, YYYY-MM-DD. If left out, the "
+                                        + "oldest in the 90 days up to the newest compared, or the latest before them if none is; "
+                                        + "with uid, the oldest."),
                           Parameter(name: "until", type: "string",
                                     description: "Compare to the last record on or before this date, YYYY-MM-DD. The newest if left out."),
                           Parameter(name: "uid", type: "integer", description: "One player, at every recorded date from since to until.")],

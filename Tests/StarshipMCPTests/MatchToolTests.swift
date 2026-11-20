@@ -245,7 +245,16 @@ final class MatchToolTests: XCTestCase {
     func testATableWithoutTheClubIsntShown() throws {
         let harness = Harness()
         harness.source.matches?.teams[World.team]?.table?.rows.removeFirst()
-        XCTAssertTrue(try harness.refusal("league_table").contains("no league table"))
+        XCTAssertEqual(try harness.refusal("league_table"), "There's no league table FM Starship can read for \(World.club)'s competition.")
+    }
+
+    /// A club whose competition has no table, such as one in a league FM runs in the background, is told it plainly,
+    /// not in the results' words.
+    func testALeagueTableWithNoTableSaysSoPlainly() throws {
+        let harness = Harness()
+        let sentence = try harness.refusal("league_table", ["club": .string(World.minnows)])
+        XCTAssertEqual(sentence, "There's no league table FM Starship can read for \(World.minnows)'s competition.")
+        XCTAssertFalse(sentence.contains("results"), sentence)
     }
 
     // MARK: Match day

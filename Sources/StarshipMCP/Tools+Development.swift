@@ -10,6 +10,8 @@ extension Toolbox {
         + "Starship read the save, in the app (Load Save) or in its tab inside FM, one per game day, the last "
         + "\(DevelopmentStore.keep) kept. A gap between dates is days nobody read the save with FM Starship, not days without change. "
         + "Attributes are FM's 1-20."
+    /// How far back the club view compares when since isn't given, so a long record doesn't bring in players long gone.
+    static let developmentDays = 90
 
     /// Why there's nothing to compare, and how the record is made.
     private static func noRecord(_ club: String, others: [String]) -> ToolError {
@@ -49,9 +51,25 @@ extension Toolbox {
         let since = try Self.date(args, "since").map(Output.iso), until = try Self.date(args, "until").map(Output.iso)
         let uid = try args.int("uid", in: 0...Int(UInt32.max)).map(UInt32.init)
         let dates = snaps.map { Output.iso($0.gameDate) }
-        let window = snaps.filter { snap in
+        var window = snaps.filter { snap in
             let day = Output.iso(snap.gameDate)
             return (since.map { day >= $0 } ?? true) && (until.map { day <= $0 } ?? true)
+        }
+        // Without since, the club view compares the last 90 days up to the newest record, not the whole record.
+        var chosen: String?
+        if uid == nil, since == nil, let newest = window.last,
+           let cutoff = GameDate.calendar.date(byAdding: .day, value: -Self.developmentDays, to: newest.gameDate) {
+            let start = Output.iso(cutoff)
+            let recent = window.filter { Output.iso($0.gameDate) >= start }
+            if recent.count > 1 {
+                chosen = "from is the oldest record in the \(Self.developmentDays) days up to to, as since wasn't given. Give "
+                    + "since to compare over longer."
+                window = recent
+            } else if let before = window.last(where: { Output.iso($0.gameDate) < start }) {
+                chosen = "No other record is in the \(Self.developmentDays) days up to to, so from is the latest one before them, "
+                    + "as since wasn't given. Give since to compare from further back."
+                window = [before] + recent
+            }
         }
         let recorded: JSON = .object([("records", .int(snaps.count)), ("dates", .array(dates.map { .string($0) }))])
         let span: String
@@ -168,9 +186,11 @@ extension Toolbox {
             window.last { $0.players[uid] != nil }.map { snap in entry(uid, snap.players[uid] ?? row, "last_recorded", snap.gameDate, now: true) }
         }
         pairs += [
-            ("compared", .object([("from", .string(Output.iso(first.gameDate))), ("to", .string(Output.iso(last.gameDate))),
-                                  ("game_days", .int(days(first.gameDate, last.gameDate)))])),
+            ("compared", .object(dropping: [("from", .string(Output.iso(first.gameDate))), ("to", .string(Output.iso(last.gameDate))),
+                                            ("game_days", .int(days(first.gameDate, last.gameDate))),
+                                            ("why", chosen.map { .string($0) })])),
             ("order", .string(visibility.showsAbility ? "CA gained, most first" : "attributes gained less those lost, most first")),
+            ("note", "Up and Down have every attribute that went up or down between from and to, by how much, largest first."),
             ("columns", .array(titles)), ("rows", .array(rows.map(\.row))),
         ]
         if !joined.isEmpty { pairs.append(("joined", .array(joined))) }

@@ -64,6 +64,54 @@ final class DevelopmentToolTests: XCTestCase {
         XCTAssertEqual(left.first?["now_at"], "Rivals FC", "where he is now, from the save")
     }
 
+    /// Without since, the club view compares the last 90 days up to the newest record, so a record from long ago doesn't
+    /// bring in players long gone. since still reaches back, and the player view keeps every date.
+    func testWithoutSinceTheLast90DaysAreCompared() throws {
+        let harness = Harness()
+        var old = DevelopmentStore.Snap(gameDate: try XCTUnwrap(GameDate.date(year: 2025, dayOfYear: 200)))
+        old.players[12] = World.record("Young Prospect", ca: 100, pa: 197)
+        old.players[99] = World.record("Long Gone", ca: 120, pa: 150)
+        try harness.saveDevelopment([old] + World.history())
+
+        let answer = try harness.answer("development")
+        XCTAssertEqual(answer["recorded"]?["records"], 5)
+        XCTAssertEqual(answer["compared"]?["from"], "2026-07-01", "the oldest record in the 90 days up to 2026-09-20")
+        XCTAssertEqual(answer["compared"]?["to"], "2026-09-20")
+        let why = try XCTUnwrap(answer["compared"]?["why"]?.string)
+        XCTAssertTrue(why.contains("90 days up to to, as since wasn't given"), why)
+        XCTAssertEqual(row(answer, 12)?["CA change"], 34)
+        XCTAssertFalse(answer.text.contains("Long Gone"))
+        XCTAssertTrue(answer["note"]?.string?.contains("every attribute that went up or down") ?? false)
+
+        let whole = try harness.answer("development", ["since": "2025-01-01"])
+        XCTAssertEqual(whole["compared"]?["from"], "2025-07-19", "since still reaches back")
+        XCTAssertNil(whole["compared"]?["why"])
+        XCTAssertEqual(whole["left"]?.array?.first?["name"], "Long Gone")
+
+        let until = try harness.answer("development", ["until": "2026-08-15"])
+        XCTAssertEqual(until["compared"]?["from"], "2026-07-01", "90 days up to the last record on or before until")
+        XCTAssertEqual(until["compared"]?["to"], "2026-08-01")
+
+        XCTAssertEqual(try harness.answer("development", ["uid": 12])["rows"]?.array?.count, 5, "the player view keeps every date")
+    }
+
+    /// With no other record in the 90 days, the latest one before them is compared rather than nothing.
+    func testWithNoOtherRecordIn90DaysTheLatestBeforeIsCompared() throws {
+        let harness = Harness()
+        let history = World.history()
+        try harness.saveDevelopment([history[0], history[1], history[3]].map { snap in
+            var snap = snap
+            if snap.gameDate == history[3].gameDate {
+                snap.gameDate = GameDate.calendar.date(byAdding: .day, value: 120, to: history[1].gameDate) ?? snap.gameDate
+            }
+            return snap
+        })
+        let answer = try harness.answer("development")
+        XCTAssertEqual(answer["compared"]?["from"], "2026-08-01")
+        XCTAssertEqual(answer["compared"]?["to"], "2026-11-29")
+        XCTAssertTrue(answer["compared"]?["why"]?.string?.hasPrefix("No other record is in the 90 days up to to") ?? false)
+    }
+
     func testSinceAndUntilPickTheRecordsInBetween() throws {
         let answer = try harness().answer("development", ["since": "2026-07-15", "until": "2026-09-10"])
         XCTAssertEqual(answer["compared"]?["from"], "2026-08-01")

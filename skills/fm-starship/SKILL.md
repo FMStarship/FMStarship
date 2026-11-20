@@ -15,7 +15,7 @@ chosen in FM Starship.
 | --- | --- |
 | `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions and home-grown status can be read (`player_state`), the money units. `refresh: true` reads the save again |
 | `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has his season in the league, the cup and continental matches apart, his last match (competition, opponent, minutes, rating), and his condition, sharpness, morale, playing time, suspensions and home-grown status |
-| `staff` | A club's staff, with jobs and their best coaching areas |
+| `staff` | A club's staff, with jobs and their best coaching areas. For an AI club whose read has no coaching or medical staff, `note` says the rest isn't known |
 | `person` | One player or member of staff in full, by `uid`. For a player, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension in full |
 | `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
 | `shortlists`, `shortlist` | The user's FM shortlists, and the people on one |
@@ -23,12 +23,12 @@ chosen in FM Starship.
 | `squad_overview` | Each place in the user's tactic, who plays there and how they stand against the league |
 | `staff_overview` | Each backroom job and training area, and empty places |
 | `compare` | Two to four players, or two to four staff, side by side |
-| `development` | How the user's players have developed, from FM Starship's own record of the squad: each player's CA and PA and the attributes that went up or down between two records (`since`, `until`), and who joined or left in between. With `uid`, one player at every recorded date |
+| `development` | How the user's players have developed, from FM Starship's own record of the squad: each player's CA and PA and every attribute that went up or down between two records, over the last 90 days unless you give `since` (`until` sets the end), and who joined or left in between. With `uid`, one player at every recorded date |
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
 | `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
 | `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG |
-| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records |
+| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
 YYYY-MM-DD. Money is text in the user's own currency, such as "£4.2M", and wages are per the period `wages` names, such as "p/w".
@@ -78,6 +78,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   record, and FM's own form had nothing for him either), and in a league FM runs in the background it may be every player.
   Then there's no Last match, Recent matches, Match load, Form or league name for him: that's not knowable, not zero. Use his
   League, Cup and Continental stats, which FM keeps for everyone.
+- **Staff FM keeps only some of**: for a club in a league FM runs in the background, FM most likely keeps only its key
+  people, such as the chairperson and the manager. When an AI club's read has no coaching or medical staff, `staff` says so in
+  `note`: the rest of its staff isn't known, so don't say the club has no coaches.
 - **Would join your club** is FM's own answer, with how keen they are: Interested, Persuadable, Doubtful or Not interested.
   `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`. Null there means FM wasn't asked
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club
@@ -91,7 +94,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   club's wage room when you leave it out.
 - **Development** is FM Starship's own record, not FM's history: a snapshot of the club's squad on each game day FM Starship
   read the save, in the app or in its tab inside FM, for the club picked in FM Starship. A gap between dates is days nobody read
-  the save with FM Starship, not days nothing changed, so say which dates you compared (`compared`). The newest record can be
+  the save with FM Starship, not days nothing changed, so say which dates you compared (`compared`). Without `since` it
+  compares the last 90 days up to the newest record, so players long gone don't crowd in; `compared.why` says so, and `since`
+  reaches further back. The newest record can be
   older than today: `newest_record` says so, and `person` gives a player as he is now. Attributes move slowly, so compare over
   weeks or months. Players who joined or left in between are in `joined` and `left`, not in the rows. `CA change` is only there
   with Ability set to Exact; with Stars you get the stars at each end. If there's no record yet, tell the user it's made by
