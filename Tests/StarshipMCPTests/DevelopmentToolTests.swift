@@ -31,7 +31,7 @@ final class DevelopmentToolTests: XCTestCase {
         XCTAssertFalse(first.rowsByName.contains { $0["uid"] == 12 })
         XCTAssertTrue(try h.refusal("development", ["squad": "On loan"]).contains("no squad called On loan"), "nobody is out on loan")
         let refusal = try h.refusal("development", ["squad": "Nonsense"])
-        XCTAssertTrue(refusal.contains("Testing FC has no squad called Nonsense. Its squads: First team, U19"), refusal)
+        XCTAssertTrue(refusal.contains("Testing FC has no squad called Nonsense. Its squads: First team, U19."), refusal)
     }
 
     func testTheOldestAndNewestRecordsAreComparedByDefault() throws {

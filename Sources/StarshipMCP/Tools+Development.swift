@@ -109,8 +109,9 @@ extension Toolbox {
             var known = Set(atClub.filter { $0.loanClubFull.isEmpty && !$0.squad.isEmpty }.map(\.squad))
             if atClub.contains(where: { !$0.loanClubFull.isEmpty }) { known.insert("On loan") }
             guard known.contains(where: { $0.caseInsensitiveCompare(squad) == .orderedSame }) else {
-                let listed = Names.squadOrder.filter(known.contains) + ["On loan"].filter(known.contains)
-                    + known.subtracting(Names.squadOrder + ["On loan"]).sorted()
+                let order = Names.squadOrder + ["On loan"]
+                var listed: [String] = []
+                for name in order.filter(known.contains) + known.subtracting(order).sorted() where !listed.contains(name) { listed.append(name) }
                 throw ToolError("\(club) has no squad called \(squad). Its squads: \(listed.joined(separator: ", ")).")
             }
         }
