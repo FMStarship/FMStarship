@@ -94,6 +94,31 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(two["rows"]?.array?.count, 2)
     }
 
+    /// The youngster sat out the 1-1 at Other Town with an injury from two days before, which FM kept for ten days.
+    func testAResultMarksAnInjuredPlayer() throws {
+        let harness = Harness()
+        let injury = Injury()
+        injury.name = "Groin strain"
+        injury.date = try XCTUnwrap(GameDate.date(year: 2026, dayOfYear: World.secondMatch - 2))
+        injury.length = 10
+        harness.source.database.players.first { $0.uid == 12 }?.injuries = [injury]
+        XCTAssertEqual(try harness.answer("results", ["date": "2026-09-20"])["didnt_play"], ["Young Prospect (injured)"])
+        injury.length = 1
+        XCTAssertEqual(try harness.answer("results", ["date": "2026-09-20"])["didnt_play"], ["Young Prospect"], "healed by then")
+    }
+
+    /// A goal for Testing FC scored by a Rivals FC player is an own goal.
+    func testAnOwnGoalIsMarked() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        var ours = try XCTUnwrap(matches.teams[World.team])
+        ours.fixtures[0].goals.append(MatchGoal(scorer: 21, assist: nil, home: true, minute: 50, addedMinute: 0))
+        matches.teams[World.team] = ours
+        let first = try harness.answer("results", ["date": "2026-09-13"])
+        XCTAssertEqual(first["scorers"]?.array?.last, "50' Rival 21 (own goal)")
+        XCTAssertEqual(first["scorers"]?.array?.first, "23' First 9, assist First 10", "his own side's goals aren't marked")
+    }
+
     func testOneResultWithThePlayers() throws {
         let harness = Harness()
         let match = try harness.answer("results", ["date": "2026-09-20"])

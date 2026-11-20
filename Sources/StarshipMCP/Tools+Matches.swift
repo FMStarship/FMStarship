@@ -135,7 +135,9 @@ extension Toolbox {
         pairs += [("columns", .array((["uid"] + Self.matchPlayerColumns).map { .string($0) })), ("rows", .array(rows))]
         // FM keeps an entry for every player of the team who didn't play, not only the substitutes who didn't come on.
         if !didntPlay.isEmpty {
-            pairs.append(("didnt_play", .array(didntPlay.map { .string($0.0.name + ($0.1.suspended ? " (suspended)" : "")) })))
+            pairs.append(("didnt_play", .array(didntPlay.map { player, record in
+                .string(player.name + (record.suspended ? " (suspended)" : Self.injured(player, on: match.date) ? " (injured)" : ""))
+            })))
         }
         var note = "Only players at \(club) now are listed. xG is left out for goalkeepers."
         if gone > 0 {
@@ -196,9 +198,12 @@ extension Toolbox {
             guard !list.isEmpty else { return nil }
             return .array(list.sorted { ($0.minute, $0.addedMinute) < ($1.minute, $1.addedMinute) }.map { goal in
                 var text = goal.addedMinute > 0 ? "\(goal.minute)+\(goal.addedMinute)' " : "\(goal.minute)' "
-                // A goal's scorer and assister are on the side it's for.
+                // A goal's scorer and assister are on the side it's for, except an own goal's scorer.
                 let side = goal.home ? match.homeName : match.awayName
                 text += playerName(goal.scorer, side: side, context)
+                if let scorer = playersByIndex(context.read)[goal.scorer], Self.playsFor(scorer) == (goal.home ? match.awayName : match.homeName) {
+                    text += " (own goal)"
+                }
                 if let assist = goal.assist { text += ", assist " + playerName(assist, side: side, context) }
                 return .string(text)
             })
@@ -234,6 +239,17 @@ extension Toolbox {
     }
 
     static func time(_ minutes: Int) -> String { String(format: "%02d:%02d", minutes / 60, minutes % 60) }
+
+    /// The club a player plays for now: his loan club while he's on loan.
+    static func playsFor(_ player: Player) -> String { player.loanClubFull.isEmpty ? player.clubFull : player.loanClubFull }
+
+    /// Whether one of his injuries, as FM keeps them, covers the day.
+    static func injured(_ player: Player, on day: Date) -> Bool {
+        ((player.injuries ?? []) + [player.injury].compactMap { $0 }).contains { injury in
+            guard injury.length > 0, let end = GameDate.calendar.date(byAdding: .day, value: injury.length, to: injury.date) else { return false }
+            return injury.date <= day && day < end
+        }
+    }
 
     /// A goal's scorer or assister, by the index FM's goal list keeps. One who isn't in the read is named by his side.
     private func playerName(_ index: UInt32, side: String, _ context: CallContext) -> String {

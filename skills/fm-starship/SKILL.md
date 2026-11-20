@@ -67,6 +67,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with
   play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
   Kick-off, attendance and aggregate are only there on builds of FM that FM Starship has been checked on.
+- **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked "(suspended)"
+  from FM's own entry and "(injured)" when one of his injuries covered the day. The rest were on the bench or left out; which
+  isn't known. Scorers marked "(own goal)" play for the side that conceded.
 - **Last match** in `squad` is the player's latest match in FM's record, for any team: compare its date with the club's last
   result to see who was left out. A date with no minutes or rating means he didn't play: on the bench, left out or suspended.
 - Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars and injury days. On a build of FM that FM
