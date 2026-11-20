@@ -68,9 +68,11 @@ extension Toolbox {
     /// FM's match load, as its condition tooltip gives it: "3 kamper (212/270 minutter) siste 14 dager" is 3 matches, 212
     /// minutes of 270, in the 14 days up to today. That's his kept matches dated today - 14 days or later that he played in,
     /// his minutes in them, and 90 a match. It matched FM for two players on 12 Sep 2029. FM's words for it ("Intensiv") and
-    /// where they start aren't known. Nil without a game date.
+    /// where they start aren't known. Nil without a game date, or when FM keeps no match of his at all, as for players in a
+    /// league FM runs in the background: that's not knowable, not no matches.
     static func matchLoad(_ history: MatchHistory?, today: Date?) -> JSON? {
-        guard let history, let today, let from = GameDate.calendar.date(byAdding: .day, value: -14, to: today) else { return nil }
+        guard let history, !history.matches.isEmpty, let today,
+              let from = GameDate.calendar.date(byAdding: .day, value: -14, to: today) else { return nil }
         let played = history.matches.filter { $0.played && $0.date >= from && $0.date <= today }
         guard !played.isEmpty else { return "no matches" }
         let minutes = played.reduce(0) { $0 + $1.minutes }
@@ -300,7 +302,7 @@ extension Toolbox {
         }
         let note = "Newest first, for every team he played for, friendlies, youth and international matches too. team is the "
             + "club's name, so a reserve or youth team shows as its club, and it's empty for a national team. FM keeps his last "
-            + "\(MatchHistory.kept) matches for each team. Empty minutes and rating: he was on the bench and didn't come on. "
+            + "\(MatchHistory.kept) matches for each team. Empty minutes and rating: he didn't play (on the bench, left out or suspended). "
             + "An empty competition is one FM Starship couldn't name."
         return .object([("columns", .array(Self.recentMatchColumns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }

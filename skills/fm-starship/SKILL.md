@@ -70,6 +70,10 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   international matches too: date, team, competition, opponent, minutes, rating, goals, assists and cards. Use them to say
   where a goal or a rating came from. `team` is the club's name, so a reserve team's match shows its club with the reserve
   league as the competition; it's empty for a national team. An empty competition is one FM Starship couldn't name.
+  Empty minutes and rating mean he didn't play: on the bench, left out or suspended.
+- **Clubs FM runs in the background**: for players in a league no human plays in, FM may keep season stats but no record of
+  each match. Then there's no Last match, Recent matches, Match load or league name for them; that's not knowable, not zero.
+  Use their League, Cup and Continental stats, which FM does keep.
 - **Would join your club** is FM's own answer, with how keen they are: Interested, Persuadable, Doubtful or Not interested.
   `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`. Null there means FM wasn't asked
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club

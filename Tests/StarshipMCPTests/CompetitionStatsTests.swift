@@ -138,7 +138,19 @@ final class CompetitionStatsTests: XCTestCase {
         let rows = Self.rows(try Harness().answer("squad", ["squad": "all"]))
         XCTAssertEqual(rows[9]?["Match load (14 days)"], "2 matches, 180 of 180 min")
         XCTAssertEqual(rows[11]?["Match load (14 days)"], "2 matches, 154 of 180 min")
-        XCTAssertEqual(rows[12]?["Match load (14 days)"], "no matches", "an unused substitute didn't play")
+        XCTAssertEqual(rows[12]?["Match load (14 days)"], "no matches", "he didn't play")
+        XCTAssertEqual(rows[13]?["Match load (14 days)"], .null, "FM keeps no match of his, so it isn't known")
+    }
+
+    /// FM's entry for a player who didn't play says when he was suspended, and the result marks him.
+    func testAResultMarksTheSuspendedPlayers() throws {
+        let harness = Harness()
+        let engine = try XCTUnwrap(harness.source.engine as? FakeEngine)
+        var banned = PlayerMatch(date: GameDate.date(year: 2026, dayOfYear: World.secondMatch)!, team: World.team, opponent: World.otherTeam)
+        banned.suspended = true
+        engine.moreMatches[3] = [banned]
+        let result = try harness.answer("results", ["date": .string(Output.iso(banned.date))])
+        XCTAssertEqual(result["didnt_play"]?.array?.compactMap(\.string).sorted(), ["First 3 (suspended)", "Young Prospect"])
     }
 
     func testAMatchMoreThanFourteenDaysAgoDoesntCount() throws {
