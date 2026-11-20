@@ -209,7 +209,7 @@ public final class RulesEngine: GameRulesEngine {
         // to be FM's own code before it's run: a garbage one trapped converting it on the Molde save (Oct 2029).
         let identity = player.block &+ game.readPointer(vtable &- 0x18)
         let method = game.readPointer(game.readPointer(identity) &+ Int64(Mac27.personStatsSlot * 8))
-        guard method > game.pluginBase, method < game.pluginBase &+ game.pluginSize else { return 0 }
+        guard method > game.pluginBase, method < game.pluginBase &+ game.pluginSize, method & 3 == 0 else { return 0 }
         let holder: UInt64 = try sandbox.call(method, [UInt64(bitPattern: identity)]) { a64_get_x($0, 0) }
         guard holder != 0 else { return 0 }
         return try sandbox.call(statsContainerFunction, [UInt64(bitPattern: manager), holder, 1]) { a64_get_x($0, 0) }
