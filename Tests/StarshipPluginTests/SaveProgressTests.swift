@@ -28,10 +28,21 @@ final class SaveProgressTests: XCTestCase {
     /// A model with a save read on `readOn`, as Load Save leaves it. Settings aren't loaded in tests, so nothing is written.
     private func model(readOn: Date?) -> AppModel {
         let model = AppModel()
+        model.sheetShown = { false }
+        model.database = database(readOn: readOn)
+        return model
+    }
+
+    private func database(readOn: Date?) -> Database {
         let database = Database()
         database.gameDate = readOn
-        model.database = database
-        return model
+        return database
+    }
+
+    /// The poll seeing FM on `date` for long enough that it isn't pressing on through days.
+    private func settle(_ model: AppModel, on date: Date, from time: TimeInterval = 0) {
+        model.saveDateSeen(date, at: time)
+        model.saveDateSeen(date, at: time + AppModel.settleTime)
     }
 
     func testOnlyALaterDayIsMovingOn() {
@@ -72,12 +83,10 @@ final class SaveProgressTests: XCTestCase {
     func testShowingTheWindowReadsAgainOnceForEachDay() {
         let model = model(readOn: day(2029, 9, 12))
         XCTAssertFalse(model.takeReadOnShow(), "The save hasn't moved on")
-        model.saveDateSeen(day(2029, 9, 22))
-        model.saveDateSeen(day(2029, 9, 22))
+        settle(model, on: day(2029, 9, 22))
         XCTAssertTrue(model.takeReadOnShow())
         XCTAssertFalse(model.takeReadOnShow(), "Not again for the same day, so a read that fails isn't started over and over")
-        model.saveDateSeen(day(2029, 9, 23))
-        model.saveDateSeen(day(2029, 9, 23))
+        settle(model, on: day(2029, 9, 23), from: 20)
         model.loading = true
         XCTAssertFalse(model.takeReadOnShow(), "Not while a read is going on")
         model.loading = false
@@ -86,21 +95,38 @@ final class SaveProgressTests: XCTestCase {
 
     func testNoReadWhileFMIsStillPressingOnThroughDays() {
         let model = model(readOn: day(2029, 9, 12))
-        model.saveDateSeen(day(2029, 9, 20))
+        model.saveDateSeen(day(2029, 9, 20), at: 0)
         XCTAssertNotNil(model.saveMovedOn, "The notice is up")
         XCTAssertFalse(model.takeReadOnShow(), "Seen once: FM may still be on its way")
-        model.saveDateSeen(day(2029, 9, 21))
+        model.saveDateSeen(day(2029, 9, 21), at: 2)
         XCTAssertFalse(model.takeReadOnShow(), "Another day since the last look")
         XCTAssertNotNil(model.saveMovedOn, "The notice stays up")
-        model.saveDateSeen(day(2029, 9, 21))
-        XCTAssertTrue(model.takeReadOnShow(), "Two looks in a row on the same day")
+        model.saveDateSeen(day(2029, 9, 21), at: 4)
+        model.saveDateSeen(day(2029, 9, 21), at: 8)
+        XCTAssertFalse(model.takeReadOnShow(), "The same day for 6 s: FM can take longer than that over a day")
+        model.saveDateSeen(day(2029, 9, 21), at: 12)
+        XCTAssertTrue(model.takeReadOnShow(), "The same day for 10 s")
+    }
+
+    func testTheWindowsOwnLookDoesntSettleTheDay() {
+        let model = model(readOn: day(2029, 9, 12))
+        model.saveDateSeen(day(2029, 9, 20), at: 0)
+        model.saveDateSeen(day(2029, 9, 20), at: 30, byPoll: false)
+        XCTAssertFalse(model.takeReadOnShow(), "Only the poll's looks tell how long FM has stayed on a day")
+        model.saveDateSeen(day(2029, 9, 20), at: 32)
+        XCTAssertTrue(model.takeReadOnShow())
+
+        let moved = self.model(readOn: day(2029, 9, 12))
+        settle(moved, on: day(2029, 9, 20))
+        moved.saveDateSeen(day(2029, 9, 21), at: 12, byPoll: false)
+        XCTAssertEqual(moved.saveMovedOn?.now, day(2029, 9, 21))
+        XCTAssertFalse(moved.takeReadOnShow(), "The window's look saw FM go on to another day")
     }
 
     func testNoReadWhileASheetIsOpen() {
         for sheet in [\AppModel.editingFilter, \.editingColumns] {
             let model = model(readOn: day(2029, 9, 12))
-            model.saveDateSeen(day(2029, 9, 22))
-            model.saveDateSeen(day(2029, 9, 22))
+            settle(model, on: day(2029, 9, 22))
             model[keyPath: sheet] = true
             XCTAssertFalse(model.takeReadOnShow(), "A read would search with a half-edited filter, or columns")
             model.windowShown()
@@ -114,8 +140,7 @@ final class SaveProgressTests: XCTestCase {
         let model = model(readOn: day(2029, 9, 12))
         model.go(to: .shortlists)
         model.showShortlist(OpenShortlist(url: URL(fileURLWithPath: "/nowhere/Targets.fmf"), name: "Targets", isStaff: false, uids: [1]))
-        model.saveDateSeen(day(2029, 9, 22))
-        model.saveDateSeen(day(2029, 9, 22))
+        settle(model, on: day(2029, 9, 22))
         XCTAssertFalse(model.takeReadOnShow(), "A read closes the shortlist")
         model.go(to: .players)
         XCTAssertTrue(model.takeReadOnShow(), "Not on the Shortlists screen, nothing open is lost")
@@ -124,15 +149,77 @@ final class SaveProgressTests: XCTestCase {
     func testAnotherSaveOnTheSameDayReadsAgain() {
         // Read on the 12th, moved on to the 22nd, read on showing. Then an earlier save, moved on to the 22nd as well.
         let model = model(readOn: day(2029, 9, 12))
-        model.saveDateSeen(day(2029, 9, 22))
-        model.saveDateSeen(day(2029, 9, 22))
+        settle(model, on: day(2029, 9, 22))
         XCTAssertTrue(model.takeReadOnShow())
-        let earlier = Database()
-        earlier.gameDate = day(2029, 9, 15)
-        model.database = earlier
-        model.saveDateSeen(day(2029, 9, 22))
-        model.saveDateSeen(day(2029, 9, 22))
+        model.database = database(readOn: day(2029, 9, 15))
+        settle(model, on: day(2029, 9, 22), from: 20)
         XCTAssertTrue(model.takeReadOnShow(), "Another save, though FM is on the same day")
+    }
+
+    func testTheSameSaveReadAgainAndPlayedToTheSameDayReadsAgain() {
+        // Read on the 12th, moved on to the 22nd, read on showing. Then the 12th's save loaded and read again, and
+        // played to the 22nd once more.
+        let model = model(readOn: day(2029, 9, 12))
+        settle(model, on: day(2029, 9, 22))
+        XCTAssertTrue(model.takeReadOnShow())
+        model.install(NewData(database(readOn: day(2029, 9, 12))))
+        settle(model, on: day(2029, 9, 22), from: 20)
+        XCTAssertTrue(model.takeReadOnShow(), "A read installed since: the 22nd is new again")
+    }
+
+    func testNoReadWhileAnotherSheetIsUp() {
+        let model = model(readOn: day(2029, 9, 12))
+        settle(model, on: day(2029, 9, 22))
+        model.sheetShown = { true }
+        XCTAssertFalse(model.takeReadOnShow(), "An export or shortlist panel, or a question, is up")
+        model.sheetShown = { false }
+        XCTAssertTrue(model.takeReadOnShow())
+    }
+
+    func testAReadFinishingWhileThePlayerIsBusyWaitsForThem() {
+        let model = model(readOn: day(2029, 9, 12))
+        let old = model.database
+        model.go(to: .shortlists)
+        let targets = OpenShortlist(url: URL(fileURLWithPath: "/nowhere/Targets.fmf"), name: "Targets", isStaff: false, uids: [1])
+        model.showShortlist(targets)
+        let fresh = database(readOn: day(2029, 9, 22))
+        model.finished(NewData(fresh), nil, automatic: true)
+        XCTAssertFalse(model.loading)
+        XCTAssertTrue(model.database === old, "Held while the shortlist is open")
+        XCTAssertEqual(model.openShortlist, targets, "The shortlist stays open")
+        XCTAssertFalse(model.useHeldRead(), "Still open")
+        model.go(to: .players)
+        XCTAssertTrue(model.useHeldRead())
+        XCTAssertTrue(model.database === fresh, "Installed once the player is done")
+        XCTAssertFalse(model.useHeldRead(), "Only once")
+
+        for busy in [\AppModel.editingFilter, \.editingColumns] {
+            let model = self.model(readOn: day(2029, 9, 12))
+            model[keyPath: busy] = true
+            let fresh = database(readOn: day(2029, 9, 22))
+            model.finished(NewData(fresh), nil, automatic: true)
+            XCTAssertFalse(model.database === fresh, "Held while a sheet is open, so it doesn't search with a half-edited filter")
+            model[keyPath: busy] = false
+            XCTAssertTrue(model.useHeldRead())
+            XCTAssertTrue(model.database === fresh)
+        }
+
+        let asked = self.model(readOn: day(2029, 9, 12))
+        asked.sheetShown = { true }
+        let pressed = database(readOn: day(2029, 9, 22))
+        asked.finished(NewData(pressed), nil)
+        XCTAssertTrue(asked.database === pressed, "Load Save pressed: shown at once, as before")
+    }
+
+    func testAReadNobodyAskedForPutsFailedSelfChecksOnTheStatusLine() {
+        let model = model(readOn: day(2029, 9, 12))
+        let failing = database(readOn: day(2029, 9, 22))
+        failing.checks = "FAIL: ages"
+        model.finished(NewData(failing), nil, automatic: true)
+        XCTAssertNil(model.alert, "Nobody asked for it, so no alert")
+        XCTAssertTrue(model.status.hasPrefix("FM Starship's self-checks failed on this save (ages)"), model.status)
+        model.finished(NewData(failing), nil)
+        XCTAssertNotNil(model.alert, "Load Save pressed: the alert as before")
     }
 
     func testAReadThatFailsOnItsOwnSaysSoOnTheStatusLine() {
