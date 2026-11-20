@@ -17,7 +17,12 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     }
 
     var supportsInjuryDays: Bool { true }
-    func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? { (.interested, .doubtful) }
+    /// How many times FM was asked whether a player would join.
+    private(set) var interestCalls = 0
+    func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? {
+        interestCalls += 1
+        return (.interested, .doubtful)
+    }
     func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? { level == 1 }
     func preferredJob(staff: Staff) -> Int? { nil }
     func jobPreferences(staff: Staff) -> [UInt8]? { nil }

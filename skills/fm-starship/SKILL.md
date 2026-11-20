@@ -29,6 +29,17 @@ Lists give one compact row per person: `columns` once, then `rows`, with the `ui
 YYYY-MM-DD. Money is text in the user's own currency, such as "£4.2M", and wages are per the period `wages` names, such as "p/w".
 Money arguments (`value_max`, `wage_max`, `clause_max`, `max_fee`) are full amounts in that currency: 5000000, not 5.
 
+## Names
+
+Names of people, clubs, nations, leagues and personalities come from FM in the game's own language. In a Norwegian game Norway
+is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the same name as Norway's. So:
+
+- Pass names to filters as FM shows them: `nation: "Norge"`, not "Norway". Filters match any name containing the text, ignoring
+  case; start with `=` for the exact name (`"=Norge"`). `nation` is the player's nationality, not the country they play in.
+- When a row gives a league, it also gives the club's nation (`Club nation`), so you can tell whose league it is.
+- If you're unsure how a name is written, look it up first: a club's row or a `person` answer shows it.
+- Positions (`DC`, `AMR`), traits and roles are FM Starship's own English names, whatever the game's language.
+
 ## Reading the numbers
 
 - **Attributes** are FM's 1 to 20. FM Starship marks 16 and up as strong and 6 or below as weak; for Injury Proneness, Dirtiness
@@ -40,6 +51,8 @@ Money arguments (`value_max`, `wage_max`, `clause_max`, `max_fee`) are full amou
 - **Season stats** are this season's, for the player's club. **Starts** and **Sub appearances** are separate, as FM's "3 (2)"
   means 3 starts and 2 as a substitute. **Form** is the last five match ratings.
 - **Would join your club** is FM's own answer, with how keen they are: Interested, Persuadable, Doubtful or Not interested.
+  `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`.
+- **Loan status** is "Listed for loan" or "Not available for loan", which is the club's decision, not an injury.
 - Some features come from FM's own rules: season stats, form, who'd join, role stars and injury days. On a build of FM that FM
   Starship hasn't been checked on, `game_status` says the rules are off, and those values aren't there. Don't fill them in.
 

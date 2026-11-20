@@ -253,6 +253,63 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(Output.prose("Double-click for the full profile; right-click to compare."), "")
     }
 
+    func testTheFindersGiveFMsKeennessFromTheAnswersTheyAlreadyHave() throws {
+        let engine = FakeEngine()
+        let harness = Harness(engine: engine)
+        let signings = try harness.answer("recommend_signings", ["upgrades_only": false])
+        XCTAssertTrue(signings.columnNames.suffix(2) == ["Transfer interest", "Loan interest"])
+        let first = try XCTUnwrap(signings.rowsByName.first)
+        XCTAssertEqual(first["Transfer interest"], "Interested")
+        XCTAssertEqual(first["Loan interest"], "Doubtful")
+        // One question to FM for each of the rival club's twelve players, the finder's own, and none more for the columns.
+        XCTAssertEqual(engine.interestCalls, 12)
+        let bargains = try harness.answer("find_bargains", ["kind": "contracts_ending"])
+        XCTAssertTrue(bargains.columnNames.contains("Transfer interest"))
+        XCTAssertEqual(engine.interestCalls, 12, "the bargains asked nothing the session didn't already know")
+    }
+
+    func testNamesAreClearWhereFMsNamesClash() throws {
+        let harness = Harness()
+        let loaned = try XCTUnwrap(harness.source.database.players.first { $0.uid == 22 })
+        loaned.loanClub = "Loan Town"
+        loaned.loanClubFull = "Loan Town"
+        harness.source.database.players.first { $0.uid == 23 }?.statusFlags = 64
+        harness.source.database.players.first { $0.uid == 24 }?.statusFlags = 2
+
+        let search = try harness.answer("search_players", ["club": "Rivals", "sort": "League"])
+        XCTAssertTrue(search.columnNames.contains("On loan at"))
+        XCTAssertEqual(search.rowsByName.first { $0["uid"] == 22 }?["On loan at"], "Loan Town")
+        let league = try XCTUnwrap(search.columnNames.firstIndex(of: "League"))
+        XCTAssertEqual(search.columnNames[league + 1], "Club nation")
+        XCTAssertEqual(search.rowsByName.first?["Club nation"], "Mockovia")
+
+        let person = try harness.answer("person", ["uid": 21])
+        XCTAssertEqual(person["General"]?["League"], "Mock League")
+        XCTAssertEqual(person["General"]?["Club nation"], "Mockovia")
+
+        let rivals = try harness.answer("squad", ["club": .string(World.rivals)]).rowsByName
+        XCTAssertEqual(rivals.first { $0["uid"] == 23 }?["Loan status"], "Not available for loan")
+        XCTAssertEqual(rivals.first { $0["uid"] == 24 }?["Loan status"], "Listed for loan")
+        XCTAssertEqual(rivals.first { $0["uid"] == 25 }?["Loan status"], .null)
+    }
+
+    func testCompareLeavesOutInterestForTheUsersOwnPlayers() throws {
+        let harness = Harness()
+        let mixed = try harness.answer("compare", ["uids": [1, 21]])["rows"]?.array ?? []
+        let interest = try XCTUnwrap(mixed.first { $0.array?.first == "Interest" })
+        XCTAssertEqual(interest.array?[1], .null, "he's already at the user's club")
+        XCTAssertEqual(interest.array?[2], "Transfer, loan")
+        let own = try harness.answer("compare", ["uids": [1, 2]])["rows"]?.array ?? []
+        XCTAssertFalse(own.contains { $0.array?.first == "Interest" })
+    }
+
+    func testTheSquadOverviewSaysNothingAboutTheHiresItLeavesOut() throws {
+        let footnote = try Harness().answer("squad_overview")["footnote"]?.string ?? ""
+        XCTAssertFalse(footnote.isEmpty)
+        XCTAssertFalse(footnote.contains("Each pick"), footnote)
+        XCTAssertEqual(Toolbox.withoutHires("Stars are FM's. Each pick fits your budget on the wage they earn now."), "Stars are FM's.")
+    }
+
     func testTheMCPHasFMsRoleRatingsAndStaffLimits() {
         // Without these, the squad overview and the staff limits are off whatever FM answers.
         XCTAssertTrue((RulesEngine.self as Any) is PositionalRoleEngine.Type)
