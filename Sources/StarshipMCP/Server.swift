@@ -56,6 +56,10 @@ public final class MCPServer {
         guard let message = try? JSON.parse(line) else {
             return Self.error(id: .null, code: -32700, message: "Parse error").text
         }
+        // MCP took JSON-RPC batches out in 2025-06-18, and none of the versions here needs one.
+        if message.array != nil {
+            return Self.error(id: .null, code: -32600, message: "Invalid request: batches aren't supported").text
+        }
         guard message.isObject, message["jsonrpc"]?.string == "2.0", let method = message["method"]?.string else {
             // A response from the client, or something else that isn't a request: nothing to answer, unless it has an id.
             if let id = message["id"], message["result"] == nil, message["error"] == nil {
@@ -78,7 +82,10 @@ public final class MCPServer {
         let meta = params["_meta"]
         // A request that names its version in `_meta` is a modern one, served on its own, whatever came before it.
         if let requested = meta?[Self.versionKey] {
-            guard let version = requested.string, Self.modernVersions.contains(version) else {
+            guard let version = requested.string else {
+                throw Failure.rpc(code: -32602, message: "Invalid params: \(Self.versionKey) must be text", data: nil)
+            }
+            guard Self.modernVersions.contains(version) else {
                 throw Failure.rpc(code: -32022, message: "Unsupported protocol version",
                                   data: ["supported": .array((Self.modernVersions + Self.handshakeVersions).map { .string($0) }),
                                          "requested": requested])
@@ -86,7 +93,7 @@ public final class MCPServer {
             guard meta?[Self.capabilitiesKey] != nil else {
                 throw Failure.rpc(code: -32602, message: "Invalid params: _meta needs \(Self.capabilitiesKey)", data: nil)
             }
-            return modern(try result(method, params: params))
+            return modern(try result(method, params: params), cacheable: ["server/discover", "tools/list"].contains(method))
         }
         if method == "server/discover" {
             throw Failure.rpc(code: -32602, message: "Invalid params: _meta needs \(Self.versionKey)", data: nil)
@@ -94,10 +101,13 @@ public final class MCPServer {
         return try result(method, params: params)
     }
 
-    private func modern(_ result: JSON) -> JSON {
+    /// A 2026-07-28 result. Discover and the tool list must say how long they may be kept: they're answered for this user
+    /// only, and the tools can change with an update, so they're private and not kept.
+    private func modern(_ result: JSON, cacheable: Bool) -> JSON {
         guard case .object(var pairs) = result else { return result }
-        pairs.removeAll { $0.0 == "resultType" || $0.0 == "_meta" }
-        return .object([("resultType", "complete")] + pairs + [("_meta", [Self.serverInfoKey: serverInfo])])
+        pairs.removeAll { ["resultType", "_meta", "ttlMs", "cacheScope"].contains($0.0) }
+        let caching: [(String, JSON)] = cacheable ? [("ttlMs", 0), ("cacheScope", "private")] : []
+        return .object([("resultType", "complete")] + pairs + caching + [("_meta", [Self.serverInfoKey: serverInfo])])
     }
 
     private func result(_ method: String, params: JSON) throws -> JSON {

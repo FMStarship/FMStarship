@@ -160,7 +160,7 @@ public final class Toolbox: ToolProvider {
         let visibility = Visibility(Settings.current)
         do {
             let args = try Arguments(arguments, tool: name, allowed: tool.parameters.map(\.name))
-            if name == "game_status" { return .answer(status(args, visibility)) }
+            if name == "game_status" { return .answer(status(refresh: try args.bool("refresh") ?? false, visibility)) }
             if name == "shortlists" { return .answer(try shortlists(args)) }
             let read = try connection.read(refresh: false)
             let context = CallContext(read: read, visibility: visibility, toolbox: self)
@@ -198,7 +198,7 @@ public final class Toolbox: ToolProvider {
 
     // MARK: Game status
 
-    private func status(_ args: Arguments, _ visibility: Visibility) -> JSON {
+    private func status(refresh: Bool, _ visibility: Visibility) -> JSON {
         let settings: [(String, JSON?)] = [
             ("hidden_attributes", .string(visibility.showHidden ? "on" : "off")),
             ("ability", .string(visibility.abilityText)),
@@ -207,7 +207,7 @@ public final class Toolbox: ToolProvider {
         ]
         let read: GameRead
         do {
-            read = try connection.read(refresh: (try? args.bool("refresh")) == true)
+            read = try connection.read(refresh: refresh)
         } catch let problem as GameProblem {
             return .object(dropping: [("fm", .string(problem == .notRunning ? "not running" : problem == .noSave ? "no save loaded"
                                                      : problem == .withoutStarship ? "running without FM Starship" : "unreadable")),

@@ -62,6 +62,8 @@ swift package resolve
 
 Scripts/build-app.sh
 APP="build/FM Starship.app"
+# AI agents' apps start the MCP server by its own path, not through the app, so its signature is checked on its own too.
+codesign --verify --strict -vv "$APP/Contents/MacOS/fmstarship-mcp"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 DMG="build/FM-Starship-$VERSION.dmg"
 STAGE="$(mktemp -d)"

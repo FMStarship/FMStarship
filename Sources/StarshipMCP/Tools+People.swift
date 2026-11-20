@@ -137,6 +137,7 @@ extension Toolbox {
     func shortlist(_ args: Arguments, _ context: CallContext) throws -> JSON {
         guard let name = try args.string("name") else { throw ToolError("shortlist needs a name.") }
         let kind = try args.choice("kind", ["players", "staff"])
+        let limit = try args.int("limit", in: 1...100) ?? 25
         let roots = shortlistRoots()
         var entries: [ShortlistEntry] = []
         if kind != "staff" { entries += ShortlistFile.list(isStaff: false, roots: roots) }
@@ -153,9 +154,9 @@ extension Toolbox {
         let catalogue = staff ? Columns.forStaff() : Columns.forPlayers()
         let columns = Output.columns(staff ? Self.staffListColumns : Self.playerListColumns, in: catalogue, context.visibility)
         var pairs: [(String, JSON)] = [("name", .string(entry.shortlist.name)), ("kind", .string(staff ? "staff" : "players")),
-                                       ("people", .int(people.count))]
+                                       ("people", .int(people.count)), ("shown", .int(min(limit, people.count)))]
         let missing = entry.shortlist.uids.count - people.count
         if missing > 0 { pairs.append(("not_in_this_save", .int(missing))) }
-        return .object(pairs + Output.rows(people, columns, context.visibility))
+        return .object(pairs + Output.rows(Array(people.prefix(limit)), columns, context.visibility))
     }
 }

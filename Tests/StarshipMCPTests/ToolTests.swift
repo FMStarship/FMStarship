@@ -48,6 +48,20 @@ final class ToolTests: XCTestCase {
         XCTAssertTrue(GameProblem.notRunning.sentence.contains("Start FM"))
     }
 
+    func testAReadWithNoDateStandsForAFewMinutesOnly() {
+        let day = GameDate.checked(year: 2026, dayOfYear: 270)
+        let next = GameDate.checked(year: 2026, dayOfYear: 271)
+        let clubs = [World.club]
+        XCTAssertTrue(LiveGame.stillCurrent(dateNow: day, dateAtRead: day, clubsNow: clubs, clubsAtRead: clubs, age: 3600))
+        XCTAssertFalse(LiveGame.stillCurrent(dateNow: next, dateAtRead: day, clubsNow: clubs, clubsAtRead: clubs, age: 1))
+        XCTAssertFalse(LiveGame.stillCurrent(dateNow: day, dateAtRead: day, clubsNow: [""], clubsAtRead: clubs, age: 1))
+        // No date at the read: nothing can say a day went by, so it's read again after a while.
+        XCTAssertTrue(LiveGame.stillCurrent(dateNow: nil, dateAtRead: nil, clubsNow: clubs, clubsAtRead: clubs, age: 60))
+        XCTAssertFalse(LiveGame.stillCurrent(dateNow: nil, dateAtRead: nil, clubsNow: clubs, clubsAtRead: clubs,
+                                             age: LiveGame.undatedLimit + 1))
+        XCTAssertFalse(LiveGame.stillCurrent(dateNow: nil, dateAtRead: day, clubsNow: clubs, clubsAtRead: clubs, age: 1))
+    }
+
     // MARK: Game status
 
     func testGameStatus() throws {
@@ -177,6 +191,7 @@ final class ToolTests: XCTestCase {
 
     func testAMisspeltArgumentIsSaidNotIgnored() throws {
         let harness = Harness()
+        XCTAssertTrue(try harness.refusal("game_status", ["refresh": "yes"]).contains("true or false"))
         XCTAssertTrue(try harness.refusal("squad", ["squads": "U19"]).contains("doesn't take squads"))
         XCTAssertTrue(try harness.refusal("person", ["uid": "one"]).contains("whole number"))
     }
@@ -256,6 +271,10 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(targets["people"], 2)
         XCTAssertEqual(targets["not_in_this_save"], 1)
         XCTAssertEqual(targets.rowsByName.map { $0["uid"] }, [21, 22])
+        let first = try harness.answer("shortlist", ["name": "Targets", "limit": 1])
+        XCTAssertEqual(first["people"], 2, "the whole list's size")
+        XCTAssertEqual(first["shown"], 1)
+        XCTAssertEqual(first.rowsByName.map { $0["uid"] }, [21])
         let coaches = try harness.answer("shortlist", ["name": "Coaches"])
         XCTAssertEqual(coaches["kind"], "staff")
         XCTAssertTrue(try harness.refusal("shortlist", ["name": "Nope"]).contains("Targets"))
@@ -272,8 +291,17 @@ final class ToolTests: XCTestCase {
         XCTAssertTrue(try harness.refusal("club_overview", ["club": .string(World.rivals)]).contains("human manager"))
     }
 
-    func testSquadOverviewNeedsTheTactic() throws {
-        XCTAssertTrue(try Harness().refusal("squad_overview").contains("tactic"))
+    func testSquadOverviewFollowsTheTactic() throws {
+        let harness = Harness()
+        let overview = try harness.answer("squad_overview")
+        XCTAssertEqual(overview["club"], .string(World.club))
+        XCTAssertEqual(overview["rows"]?.array?.count, 11)
+        XCTAssertEqual(overview.columnNames, ["uid", "Position", "Playing now", "Rating", "Standing", "Notes"])
+        XCTAssertNil(overview["head"], "the headline is said once")
+
+        harness.source.database.tactics = [:]
+        harness.source.current = false
+        XCTAssertTrue(try harness.refusal("squad_overview").contains("tactic"))
     }
 
     func testStaffOverview() throws {
@@ -293,6 +321,8 @@ final class ToolTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.array?.first == "Consistency" })
         XCTAssertTrue(try harness.refusal("compare", ["uids": [1]]).contains("two to four"))
         XCTAssertTrue(try harness.refusal("compare", ["uids": [1, 501]]).contains("not both"))
+        XCTAssertTrue(try harness.refusal("compare", ["uids": [1, 21], "club": "Testing United"]).contains("human manager"),
+                      "a misspelt club isn't taken for no club")
     }
 
     func testRecommendedSigningsAndBargains() throws {
