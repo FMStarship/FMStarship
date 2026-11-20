@@ -250,15 +250,17 @@ package final class AppModel: ObservableObject {
     /// Hidden attributes and Ability as last set in the other window, the app's or FM Starship's tab inside FM, once the
     /// settings file changes. Through the setters, so the screens follow and Off means gone in both. A follow saves nothing:
     /// what's taken from the file isn't this window's change, and capturing the columns would write this window's layout
-    /// over the other's. First, a change a failed save left behind is saved, so the other window follows it too.
+    /// over the other's. Then a change a failed save left behind is saved, so the other window follows it too. The follow
+    /// comes first, so a later choice in the other window isn't written over.
     func followSettingsFile() {
+        if Settings.followFile() {
+            following = true
+            defer { following = false }
+            if showHidden != Settings.current.showHidden { showHidden = Settings.current.showHidden }
+            let wanted = Reveal(setting: Settings.current.reveal)
+            if reveal != wanted { reveal = wanted }
+        }
         Settings.saveIfPending()
-        guard Settings.followFile() else { return }
-        following = true
-        defer { following = false }
-        if showHidden != Settings.current.showHidden { showHidden = Settings.current.showHidden }
-        let wanted = Reveal(setting: Settings.current.reveal)
-        if reveal != wanted { reveal = wanted }
     }
 
     private func updateMenuState() {
