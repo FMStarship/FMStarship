@@ -185,9 +185,9 @@ claude mcp add --scope user fmstarship -- "/Applications/FM Starship.app/Content
 
 For the skill: `cp -R "/Applications/FM Starship.app/Contents/Resources/skills/fm-starship" ~/.claude/skills/`
 
-The first question after FM starts takes a few seconds, while the save is read. After that, answers are quick, and the save is
-read again when the game date moves on. It doesn't know fixtures, results, the league table, team stats, condition, morale,
-suspensions or registration status yet.
+The first question after FM starts takes about 5 seconds on a big save, while the save is read, and so does the first question
+after the game date moves on, when it's read again. Other answers are instant. It doesn't know fixtures, results, the league
+table, team stats, condition, morale, suspensions or registration status yet.
 
 ## Updates
 

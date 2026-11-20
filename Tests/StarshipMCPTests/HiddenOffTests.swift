@@ -80,6 +80,7 @@ final class HiddenOffTests: XCTestCase {
             }
             XCTAssertNil(result.text.range(of: numbers, options: .regularExpression), "\(what) sends a hidden number: \(result.text)",
                          file: file, line: line)
+            XCTAssertNil(result.text.range(of: "click", options: .caseInsensitive), "\(what) talks about the app's mouse", file: file, line: line)
         }
     }
 

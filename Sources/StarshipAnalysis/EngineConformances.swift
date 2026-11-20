@@ -1,6 +1,7 @@
-import StarshipAnalysis
 import StarshipCore
 
+// FM's rules as the analysis asks for them. Here, beside the protocols, so the app, the plugin and the MCP server all
+// have them, not only the targets that link the app's screens.
 extension RulesEngine: PositionalRoleEngine {
     public func roleRows(player: Player, position: Int, team: Int64) -> [RoleRow]? {
         roleTable(player: player, position: position, team: team)

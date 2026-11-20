@@ -9,7 +9,7 @@ extension Toolbox {
                                "Goals", "Assists", "Average rating", "Yellow cards", "Red cards", "Form (last 5 ratings)", "Injury",
                                "Days out", "Transfer status", "Loan status", "On loan at"]
     static let staffColumns = ["Name", "Job", "Age", "Squad", "CA", "PA", "Wage", "Contract end"]
-    static let playerListColumns = ["Name", "Age", "Position", "Club", "Nation", "CA", "PA", "Value", "Wage", "Contract end"]
+    static let playerListColumns = ["Name", "Age", "Position", "Club", "Nation", "CA", "PA", "Value", "Wage", "Contract end", "Appearances"]
     static let staffListColumns = ["Name", "Job", "Age", "Club", "Nation", "CA", "PA", "Wage", "Contract end"]
 
     /// A club by the name it goes by in FM, any club, or the user's own.
@@ -50,7 +50,7 @@ extension Toolbox {
         return .object([("club", .string(club)), ("squad", .string(shown ?? "all")),
                         ("squads", .array(squads.map { .string($0) })), ("players", .int(players.count)),
                         ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(players, columns, context.visibility))
+                       + Output.rows(players, columns))
     }
 
     /// FM's order of positions, as its squad screen lists them.
@@ -65,7 +65,7 @@ extension Toolbox {
         let people = filter.criteria().filter(context.db.staff).stableSorted { $0.job < $1.job }
         let columns = Output.columns(Self.staffColumns, in: Columns.forStaff(), context.visibility)
         return .object([("club", .string(club)), ("staff", .int(people.count)), ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(people, columns, context.visibility, extra: [("Best coaching", { Self.bestCoaching($0) })]))
+                       + Output.rows(people, columns + [Output.Field(name: "Best coaching", value: Self.bestCoaching)]))
     }
 
     /// A coach's two best areas in FM's stars, from the same stars as the staff list's columns.
@@ -105,8 +105,9 @@ extension Toolbox {
         if person.clubFull == person.club { leftOut.insert("Club (full)") }
         let columns = catalogue.filter { visibility.allows($0) && !leftOut.contains($0.name) }
         for group in groups {
-            let values = columns.filter { $0.group == group }.compactMap { col in
-                Output.value(col, person, visibility).map { (col.name, $0) }
+            let values = columns.filter { $0.group == group }.compactMap { col -> (String, JSON)? in
+                if col.name == "Appearances" { return Output.starts(person).map { ("Starts", $0) } }
+                return Output.value(col, person, visibility).map { (col.name, $0) }
             }
             if !values.isEmpty { pairs.append((group, .object(values))) }
         }
@@ -157,6 +158,6 @@ extension Toolbox {
                                        ("people", .int(people.count)), ("shown", .int(min(limit, people.count)))]
         let missing = entry.shortlist.uids.count - people.count
         if missing > 0 { pairs.append(("not_in_this_save", .int(missing))) }
-        return .object(pairs + Output.rows(Array(people.prefix(limit)), columns, context.visibility))
+        return .object(pairs + Output.rows(Array(people.prefix(limit)), columns))
     }
 }

@@ -37,7 +37,8 @@ Money arguments (`value_max`, `wage_max`, `clause_max`, `max_fee`) are full amou
 - **CA and PA** (current and potential ability) are 1 to 200. With Ability set to Stars they come as stars, such as "3.5★", out
   of 5. PA is a ceiling most players never reach.
 - **Coaching stars** are out of 5, as FM shows them.
-- **Season stats** are this season's, for the player's club. **Form** is the last five match ratings.
+- **Season stats** are this season's, for the player's club. **Starts** and **Sub appearances** are separate, as FM's "3 (2)"
+  means 3 starts and 2 as a substitute. **Form** is the last five match ratings.
 - **Would join your club** is FM's own answer, with how keen they are: Interested, Persuadable, Doubtful or Not interested.
 - Some features come from FM's own rules: season stats, form, who'd join, role stars and injury days. On a build of FM that FM
   Starship hasn't been checked on, `game_status` says the rules are off, and those values aren't there. Don't fill them in.

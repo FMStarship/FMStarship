@@ -199,12 +199,13 @@ public final class Toolbox: ToolProvider {
     // MARK: Game status
 
     private func status(refresh: Bool, _ visibility: Visibility) -> JSON {
-        let settings: [(String, JSON?)] = [
-            ("hidden_attributes", .string(visibility.showHidden ? "on" : "off")),
-            ("ability", .string(visibility.abilityText)),
-            ("units", ["currency": .string(Units.money.name), "symbol": .string(Units.money.symbol),
-                       "wages": .string(Units.wageSuffix), "height": .string(Units.height == .feetInches ? "ft/in" : "cm")]),
-        ]
+        // Made after the read, which sets the save's currencies, so they're the units this call's answers are in.
+        var settings: [(String, JSON?)] {
+            [("hidden_attributes", .string(visibility.showHidden ? "on" : "off")),
+             ("ability", .string(visibility.abilityText)),
+             ("units", ["currency": .string(Units.money.name), "symbol": .string(Units.money.symbol),
+                        "wages": .string(Units.wageSuffix), "height": .string(Units.height == .feetInches ? "ft/in" : "cm")])]
+        }
         let read: GameRead
         do {
             read = try connection.read(refresh: refresh)
@@ -225,6 +226,8 @@ public final class Toolbox: ToolProvider {
                 ("manager", manager.map { .string($0.name) }),
                 ("transfer_budget", budget.flatMap { Output.text(Units.moneyText(Double($0.transfer))) }),
                 ("wage_room", budget.flatMap { Output.text(Units.wageText($0.wageRoom, withSuffix: true)) }),
+                ("tactic", .string(db.tactics[club.team].map { "found: \($0.shape(in: FMData.library))" }
+                                   ?? "not found, so squad_overview can't answer")),
             ])
         }
         let rules: String = read.engine == nil
