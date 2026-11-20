@@ -8,7 +8,15 @@ enum MacLayout {
         static let person = 0x278
         static let identity = 0x388
         static let currentTeam = attributes - 24
-        static let injuries = attributes - 80   // also holds the recent matches, see History
+        static let injuries = attributes - 80   // also holds the recent matches and bans, see History
+        /// Relative to the start of the record. Condition and sharpness are 0-10000, and only FM's for the day in
+        /// `fitnessUpdated`: FM's getters catch them up to today first.
+        static let condition = 0x250
+        static let sharpness = 0x254
+        /// The day of the year in the low 9 bits, then the year.
+        static let fitnessUpdated = 0x1f8
+        /// 1-20.
+        static let morale = 0x264
         // Relative to `attributes`, unchanged from Windows.
         static let positions = 8
         static let raw = 23
@@ -80,12 +88,44 @@ enum MacLayout {
         static let statusFlags = 87
         static let clausesBegin = 104
         static let clausesEnd = 112
+        /// How happy a player is with his playing time, −100 to 100. A signed byte.
+        static let playingTime = 0x5c
         static let secondJob = 194
     }
 
     /// The record `Player.injuries` points to.
     enum History {
+        /// A vector of `Ban` pointers. FM removes a ban once it's served.
+        static let bans = 0x18
         static let matches = 88
+    }
+
+    /// One suspension, 0x20 bytes.
+    enum Ban {
+        static let size = 0x20
+        /// The football association's nation, by its index as at `Nation.index`. Not always a nation FM Starship reads.
+        static let association = 0
+        /// Which of that association's rule sets: in Norway 6 is the league, 5 the cup.
+        static let scope = 5
+        /// The `BanMatch` of a red card, 0 for a ban for bookings.
+        static let match = 8
+        /// The day of the year in the low 9 bits, then the year.
+        static let day = 0x10
+        static let year = 0x12
+        /// 0 for bookings, 2 or 6 for the two kinds of red card, which aren't told apart.
+        static let kind = 0x1a
+        static let matches = 0x1c
+        static let served = 0x1d
+        static let bookings: UInt8 = 0
+        static let redCards: Set<UInt8> = [2, 6]
+    }
+
+    /// The match a red card was in, which `Ban.match` points at.
+    enum BanMatch {
+        /// A `FixtureName`.
+        static let name: Int64 = 0
+        static let home: Int64 = 8
+        static let away: Int64 = 0x10
     }
 
     /// `History.matches` points at a vector of these, one for each team the player has played for:
@@ -232,6 +272,8 @@ enum MacLayout {
     }
 
     enum Nation {
+        /// What `Ban.association` names it by.
+        static let index = 8
         static let name = 24
         static let code = 40
         static let continent = 248

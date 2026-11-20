@@ -65,6 +65,10 @@ KINDS = {
     'bagClear': ('function',),
     'injuryDaysKey': ('constant', 'injuryInfo'),
     'shapeName': ('function',),
+    'conditionSlot': ('slot', 'ACTUAL_PLAYER', 0),
+    'sharpnessSlot': ('slot', 'ACTUAL_PLAYER', 0),
+    'trainedAtClub': ('function',),
+    'trainedInNation': ('function',),
 }
 
 # The classes GameReader finds by name (its vt(...) calls), then FixturesReader's, and the class of a player's form

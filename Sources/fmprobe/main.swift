@@ -1320,6 +1320,27 @@ case "finance":
         }
     }
 
+case "state":
+    // What the reader and the rules engine give for one club's players (default Molde FK): condition and sharpness as
+    // stored when FM updated them today, else from FM's getters, morale, playing time, bans and home-grown status. The
+    // stored fitness and FM's getters are printed side by side, so a patch that moves either shows.
+    let (db, engine) = try GameReader.connect(to: game, status: { _ in })
+    let club = args.count > 2 ? args[2] : "Molde FK"
+    print("date", db.gameDate as Any, "| off:", db.stateOff.isEmpty ? "none" : db.stateOff.map { "\($0.key.rawValue) (\($0.value))" }.joined(separator: ", "),
+          "| engine", engine == nil ? "off" : "on")
+    func percent(_ value: Int?) -> String { value.map { String(format: "%5.1f%%", Double($0) / 100) } ?? "    - " }
+    for p in db.players where p.clubFull == club || p.loanClubFull == club {
+        let today = p.fitness(engine), fm = engine?.fitness(player: p)
+        let bans = (p.bans ?? []).map { ban in
+            "[\(ban.left) of \(ban.matches) left, \(ban.competition.isEmpty ? "?" : ban.competition), FA \(ban.association) \(ban.associationName) scope \(ban.scope), "
+                + "\(ban.reason?.rawValue ?? "?") \(ban.opponent), \(ban.issued)]"
+        }
+        print(String(format: "%-26@ %@ cond %@ sharp %@ (FM's getters %@ %@)%@ morale %@ time %@ home-grown %-6@ %@", p.name as NSString, p.squad,
+                     percent(today?.condition), percent(today?.sharpness), percent(fm?.condition), percent(fm?.sharpness),
+                     p.fitnessNeedsCatchUp ? " caught up" : "", p.morale.map { String($0) } ?? "-", p.playingTime.map { String($0) } ?? "-",
+                     (engine?.homeGrown(player: p)?.rawValue ?? "-") as NSString, p.bans == nil ? "bans not read" : bans.joined(separator: " ")))
+    }
+
 case "dump":
     let address = Int64(args[2].replacingOccurrences(of: "0x", with: ""), radix: 16)!
     let count = args.count > 3 ? Int(args[3])! : 256

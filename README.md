@@ -136,7 +136,8 @@ FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://mode
 use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
 shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match,
-and FM Starship's club, squad and staff overviews, recommended signings and bargains.
+each player's condition, sharpness, morale, playing time, suspensions and home-grown status, and FM Starship's club, squad and
+staff overviews, recommended signings and bargains.
 
 - **It only reads.** It has no way to change anything in FM or your save, and it writes no files.
 - **It stays on your Mac.** Your agent's app starts it and talks to it through stdin and stdout. It opens no network connection and
@@ -191,8 +192,7 @@ after the game date moves on, when it's read again. The first question about a c
 Other answers are instant. Fixtures and results are only given once a club's league results add up to its row in the league
 table, and FM keeps each player's last 20 matches for a team, so an older match can miss players. That check has only been tried
 on a league with one stage: in a league with play-offs, a split or groups it's unverified, and may switch them off. It doesn't
-know a match's team
-stats, such as shots, possession or team xG, or condition, morale, suspensions or registration status yet.
+know a match's team stats, such as shots, possession or team xG, FM's words for condition and morale, or squad registration yet.
 
 ## Updates
 
@@ -374,6 +374,8 @@ how each value was first found:
 | `staffNumbersGlobal`, slots | `fmprobe huntlimits`: the per-team tables must add up to the club's real staff |
 | `staffModeFlags` | The two bytes the staff-number functions compare against 2 and 3 |
 | `shapeName` | Takes eleven sorted place numbers in `x0` and returns a string through `x8`. `fmprobe shapenames` shows when it's right |
+| `conditionSlot`, `sharpnessSlot` | `ACTUAL_PLAYER` vtable slots whose code is `ldrsh w0, [x19, #0x250]` and `#0x254` after a call through `GAME_ACTUAL_PLAYER` slot 0x278, FM's daily catch-up of condition and sharpness |
+| `trainedAtClub`, `trainedInNation` | The two `bl` targets in slot 2 of `OWN_PLAYER_RULE_PLAYER_IS_HOMEGROWN_PLAYER_FOR_CLUB`, which answers 2 for the first and 1 for the second |
 
 The optimizer reads FM's own tactic data from `game_plugin.bundle/Contents/Resources/shared/data/simatch.fmf`, so it follows
 patches: the `.tac` presets, `styles.xml` (favoured attributes, preferred roles, features of play) and the role complexity
@@ -426,6 +428,15 @@ FM Starship's own parts, and how to check them after a patch:
   come from the same record as his form. `tools/match_builds.py` lists these classes among the reader's. To find them again,
   `fmprobe humanteams` gives each human club's team, and `fmprobe fx TEAM` reads that team's matches and table, and runs the
   self-check.
+- **Players' state** is read with the save: condition, sharpness, the day FM last brought them up to date, and morale from the
+  player's record, playing time happiness from his contract, and bans from the record that holds his injuries, with offsets in
+  `MacLayout`. Each has a self-check: when more than one player in a hundred at a club has a value it can't have (condition or
+  sharpness outside 0-10000, morale outside 1-20, playing time outside -100 to 100, a ban with no real date), or a big save has
+  only one value, that field is off for the read. Condition and sharpness are only FM's for the day they were brought up to date,
+  so on any other day they come from FM's getters (`conditionSlot`, `sharpnessSlot`), and are off without the rules engine.
+  Home-grown status is FM's own two tests. `fmprobe state [CLUB]` prints all of it for one club, with the stored fitness beside
+  the getters'. A ban for bookings doesn't name its competition, so it's named from red cards under the same association's same
+  rule set, in a competition the player has played in, which is FM Starship's reasoning rather than FM's.
 - **The dashboard** is `ClubDashboard` plus the two overviews, which it starts itself so their answers are ready when you open them.
 - **The look** lives in `AppColors` (colours by job, from a `Theme.Palette`, or the system's for the System theme), `DesignSystem.swift`
   (panels, pills, `Flow`, range bars) and `TableSupport.swift` (both grids). DESIGN.md is the reference. Grids never cut text off: `AnalysisGrid`

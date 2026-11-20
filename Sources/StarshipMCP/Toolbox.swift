@@ -281,7 +281,7 @@ public final class Toolbox: ToolProvider {
             ])
         }
         let rules: String = read.engine == nil
-            ? "off: FM Starship hasn't been checked on this build of FM, so season stats, form, who'd join, role stars and injury days are switched off rather than guessed"
+            ? "off: FM Starship hasn't been checked on this build of FM, so season stats, form, who'd join, role stars, injury days and home-grown status are switched off rather than guessed"
             : "on"
         let age = connection.readAt.map { Int(Date().timeIntervalSince($0).rounded()) }
         let next = context.humanClubs.first.flatMap { nextFixture(read, club: $0, today: db.gameDate) }
@@ -296,6 +296,7 @@ public final class Toolbox: ToolProvider {
             ("staff", .int(db.staff.count)),
             ("read_seconds_ago", age.map { .int($0) }),
             ("rules", .string(rules)),
+            ("player_state", Self.stateStatus(db, read.engine)),
             ("self_checks", db.checkProblems.map { .string("failed: \($0)") }),
         ] + settings(currencyKnown: true))
     }

@@ -159,8 +159,8 @@ extension FakeGame {
         var reason: UInt8 = 12
     }
 
-    /// The record a player's `injuries` points at, holding his matches for each team.
-    func history(_ groups: [(team: Int64, entries: [HistoryEntry])]) -> Int64 {
+    /// The record a player's `injuries` points at, holding his matches for each team and his bans, from `ban`.
+    func history(_ groups: [(team: Int64, entries: [HistoryEntry])], bans: [Int64] = []) -> Int64 {
         typealias G = MacLayout.FormGroup
         typealias E = MacLayout.FormEntry
         typealias M = MacLayout.MatchRecord
@@ -193,6 +193,7 @@ extension FakeGame {
         }
         let holder = record("Injuries and matches", size: MacLayout.History.matches + 8)
         holder.set("matches", MacLayout.History.matches, vector(groupAddresses))
+        if !bans.isEmpty { holder.set("bans", MacLayout.History.bans, bytes: vectorBytes(bans)) }
         return holder.address
     }
 }

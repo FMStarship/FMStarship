@@ -13,10 +13,10 @@ chosen in FM Starship.
 
 | Tool | Use it for |
 | --- | --- |
-| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, the money units. `refresh: true` reads the save again |
-| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has the player's last match, his minutes in it and his rating |
+| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions and home-grown status can be read (`player_state`), the money units. `refresh: true` reads the save again |
+| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has the player's last match, his minutes in it and his rating, and his condition, sharpness, morale, playing time, suspensions and home-grown status |
 | `staff` | A club's staff, with jobs and their best coaching areas |
-| `person` | One player or member of staff in full, by `uid` |
+| `person` | One player or member of staff in full, by `uid`. For a player, `Fitness and morale` has each suspension in full |
 | `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
 | `shortlists`, `shortlist` | The user's FM shortlists, and the people on one |
 | `club_overview` | FM Starship's dashboard: facts, budget, who needs action now, the best prospects |
@@ -72,8 +72,29 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   isn't known. Scorers marked "(own goal)" play for the side that conceded.
 - **Last match** in `squad` is the player's latest match in FM's record, for any team: compare its date with the club's last
   result to see who was left out. A date with no minutes or rating means he didn't play: on the bench, left out or suspended.
-- Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars and injury days. On a build of FM that FM
-  Starship hasn't been checked on, `game_status` says the rules are off, and those values aren't there. Don't fill them in.
+- **Condition** and **Sharpness** (match sharpness) are FM's own numbers as percentages, 0 to 100 with one decimal. FM doesn't
+  show them as numbers: condition is a heart with a word for energy, sharpness a tick. On the save they were checked on, 85.7%
+  condition showed a green heart and "well rested". Where the heart turns orange or red, and FM's other words, aren't known, so
+  don't say which word FM would use. Don't tell the user FM shows a percentage either; say it's FM Starship's reading of FM's figure.
+- **Morale** is FM's 1 to 20. FM shows it as a coloured icon. On the save it was checked on, 2 showed red, 8 and 10 orange, and
+  18 to 20 green. The edges between those, and FM's words for them, aren't known.
+- **Playing time** is how happy the player is with his playing time, from -100 to 100, as FM keeps it in his contract. On the save
+  it was checked on, FM's words were: -89 frozen out, -37 concerned, about -19 to 29 content, 42 to 51 very happy, and 64 to 100
+  delighted. The edges between those bands aren't known, so for a value in a gap, give the number and the two bands it's between.
+- **Suspended** is the matches he's banned for in each competition, such as "1 Eliteserien, 1 Cupen". A ban only counts in its
+  own competition: a league ban doesn't stop him playing in the cup. A red card's ban names its competition. A ban for bookings
+  doesn't, so FM Starship names it from red cards under the same rules in a competition he plays in, and says "competition not
+  known" when it can't. A ban from another country's football association is most likely for his national team or a youth side:
+  FM's own squad screen didn't count those as suspended on the save this was checked on. `person` gives each ban with the matches
+  served so far, why (bookings or a red card, and the red card's opponent) and the day it was given.
+- **Home-grown** is FM's own answer for the player's club: `club` (trained at the club), `nation` (trained in the club's nation)
+  or `no`. Yes or no was checked against FM's squad screen; which of club and nation hasn't been yet.
+- None of these is hidden in FM, so they're there whatever Hidden attributes is set to. A field whose self-check failed for this
+  read isn't sent at all, and `game_status` says why.
+- Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars, injury days and
+  home-grown status. Condition and sharpness are too, for a player FM hasn't brought up to date today, since FM catches them up
+  before it shows them. On a build of FM that FM Starship hasn't been checked on, `game_status` says the rules are off, and those
+  values aren't there. Don't fill them in, and don't use an older condition instead.
 
 ## Hidden attributes
 
@@ -108,9 +129,12 @@ FM Starship doesn't read these yet, so don't state them, and don't work them out
 - Which goals were penalties, extra time and penalty shoot-outs, and the player of the match.
 - Fixtures and results when the tools switch them off: their check against the league table failed, or there's no league
   match yet to check them against.
-- Condition, match sharpness, morale and suspensions.
-- Registration status: homegrown status, squad registration and foreign player rules. Don't count foreign players from their
-  nations, because FM's rules for this depend on more than nationality.
+- Condition, sharpness, morale, playing time, suspensions or home-grown status when `game_status` says one is off.
+- FM's words for condition and morale, wear ("very little wear" and the like), match load and training load.
+- How many more yellow cards a player can get before a ban.
+- The squad screen's badges for a player on a language course or supporting an unhappy teammate.
+- Registration status: squad registration and foreign player rules. Don't count foreign players from their nations, because
+  FM's rules for this depend on more than nationality.
 - Anything about other managers' plans.
 
 If the user needs one of these, say it isn't available from FM Starship and ask them to check in FM.

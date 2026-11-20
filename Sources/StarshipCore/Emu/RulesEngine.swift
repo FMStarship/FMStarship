@@ -31,6 +31,10 @@ public final class RulesEngine: GameRulesEngine {
         package static let bagClear: Int64 = 0x4447e28
         package static let injuryDaysKey: UInt64 = 0x5050_4d69  // "PPMi" in the bag FM fills for its injury text
         package static let shapeName: Int64 = 0x4ab2570
+        package static let conditionSlot = 0x458 / 8
+        package static let sharpnessSlot = 0x450 / 8
+        package static let trainedAtClub: Int64 = 0xd1e590
+        package static let trainedInNation: Int64 = 0xd1c1c4
     }
 
     public static let transfer: UInt64 = 4
@@ -52,6 +56,8 @@ public final class RulesEngine: GameRulesEngine {
     private let staffFunction: Int64
     private let statFunction: Int64
     private let statsContainerFunction: Int64
+    private let conditionFunction: Int64
+    private let sharpnessFunction: Int64
     /// Team to HUMAN_NON_PLAYER object, for the staff rule.
     public var managers: [Int64: Int64] = [:]
     /// Team to the staff member whose eye the role stars are seen through.
@@ -85,6 +91,13 @@ public final class RulesEngine: GameRulesEngine {
         statsContainerFunction = rtti.word(vtable.addressPoint + Mac27.statsContainerSlot * 8)
         staffFunction = rtti.vtables("PERSON_NON_PLAYER_INTERESTED_FILTER_RULE").first { $0.offsetToTop == 0 }
             .map { rtti.word($0.addressPoint + Mac27.staffRuleSlot * 8) } ?? 0
+        let player = rtti.vtables("ACTUAL_PLAYER").first { $0.offsetToTop == 0 }
+        func getter(_ slot: Int) -> Int64 {
+            let function = player.map { rtti.word($0.addressPoint + slot * 8) } ?? 0
+            return function > game.pluginBase && function < game.pluginBase + game.pluginSize ? function : 0
+        }
+        conditionFunction = getter(Mac27.conditionSlot)
+        sharpnessFunction = getter(Mac27.sharpnessSlot)
     }
 
     private func status(_ player: Player, team: Int64) throws -> UInt64 {
@@ -369,6 +382,46 @@ public final class RulesEngine: GameRulesEngine {
     /// same record as `form`, so it's on where form is.
     public func matchHistory(player: Player) -> MatchHistory? {
         FixturesReader.history(player: player.block, in: game) { self.teamNames.name($0, in: self.game) }
+    }
+
+    /// Condition and sharpness through FM's own getters, asked to catch the player up to today first, as FM does before
+    /// it shows them. The catch-up only happens in the sandbox's copy.
+    public func fitness(player: Player) -> Fitness? {
+        guard conditionFunction != 0, sharpnessFunction != 0 else { return nil }
+        do {
+            func ask(_ function: Int64) throws -> Int {
+                try sandbox.call(function, [UInt64(player.block), 1]) { Int(Int16(truncatingIfNeeded: a64_get_x($0, 0))) }
+            }
+            let fitness = Fitness(condition: try ask(conditionFunction), sharpness: try ask(sharpnessFunction))
+            guard Fitness.range.contains(fitness.condition), Fitness.range.contains(fitness.sharpness) else { return nil }
+            return fitness
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
+    }
+
+    /// FM's own two tests, as its home-grown rule runs them: trained at the club, else trained in the club's nation.
+    public func homeGrown(player: Player) -> HomeGrown? {
+        let club = player.clubObject
+        guard club != 0 else { return nil }
+        let nation = game.readPointer(club + Int64(MacLayout.Club.nation))
+        let out = UInt64(A64_SCRATCH)
+        do {
+            func ask(_ function: Int64, _ place: Int64) throws -> Bool {
+                try sandbox.call(game.pluginBase + function, [UInt64(player.block), UInt64(place), out]) { a64_get_x($0, 0) & 0xff != 0 }
+            }
+            if try ask(Mac27.trainedAtClub, club) { return .club }
+            guard nation != 0 else { return nil }
+            return try ask(Mac27.trainedInNation, nation) ? .nation : .no
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
     }
 
     /// Days until the player is back, by FM's own reckoning. FM writes this into a "bag" of values for its

@@ -50,6 +50,10 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     }
     func form(player: Player) -> String? { "7.1 6.8 7.4" }
     func injuryReturnDays(player: Player) -> Int? { 14 }
+    /// FM's getters, caught up to today: only asked for players FM hasn't brought up to date today.
+    func fitness(player: Player) -> Fitness? { Fitness(condition: 9_440, sharpness: 8_020) }
+    /// First 1 was trained at the club, First 2 in its nation, and nobody else.
+    func homeGrown(player: Player) -> HomeGrown? { player.uid == 1 ? .club : player.uid == 2 ? .nation : .no }
 
     /// The club's first eleven played both league matches, number 9 scoring in each and number 11 coming off after 64
     /// minutes in the second, where 12 sat on the bench. Number 13's last 20 matches start after the first one.
@@ -201,6 +205,13 @@ enum World {
         players += (21...32).map { player(UInt32($0), name: "Rival \($0)", age: 24, ca: 139, pa: 177, at: World.rivals) }
         let cheap = players.first { $0.uid == 21 }!
         cheap.releaseForeign = 900_000
+        for player in players {
+            player.fitness = Fitness(condition: 10_000, sharpness: 9_650)
+            player.morale = 12
+            player.playingTime = 20
+            player.bans = []
+        }
+        state(players)
 
         let db = Database()
         db.players = players
@@ -210,11 +221,43 @@ enum World {
         db.gameDate = GameDate.checked(year: 2026, dayOfYear: 270)
         db.build = "27.1.0 (test)"
         db.checks = "PASS"
+        db.stateOff = [:]
         db.humanClubs = [(team: 1, name: World.club, manager: 500)]
         db.budgets = [1: (transfer: 5_000_000, wageRoom: 20_000)]
         db.tactics = [1: tactic(players)]
         db.prepare()
         return db
+    }
+
+    /// First 1 is tired, unhappy with his playing time and banned in the league and the cup. FM last brought First 2's
+    /// condition up to date three days ago, so it takes FM's getters. The youngster has a ban from abroad, in a
+    /// competition the read couldn't name.
+    static func state(_ players: [Player]) {
+        let byUID = Dictionary(uniqueKeysWithValues: players.map { ($0.uid, $0) })
+        let tired = byUID[1]!
+        tired.fitness = Fitness(condition: 8_570, sharpness: 9_210)
+        tired.morale = 2
+        tired.playingTime = -89
+        var bookings = Ban(issued: GameDate.date(year: 2026, dayOfYear: 244)!, matches: 1, served: 0)
+        bookings.competition = "Mock League"
+        bookings.associationName = "Mockovia"
+        bookings.reason = .bookings
+        var red = Ban(issued: GameDate.date(year: 2026, dayOfYear: cupMatch)!, matches: 3, served: 1)
+        red.competition = "Mock Cup"
+        red.associationName = "Mockovia"
+        red.reason = .redCard
+        red.opponent = minnows
+        tired.bans = [bookings, red]
+
+        let stale = byUID[2]!
+        stale.fitness = nil
+        stale.fitnessNeedsCatchUp = true
+        stale.fitnessUpdated = GameDate.date(year: 2026, dayOfYear: 267)
+
+        var abroad = Ban(issued: GameDate.date(year: 2025, dayOfYear: 300)!, matches: 2, served: 0)
+        abroad.associationName = "Fixtureland"
+        abroad.reason = .bookings
+        byUID[12]!.bans = [abroad]
     }
 
     /// A 4-4-2 with the first eleven in it.

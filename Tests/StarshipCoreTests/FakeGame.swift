@@ -141,10 +141,12 @@ final class FakeGame {
         return record.address
     }
 
-    /// `area` is the record FM groups nations by. FM Starship only uses it to tell areas apart.
-    func nation(_ name: String, code: String, continent: Int64, area: Int64) -> Int64 {
+    /// `area` is the record FM groups nations by. FM Starship only uses it to tell areas apart. `index` is what a ban
+    /// names its association by.
+    func nation(_ name: String, code: String, continent: Int64, area: Int64, index: UInt32 = 0) -> Int64 {
         typealias N = MacLayout.Nation
         let record = self.record("Nation", size: max(N.name, N.code, N.continent, N.area) + 8)
+        record.set("index", N.index, index)
         record.set("name", N.name, string(name))
         record.set("code", N.code, string(code))
         record.set("continent", N.continent, continent)
@@ -205,6 +207,7 @@ final class FakeGame {
         var end: (day: UInt16, year: UInt16) = (0, 0)
         var listed: (day: UInt16, year: UInt16) = (0, 0)
         var statusFlags: UInt8 = 0
+        var playingTime: Int8 = 0
         /// Each clause's amount, and FM's number for its kind.
         var clauses: [(amount: UInt32, kind: UInt16)] = []
         /// Where the clauses start and end, in place of `clauses`, for a test of what a leftover record can hold.
@@ -239,8 +242,13 @@ final class FakeGame {
         var topRoles = [UInt8](repeating: 0, count: 6)
         var traits: UInt64 = 0
         var currentTeam: Int64 = 0
-        /// The record of injuries and recent matches, from `history`.
+        /// The record of injuries, recent matches and bans, from `history`.
         var history: Int64 = 0
+        var condition: Int16 = 10_000
+        var sharpness: Int16 = 10_000
+        /// The day FM last brought condition and sharpness up to date.
+        var fitnessUpdated: (day: UInt16, year: UInt16) = (1, 2026)
+        var morale: Int8 = 10
     }
 
     struct StaffValues {
@@ -288,6 +296,11 @@ final class FakeGame {
         record.set("topRoles", a + L.topRoles, bytes: values.topRoles)
         record.set("currentTeam", L.currentTeam, values.currentTeam)
         record.set("injuries", L.injuries, values.history)
+        record.set("condition", L.condition, values.condition)
+        record.set("sharpness", L.sharpness, values.sharpness)
+        record.set("fitnessDay", L.fitnessUpdated, values.fitnessUpdated.day)
+        record.set("fitnessYear", L.fitnessUpdated + 2, values.fitnessUpdated.year)
+        record.set("morale", L.morale, values.morale)
         record.set("traits", person + MacLayout.Person.traits, values.traits)
     }
 
@@ -346,6 +359,7 @@ final class FakeGame {
         record.set("listedDay", C.listedDay, values.listed.day)
         record.set("listedYear", C.listedYear, values.listed.year)
         record.set("statusFlags", C.statusFlags, values.statusFlags)
+        record.set("playingTime", C.playingTime, values.playingTime)
         record.set("secondJob", C.secondJob, values.secondJob)
         var begin: Int64 = 0, end: Int64 = 0
         if !values.clauses.isEmpty {

@@ -71,14 +71,17 @@ extension Toolbox {
     static let tools: [Tool] = [
         Tool(name: "game_status", title: "Game status",
              description: "Whether FM is running with FM Starship, the game date, the clubs human managers run with their budgets, "
-                + "which club the other tools use and its next fixture, whether Hidden attributes and Ability are on, the units "
-                + "money is in, and how old the read is. Call first. refresh reads the save again.",
+                + "which club the other tools use and its next fixture, whether Hidden attributes and Ability are on, whether "
+                + "condition, sharpness, morale, playing time, suspensions and home-grown status can be read, the units money is "
+                + "in, and how old the read is. Call first. refresh reads the save again.",
              parameters: [Parameter(name: "refresh", type: "boolean", description: "Read the save again now.")],
              run: { _ in { _, _ in [:] } }),
         Tool(name: "squad", title: "Squad",
              description: "One squad of a club, one compact row per player with uid: first team, reserves or B team, a youth team, "
                 + "those out on loan, or all. Says which squads the club has. Last match is each player's latest match in FM's "
-                + "record of his form, with his minutes and rating (both empty if he didn't play: on the bench, left out or suspended), which shows rotation.",
+                + "record of his form, with his minutes and rating (both empty if he didn't play: on the bench, left out or suspended), which shows rotation. "
+                + "Condition and Sharpness are percentages, Morale 1-20, Playing time his happiness with it from -100 to 100, "
+                + "Suspended the matches he's banned for in each competition, and Home-grown club, nation or no.",
              parameters: [ownOrAnyClub,
                           Parameter(name: "squad", type: "string",
                                     description: "\"First team\", \"Reserves\", \"U21\", \"U19\", \"On loan\", ... or \"all\". First team if left out.")],
@@ -89,7 +92,8 @@ extension Toolbox {
              run: { $0.staff }),
         Tool(name: "person", title: "Person",
              description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats, form, "
-                + "injury, contract, wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
+                + "injury, condition, sharpness, morale, playing time, each suspension, home-grown status, contract, wage, value, "
+                + "release clauses, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true)],
              run: { $0.person }),
         Tool(name: "search_players", title: "Search players",

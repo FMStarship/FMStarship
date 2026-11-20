@@ -106,6 +106,53 @@ public final class Injury {
     public init() {}
 }
 
+/// Condition and match sharpness, 0-10000, as FM keeps them. FM shows them as a heart and a tick, not as numbers.
+public struct Fitness: Equatable, Sendable {
+    public var condition: Int
+    public var sharpness: Int
+    public init(condition: Int, sharpness: Int) {
+        self.condition = condition
+        self.sharpness = sharpness
+    }
+    public static let range = 0...10_000
+}
+
+/// Whether a player is home-grown for his club, by FM's own two tests: trained at the club, or trained in its nation.
+public enum HomeGrown: String, Sendable {
+    case club, nation, no
+}
+
+/// One suspension a player hasn't finished serving.
+public struct Ban: Sendable {
+    public enum Reason: String, Sendable {
+        case bookings, redCard = "red card"
+    }
+
+    /// The football association's index, and its nation's name where it's a nation FM Starship read, else "".
+    public var association: UInt32 = 0
+    public var associationName = ""
+    /// Which of the association's rule sets it falls under, as FM numbers them.
+    public var scope = 0
+    /// The competition, where FM Starship can tell: a red card's match names it, and a ban for bookings takes it from
+    /// red cards under the same rule set in a competition the player plays in. "" when it can't.
+    public var competition = ""
+    public var competitionIndex: UInt32?
+    /// Nil for a kind of ban FM Starship doesn't know.
+    public var reason: Reason?
+    /// The red card's match: the other side's club, as FM names it.
+    public var opponent = ""
+    public var issued: Date
+    public var matches: Int
+    public var served: Int
+    public var left: Int { matches - served }
+
+    public init(issued: Date, matches: Int, served: Int) {
+        self.issued = issued
+        self.matches = matches
+        self.served = served
+    }
+}
+
 public final class Player: Person {
     public var value: Int64 = 0
     public var ca = 0
@@ -121,12 +168,32 @@ public final class Player: Person {
     public var topRoles = [UInt8](repeating: 0, count: 6)
     public var season: SeasonStats?
     public var form = ""
+    /// Condition and sharpness as FM stored them, only when FM brought them up to date on the game's day. Nil otherwise,
+    /// since they're FM's for that day only: see `fitness(_:)`.
+    public var fitness: Fitness?
+    /// The day FM last brought them up to date, when it isn't the game's day, so FM's getters have to catch them up.
+    public var fitnessUpdated: Date?
+    public var fitnessNeedsCatchUp = false
+    /// 1-20.
+    public var morale: Int?
+    /// How happy he is with his playing time, −100 to 100, from his contract.
+    public var playingTime: Int?
+    /// The suspensions he still has to serve, oldest first. Nil when they weren't read.
+    public var bans: [Ban]?
 
     /// FM stores attributes 1-100; what players see is 1-20.
     public func attribute(at index: Int) -> Int { max(1, Int(Double(raw[index]) / 5.0 + 0.5)) }
     public func a(_ name: String) -> Int { attribute(at: Names.playerIndex[name]!) }
 
     public var notForSale: Bool { value == 300_000_000 }
+
+    /// Condition and sharpness as FM would show them today: as stored when FM brought them up to date today, else from
+    /// FM's own getters, which catch them up first. Nil when neither can say, never a number from another day.
+    public func fitness(_ engine: GameRulesEngine?) -> Fitness? {
+        if let fitness { return fitness }
+        guard fitnessNeedsCatchUp, let engine else { return nil }
+        return engine.fitness(player: self)
+    }
 
     public func hasTrait(_ bit: Int) -> Bool { (traitBits >> UInt64(bit & 63)) & 1 > 0 }
 
@@ -208,6 +275,15 @@ public struct Currency {
     }
 }
 
+/// The parts of a player's state the reader checks. Each one that fails its check is off for the whole read.
+public enum PlayerStateField: String, CaseIterable, Sendable {
+    /// Condition and sharpness, which are checked together.
+    case fitness
+    case morale
+    case playingTime
+    case bans
+}
+
 public final class Database {
     public var players: [Player] = []
     public var staff: [Staff] = []
@@ -217,6 +293,9 @@ public final class Database {
     public var gameDate: Date?
     public var unnamed = 0
     public var checks = ""
+    /// Why each player-state field is off for this read. They're off until a read of the game checks them, so a snapshot
+    /// has none.
+    public var stateOff: [PlayerStateField: String] = Dictionary(uniqueKeysWithValues: PlayerStateField.allCases.map { ($0, "not read") })
     public var source = "live game"
     public var currencies: [Currency] = []
     public var humanClubs: [(team: Int64, name: String, manager: Int64)] = []
@@ -231,6 +310,8 @@ public final class Database {
     /// something in the game it was read from, so it isn't kept in snapshots.
     public var dateRecords: [Int64] = []
     public init() {}
+
+    public func stateIsOn(_ field: PlayerStateField) -> Bool { stateOff[field] == nil }
 
     /// What the self-checks found wrong, or nil when there's nothing to say.
     public var checkProblems: String? { checks.hasPrefix("FAIL: ") ? String(checks.dropFirst(6)) : nil }

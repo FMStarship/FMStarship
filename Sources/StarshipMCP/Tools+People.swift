@@ -51,7 +51,8 @@ extension Toolbox {
         return .object([("club", .string(club)), ("squad", .string(shown ?? "all")),
                         ("squads", .array(squads.map { .string($0) })), ("players", .int(players.count)),
                         ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(players, columns + Self.lastMatch(context.read.engine)))
+                       + Output.rows(players, columns + Self.lastMatch(context.read.engine)
+                                     + Self.stateFields(context.db, context.read.engine)))
     }
 
     /// Each player's latest match in FM's record of his form: when, his minutes and his rating, both empty when he didn't
@@ -135,6 +136,7 @@ extension Toolbox {
             if !values.isEmpty { pairs.append((group, .object(values))) }
         }
         if let player = person as? Player {
+            if let state = Self.stateGroup(player, context.db, context.read.engine) { pairs.append(("Fitness and morale", state)) }
             let traits = player.traits.components(separatedBy: "; ").filter { !$0.isEmpty }
             if !traits.isEmpty { pairs.append(("Traits", .array(traits.map { .string($0) }))) }
         }

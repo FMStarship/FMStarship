@@ -1,0 +1,429 @@
+@testable import StarshipCore
+import XCTest
+
+/// Made-up bans, laid out as `MacLayout.Ban` says.
+extension FakeGame {
+    struct BanValues {
+        var association: UInt32 = PlayerStateTests.mockoviaFA
+        var scope: UInt8 = PlayerStateTests.leagueScope
+        /// From `banMatch`, for a red card.
+        var match: Int64 = 0
+        var day: UInt16 = 240
+        var year: UInt16 = 2029
+        var kind: UInt8 = 0
+        var matches: UInt8 = 1
+        var served: UInt8 = 0
+    }
+
+    func ban(_ values: BanValues) -> Int64 {
+        typealias B = MacLayout.Ban
+        let record = self.record("Ban", size: B.size)
+        record.set("association", B.association, values.association)
+        record.set("scope", B.scope, values.scope)
+        record.set("match", B.match, values.match)
+        record.set("day", B.day, values.day)
+        record.set("year", B.year, values.year)
+        record.set("kind", B.kind, values.kind)
+        record.set("matches", B.matches, values.matches)
+        record.set("served", B.served, values.served)
+        return record.address
+    }
+
+    /// The match a red card was in.
+    func banMatch(competition: Int64, home: Int64, away: Int64) -> Int64 {
+        typealias M = MacLayout.BanMatch
+        let record = self.record("Ban match", size: 0x28)
+        record.set("name", Int(M.name), fixtureName(competition: competition))
+        record.set("home", Int(M.home), home)
+        record.set("away", Int(M.away), away)
+        return record.address
+    }
+}
+
+/// FM's getters as a test wants them: one answer for everyone, and a count of the questions.
+private final class StateEngine: GameRulesEngine {
+    var answer: Fitness?
+    private(set) var asked = 0
+    init(_ answer: Fitness?) { self.answer = answer }
+    var supportsInjuryDays: Bool { false }
+    func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)? { nil }
+    func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? { nil }
+    func preferredJob(staff: Staff) -> Int? { nil }
+    func jobPreferences(staff: Staff) -> [UInt8]? { nil }
+    func roleRows(player: Player, team: Int64) -> [RoleRow]? { nil }
+    func seasonStats(player: Player, season: Int) -> SeasonStats? { nil }
+    func form(player: Player) -> String? { nil }
+    func injuryReturnDays(player: Player) -> Int? { nil }
+    func fitness(player: Player) -> Fitness? {
+        asked += 1
+        return answer
+    }
+}
+
+/// Condition, sharpness, morale, playing time and bans, read from made-up records, and the checks that switch each off.
+/// Every name and number is made up.
+final class PlayerStateTests: XCTestCase {
+    static let mockoviaFA: UInt32 = 160, fixturelandFA: UInt32 = 18, notANation: UInt32 = 3_492
+    static let leagueScope: UInt8 = 6, cupScope: UInt8 = 5
+    static let today: (day: UInt16, year: UInt16) = (255, 2029)
+
+    /// Two clubs in two nations, a league with a second division under the same rule set, and a cup.
+    private final class World {
+        let game = FakeGame()
+        let mockovia: Int64, fixtureland: Int64
+        let rovers: Int64, town: Int64
+        let roversFirst: Int64, townFirst: Int64
+        let league: Int64, secondDivision: Int64, cup: Int64
+        static let leagueIndex: UInt32 = 7, cupIndex: UInt32 = 8, secondDivisionIndex: UInt32 = 9
+
+        init(dated: Bool = true) {
+            let continent = game.continent("Made-up Continent")
+            let area = game.allocate(16)
+            mockovia = game.nation("Mockovia", code: "MCK", continent: continent, area: area, index: PlayerStateTests.mockoviaFA)
+            fixtureland = game.nation("Fixtureland", code: "FXL", continent: continent, area: area, index: PlayerStateTests.fixturelandFA)
+            league = game.competition("Mock League One", index: World.leagueIndex)
+            secondDivision = game.competition("Mock League Two", index: World.secondDivisionIndex)
+            cup = game.competition("Mock Cup", index: World.cupIndex)
+            rovers = game.club(full: "Mockport Rovers FC", short: "Mockport", nation: mockovia)
+            town = game.club(full: "Fixture Town AFC", short: "Fixture Town", nation: fixtureland)
+            roversFirst = game.team(club: rovers, index: 0x1267, type: 0, competition: league)
+            townFirst = game.team(club: town, index: 0x2301, type: 0, competition: league)
+            if dated { game.transferManager(day: PlayerStateTests.today.day, year: PlayerStateTests.today.year) }
+        }
+
+        /// A Rovers player, brought up to date today unless the test says otherwise.
+        func values(_ uid: UInt32) -> FakeGame.PlayerValues {
+            var values = FakeGame.PlayerValues()
+            values.person.uid = uid
+            values.person.index = uid
+            values.person.commonName = "Made-up Player \(uid)"
+            values.person.contract?.team = roversFirst
+            values.fitnessUpdated = PlayerStateTests.today
+            values.morale = 12
+            values.playingTime(10)
+            return values
+        }
+
+        /// Matches for Rovers in these competitions, so a ban for bookings can find its competition.
+        func played(_ competitions: [UInt32], bans: [Int64]) -> Int64 {
+            game.history([(team: roversFirst, entries: competitions.enumerated().map { i, competition in
+                FakeGame.HistoryEntry(opponent: townFirst, day: UInt16(230 + i), competition: competition, played: FakeGame.PlayedValues())
+            })], bans: bans)
+        }
+
+        func read() throws -> [UInt32: Player] {
+            let database = try game.read()
+            return Dictionary(uniqueKeysWithValues: database.players.map { ($0.uid, $0) })
+        }
+    }
+
+    // MARK: Every field
+
+    func testReadsEveryStateField() throws {
+        let world = World()
+        let game = world.game
+        let cupRed = game.banMatch(competition: world.cup, home: world.townFirst, away: world.roversFirst)
+        var values = world.values(1)
+        values.condition = 8_570
+        values.sharpness = 9_210
+        values.morale = 18
+        values.playingTime(-37)
+        values.history = world.played([World.leagueIndex, World.cupIndex], bans: [
+            game.ban(FakeGame.BanValues(day: 244, kind: 0, matches: 1)),
+            game.ban(FakeGame.BanValues(scope: PlayerStateTests.cupScope, match: cupRed, day: 251, kind: 2, matches: 1)),
+        ])
+        game.player(values)
+
+        let database = try game.read()
+        XCTAssertEqual(database.stateOff, [:])
+        let player = try XCTUnwrap(database.players.first)
+        XCTAssertEqual(player.fitness, Fitness(condition: 8_570, sharpness: 9_210))
+        XCTAssertFalse(player.fitnessNeedsCatchUp)
+        XCTAssertNil(player.fitnessUpdated)
+        XCTAssertEqual(player.fitness(nil), Fitness(condition: 8_570, sharpness: 9_210), "today's needs no engine")
+        XCTAssertEqual(player.morale, 18)
+        XCTAssertEqual(player.playingTime, -37)
+
+        let bans = try XCTUnwrap(player.bans)
+        XCTAssertEqual(bans.count, 2)
+        // A ban for bookings names no match, so it takes its competition from the red card below in the same rule set...
+        // which is the cup's, not the league's: it stays unnamed until a league red card says which competition that is.
+        XCTAssertEqual(bans[0].reason, .bookings)
+        XCTAssertEqual(bans[0].competition, "")
+        XCTAssertEqual(bans[0].associationName, "Mockovia")
+        XCTAssertEqual(bans[0].issued, GameDate.checked(year: 2029, dayOfYear: 244))
+        XCTAssertEqual(bans[1].reason, .redCard)
+        XCTAssertEqual(bans[1].competition, "Mock Cup")
+        XCTAssertEqual(bans[1].competitionIndex, World.cupIndex)
+        XCTAssertEqual(bans[1].opponent, "Fixture Town AFC")
+        XCTAssertEqual(bans[1].associationName, "Mockovia")
+        XCTAssertEqual(bans[1].scope, Int(PlayerStateTests.cupScope))
+        XCTAssertEqual(bans[1].left, 1)
+    }
+
+    /// The league and the division below share a rule set. A ban for bookings under it is named after the one of the two
+    /// the player plays in, and stays unnamed where none of the red cards' competitions is his.
+    func testABanForBookingsTakesItsCompetitionFromRedCardsUnderTheSameRules() throws {
+        let world = World()
+        let game = world.game
+        // Red cards under the league's rule set: one in each division, and one in the cup under the cup's.
+        let leagueRed = game.banMatch(competition: world.league, home: world.roversFirst, away: world.townFirst)
+        let secondRed = game.banMatch(competition: world.secondDivision, home: world.roversFirst, away: world.townFirst)
+        var red = world.values(1)
+        red.history = world.played([World.leagueIndex], bans: [
+            game.ban(FakeGame.BanValues(match: leagueRed, kind: 6, matches: 3, served: 1)),
+            game.ban(FakeGame.BanValues(match: secondRed, kind: 2, matches: 1)),
+        ])
+        game.player(red)
+
+        var leagueBookings = world.values(2)
+        leagueBookings.history = world.played([World.leagueIndex, World.cupIndex], bans: [game.ban(FakeGame.BanValues(kind: 0, matches: 1))])
+        game.player(leagueBookings)
+
+        // Plays in neither division, so neither can be said.
+        var cupOnly = world.values(3)
+        cupOnly.history = world.played([World.cupIndex], bans: [game.ban(FakeGame.BanValues(kind: 0, matches: 2))])
+        game.player(cupOnly)
+
+        // A rule set nobody has a red card under, from an association that isn't a nation the read knows, and one from
+        // his own nation's.
+        var abroad = world.values(4)
+        abroad.person.nation = world.fixtureland
+        abroad.history = world.played([World.leagueIndex], bans: [
+            game.ban(FakeGame.BanValues(association: PlayerStateTests.notANation, scope: 20, year: 2028, kind: 0, matches: 2)),
+            game.ban(FakeGame.BanValues(association: PlayerStateTests.fixturelandFA, scope: 3, year: 2028, kind: 0, matches: 1)),
+        ])
+        game.player(abroad)
+
+        let players = try world.read()
+        let reds = try XCTUnwrap(players[1]?.bans)
+        XCTAssertEqual(reds.map(\.competition), ["Mock League One", "Mock League Two"])
+        XCTAssertEqual(reds.map(\.left), [2, 1])
+        XCTAssertEqual(reds.map(\.reason), [.redCard, .redCard], "both kinds of red card")
+        XCTAssertEqual(reds.map(\.opponent), ["Fixture Town AFC", "Fixture Town AFC"])
+
+        XCTAssertEqual(players[2]?.bans?.map(\.competition), ["Mock League One"])
+        XCTAssertEqual(players[3]?.bans?.map(\.competition), [""])
+        XCTAssertEqual(players[3]?.bans?.map(\.associationName), ["Mockovia"])
+        let foreign = try XCTUnwrap(players[4]?.bans)
+        XCTAssertEqual(foreign.map(\.competition), ["", ""])
+        XCTAssertEqual(foreign.map(\.associationName), ["", "Fixtureland"])
+        XCTAssertEqual(foreign.map(\.left), [2, 1])
+    }
+
+    /// A ban already served is left out, a kind FM Starship doesn't know has no reason, and a red card in a match that
+    /// isn't his club's, as for his nation, names no opponent.
+    func testServedBansUnknownKindsAndOtherTeamsMatches() throws {
+        let world = World()
+        let game = world.game
+        let otherClub = game.club(full: "Elsewhere United", short: "Elsewhere", nation: 0)
+        let otherTeam = game.team(club: otherClub, index: 0x3001, type: 0, competition: world.league)
+        let notHis = game.banMatch(competition: world.cup, home: world.townFirst, away: otherTeam)
+        var values = world.values(1)
+        values.history = world.played([], bans: [
+            game.ban(FakeGame.BanValues(day: 200, kind: 0, matches: 2, served: 2)),
+            game.ban(FakeGame.BanValues(day: 210, kind: 9, matches: 1)),
+            game.ban(FakeGame.BanValues(scope: PlayerStateTests.cupScope, match: notHis, day: 220, kind: 2, matches: 4, served: 1)),
+        ])
+        game.player(values)
+        var clean = world.values(2)
+        clean.history = world.played([World.leagueIndex], bans: [])
+        game.player(clean)
+        // No record of matches or bans at all.
+        game.player(world.values(3))
+
+        let players = try world.read()
+        let bans = try XCTUnwrap(players[1]?.bans)
+        XCTAssertEqual(bans.count, 2, "the served one is gone")
+        XCTAssertNil(bans[0].reason)
+        XCTAssertEqual(bans[1].reason, .redCard)
+        XCTAssertEqual(bans[1].competition, "Mock Cup")
+        XCTAssertEqual(bans[1].opponent, "")
+        XCTAssertEqual(bans[1].left, 3)
+        XCTAssertEqual(players[2]?.bans?.count, 0)
+        XCTAssertEqual(players[3]?.bans?.count, 0)
+    }
+
+    /// A free agent has no contract, so neither playing time nor the record holding his bans is read.
+    func testAFreeAgentHasNoPlayingTimeAndNoBansRead() throws {
+        let world = World()
+        world.game.player(world.values(1))
+        var free = world.values(2)
+        free.person.contract = nil
+        world.game.player(free)
+
+        let players = try world.read()
+        XCTAssertNil(players[2]?.playingTime)
+        XCTAssertNil(players[2]?.bans)
+        XCTAssertEqual(players[2]?.morale, 12)
+        XCTAssertEqual(players[1]?.bans?.count, 0)
+    }
+
+    // MARK: Another day
+
+    /// Stored condition and sharpness are FM's for the day they were brought up to date. On any other day only FM's
+    /// getters can say, so without the engine there's no number at all.
+    func testAStaleDayNeedsFMsGetters() throws {
+        let world = World()
+        var values = world.values(1)
+        values.condition = 9_900
+        values.sharpness = 9_000
+        values.fitnessUpdated = (PlayerStateTests.today.day - 3, PlayerStateTests.today.year)
+        world.game.player(values)
+
+        let player = try XCTUnwrap(try world.read()[1])
+        XCTAssertNil(player.fitness, "never a number from another day")
+        XCTAssertTrue(player.fitnessNeedsCatchUp)
+        XCTAssertEqual(player.fitnessUpdated, GameDate.checked(year: 2029, dayOfYear: 252))
+        XCTAssertNil(player.fitness(nil), "no engine, no number")
+
+        let engine = StateEngine(Fitness(condition: 9_950, sharpness: 8_800))
+        XCTAssertEqual(player.fitness(engine), Fitness(condition: 9_950, sharpness: 8_800))
+        engine.answer = nil
+        XCTAssertNil(player.fitness(engine), "FM's getters failing leaves nothing")
+        XCTAssertEqual(player.morale, 12, "morale has no day")
+    }
+
+    func testTodaysNeverAsksTheEngine() throws {
+        let world = World()
+        world.game.player(world.values(1))
+        let engine = StateEngine(Fitness(condition: 1, sharpness: 1))
+        let player = try XCTUnwrap(try world.read()[1])
+        XCTAssertEqual(player.fitness(engine), Fitness(condition: 10_000, sharpness: 10_000))
+        XCTAssertEqual(engine.asked, 0)
+    }
+
+    /// Without the game date, no day is today.
+    func testWithNoGameDateEveryoneNeedsCatchingUp() throws {
+        let world = World(dated: false)
+        world.game.player(world.values(1))
+        let player = try XCTUnwrap(try world.read()[1])
+        XCTAssertNil(player.fitness)
+        XCTAssertTrue(player.fitnessNeedsCatchUp)
+        XCTAssertEqual(player.fitness(StateEngine(Fitness(condition: 7_000, sharpness: 7_100))), Fitness(condition: 7_000, sharpness: 7_100))
+    }
+
+    // MARK: Self-checks
+
+    /// A value a field can't have, for the only player at a club, is more than one in a hundred: that field is off for the
+    /// read, with why, and gives nothing. The others are still on.
+    func testEachFieldThatFailsItsCheckIsOffAndSaysSo() throws {
+        let cases: [(PlayerStateField, (inout FakeGame.PlayerValues) -> Void)] = [
+            (.fitness, { $0.condition = 12_000 }),
+            (.fitness, { $0.sharpness = -1 }),
+            (.fitness, { $0.fitnessUpdated = (0, 0) }),
+            (.morale, { $0.morale = 0 }),
+            (.morale, { $0.morale = 21 }),
+            (.playingTime, { $0.playingTime(-120) }),
+            (.playingTime, { $0.playingTime(101) }),
+        ]
+        for (field, spoil) in cases {
+            let world = World()
+            var values = world.values(1)
+            spoil(&values)
+            world.game.player(values)
+            let database = try world.game.read()
+            XCTAssertEqual(Set(database.stateOff.keys), [field], "\(field)")
+            XCTAssertTrue(database.stateOff[field]?.hasPrefix("its check failed: 1 of 1 players at a club") ?? false, database.stateOff[field] ?? "")
+            let player = try XCTUnwrap(database.players.first)
+            switch field {
+            case .fitness:
+                XCTAssertNil(player.fitness)
+                XCTAssertFalse(player.fitnessNeedsCatchUp, "off means the engine isn't asked either")
+                XCTAssertNil(player.fitness(StateEngine(Fitness(condition: 1, sharpness: 1))))
+            case .morale: XCTAssertNil(player.morale)
+            case .playingTime: XCTAssertNil(player.playingTime)
+            case .bans: break
+            }
+            XCTAssertNotNil(player.bans)
+        }
+    }
+
+    /// One odd player in more than a hundred doesn't switch a field off, but his own value is left out.
+    func testOneOddPlayerInMoreThanAHundredOnlyLosesHisOwn() throws {
+        let world = World()
+        for uid in 1...101 {
+            var values = world.values(UInt32(uid))
+            values.morale = Int8(1 + uid % 20)
+            values.condition = Int16(9_000 + uid)
+            values.playingTime(Int8(uid % 50))
+            if uid == 1 {
+                values.morale = 0
+                values.condition = 10_001
+                values.playingTime(-101)
+            }
+            world.game.player(values)
+        }
+        let database = try world.game.read()
+        XCTAssertEqual(database.stateOff, [:])
+        let players = Dictionary(uniqueKeysWithValues: database.players.map { ($0.uid, $0) })
+        XCTAssertNil(players[1]?.morale)
+        XCTAssertNil(players[1]?.fitness)
+        XCTAssertNil(players[1]?.playingTime)
+        XCTAssertEqual(players[2]?.morale, 3)
+        XCTAssertEqual(players[2]?.fitness?.condition, 9_002)
+        XCTAssertEqual(players[2]?.playingTime, 2)
+    }
+
+    /// A list of bans that isn't one, or bans with no real date or length, mean the offsets have moved: no bans for anyone.
+    func testBansThatArentRealSwitchBansOff() throws {
+        for spoil in ["list", "date", "length"] {
+            let world = World()
+            let game = world.game
+            var values = world.values(1)
+            if spoil == "list" {
+                // A begin after its end.
+                let holder = game.record("Injuries and matches", size: MacLayout.History.matches + 8)
+                holder.set("bans", MacLayout.History.bans, bytes: [Int64(0x1000_0010), 0x1000_0000, 0x1000_0000].flatMap { withUnsafeBytes(of: $0) { Array($0) } })
+                values.history = holder.address
+            } else {
+                values.history = world.played([], bans: [game.ban(spoil == "date" ? FakeGame.BanValues(day: 0) : FakeGame.BanValues(matches: 0))])
+            }
+            game.player(values)
+            var other = world.values(2)
+            other.history = world.played([], bans: [game.ban(FakeGame.BanValues())])
+            game.player(other)
+
+            let database = try game.read()
+            XCTAssertEqual(Set(database.stateOff.keys), [.bans], spoil)
+            XCTAssertTrue(database.stateOff[.bans]?.hasPrefix("its check failed") ?? false, spoil)
+            XCTAssertTrue(database.players.allSatisfy { $0.bans == nil }, spoil)
+        }
+    }
+
+    /// A moved offset can read the same zeroes for everyone, which is in range. A big save with only one value fails.
+    func testOneValueForEveryoneInABigSaveFails() {
+        var state = GameReader.RawState()
+        state.condition = 10_000
+        state.sharpness = 10_000
+        state.fitnessDay = 255
+        state.fitnessYear = 2029
+        state.morale = 10
+        state.playingTime = 0
+        state.bansRead = true
+        let off = GameReader.checkState(Array(repeating: state, count: 100))
+        XCTAssertEqual(Set(off.keys), [.fitness, .morale, .playingTime])
+        XCTAssertEqual(off[.morale], "its check failed: every player at a club has the same value")
+
+        // Condition can be full for everyone, as long as sharpness isn't the same for all.
+        var varied = Array(repeating: state, count: 100)
+        for i in varied.indices {
+            varied[i].sharpness = 9_000 + i
+            varied[i].morale = 1 + i % 20
+            varied[i].playingTime = i - 50
+        }
+        XCTAssertEqual(GameReader.checkState(varied), [:])
+        // A small save can be all one value.
+        XCTAssertEqual(GameReader.checkState(Array(repeating: state, count: 99)), [:])
+    }
+
+    /// The fields are off until a read of the game checks them, as in a snapshot.
+    func testANewDatabaseHasThemOff() {
+        let database = Database()
+        XCTAssertTrue(PlayerStateField.allCases.allSatisfy { !database.stateIsOn($0) })
+    }
+}
+
+private extension FakeGame.PlayerValues {
+    mutating func playingTime(_ value: Int8) { person.contract?.playingTime = value }
+}
