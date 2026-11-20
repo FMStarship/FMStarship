@@ -204,12 +204,25 @@ package final class AppModel: ObservableObject {
         poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.checkGameCost.measure { self.checkGame() }
+                self.checkGameCost.measure {
+                    self.followSettingsFile()
+                    self.checkGame()
+                }
             }
         }
     }
 
     func persist() { Settings.save() }
+
+    /// Hidden attributes and Ability as last set in the other window, the app's or FM Starship's tab inside FM, once the
+    /// settings file changes. Through the setters, so the screens follow and Off means gone in both. Their save doesn't
+    /// write these back, as what's taken from the file isn't this window's change.
+    func followSettingsFile() {
+        guard Settings.followFile() else { return }
+        if showHidden != Settings.current.showHidden { showHidden = Settings.current.showHidden }
+        let wanted = Reveal(setting: Settings.current.reveal)
+        if reveal != wanted { reveal = wanted }
+    }
 
     private func updateMenuState() {
         let state = MenuState.Values(hasData: database != nil, isList: screen.isList, canCompare: canCompare, loading: loading)

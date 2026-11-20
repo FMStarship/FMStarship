@@ -93,10 +93,16 @@ public struct Settings: Codable, Equatable {
     }
 
     public static var current = Settings()
-    private static var loaded = false
-    /// `current` as this process last loaded or saved it. A save writes only the keys that differ from it, so the app and the
-    /// plugin inside FM, each with the file loaded once, don't write back each other's older values.
+    /// Internal so tests can put it back: a test that loads mustn't leave later tests able to save.
+    static var loaded = false
+    /// `current` as this process last loaded or saved it, or took from the file. A save writes only the keys that differ
+    /// from it, so the app and the plugin inside FM, each with the file loaded once, don't write back each other's values.
     static var baseline: Settings?
+    /// The file's modification date when this process last loaded it or looked at it, so `followFile` reads it only once
+    /// it changes.
+    static var seenModified: Date?
+    /// How long a save waits for the other process to finish with the file. Inside FM a save runs on FM's main thread.
+    static var lockWait: TimeInterval = 0.5
     /// Tests point this at a temporary folder.
     static var pathOverride: URL?
 
@@ -109,6 +115,7 @@ public struct Settings: Codable, Equatable {
     }
 
     public static func load() {
+        seenModified = modified()
         if let data = try? Data(contentsOf: path), let saved = try? JSONDecoder().decode(Settings.self, from: data) {
             current = saved
         } else {
@@ -118,60 +125,141 @@ public struct Settings: Codable, Equatable {
         loaded = true
     }
 
-    /// Does nothing before `load()`, so a failed start can't overwrite the file with defaults. Re-reads the file and keeps its
-    /// value for every key this process hasn't changed. A missing or damaged file gets all of `current`.
+    /// Does nothing before `load()`, so a failed start can't overwrite the file with defaults. Under a lock, re-reads the
+    /// file and changes only the keys this process has changed, keeping every other key the file has, even ones this build
+    /// doesn't know. A missing file, or one that isn't JSON, gets all of `current`. A failed save, including a file that
+    /// can't be read or a lock not had in time, is logged, and its changes are saved next time.
     public static func save() {
         guard loaded else { return }
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            var output = current
-            if let onDisk = readFile() {
-                let now = try fields(current, encoder)
-                let before = try fields(baseline ?? Settings(), encoder)
-                let changed = Set(now.keys).union(before.keys).filter { (now[$0] as? NSObject) != (before[$0] as? NSObject) }
-                if changed.isEmpty { return }
-                var merged = try fields(onDisk, encoder)
-                for key in changed { merged[key] = now[key] }
-                output = try JSONDecoder().decode(Settings.self, from: JSONSerialization.data(withJSONObject: merged))
-            }
-            let data = try encoder.encode(output)
+            let now = try fields(current)
+            let before = try fields(baseline ?? Settings())
+            let changed = Set(now.keys).union(before.keys).filter { (now[$0] as? NSObject) != (before[$0] as? NSObject) }
+            if changed.isEmpty, FileManager.default.fileExists(atPath: path.path) { return }
             let folder = path.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let temporary = path.appendingPathExtension("tmp")
+            let lock = try FileLock(folder.appendingPathComponent("settings.lock"), wait: lockWait)
+            defer { lock.release() }
+            var output = now
+            if let file = try readFile() {
+                output = file
+                for key in changed { output[key] = now[key] }
+            }
+            // An invalid object would raise rather than throw, which inside FM would close the game.
+            guard JSONSerialization.isValidJSONObject(output) else { throw CocoaError(.coderInvalidValue) }
+            let data = try JSONSerialization.data(withJSONObject: output, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+            let temporary = folder.appendingPathComponent("\(path.lastPathComponent).\(getpid()).tmp")
             try data.write(to: temporary)
-            guard rename(temporary.path, path.path) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+            guard rename(temporary.path, path.path) == 0 else {
+                let error = POSIXError(.init(rawValue: errno) ?? .EIO)
+                unlink(temporary.path)
+                throw error
+            }
             baseline = current
         } catch {
             logFailure("settings not saved: \(error)")
         }
     }
 
-    /// The file as it is now, or nil when it's missing or damaged. Damage is logged, then the save writes over it.
-    private static func readFile() -> Settings? {
+    /// When the file has changed since this process loaded it or last looked, takes ShowHidden and Reveal from it, as the
+    /// other process may have changed them, and says whether either changed here. What's taken becomes the baseline too, so
+    /// it isn't this process's change to save. A key this process has changed but not saved yet keeps its own value. A
+    /// missing file changes nothing; one that can't be read is logged once per change.
+    public static func followFile() -> Bool {
+        guard loaded, var base = baseline, let modified = modified(), modified != seenModified else { return false }
+        seenModified = modified
+        let shown: Visibility
+        do {
+            shown = try JSONDecoder().decode(Visibility.self, from: Data(contentsOf: path))
+        } catch {
+            logFailure("settings not followed: \(error)")
+            return false
+        }
+        let defaults = Settings()
+        let showHidden = shown.showHidden ?? defaults.showHidden
+        let reveal = Reveal(setting: shown.reveal ?? defaults.reveal).rawValue
+        var changed = false
+        if current.showHidden == base.showHidden, current.showHidden != showHidden {
+            current.showHidden = showHidden
+            changed = true
+        }
+        if current.reveal == base.reveal, current.reveal != reveal {
+            current.reveal = reveal
+            changed = true
+        }
+        if current.showHidden == showHidden { base.showHidden = showHidden }
+        if current.reveal == reveal { base.reveal = reveal }
+        baseline = base
+        return changed
+    }
+
+    /// The two keys `followFile` takes. One that's missing, or not of its type, is the default, as `load` would have it.
+    private struct Visibility: Decodable {
+        var showHidden: Bool?
+        var reveal: Int?
+
+        private enum CodingKeys: String, CodingKey {
+            case showHidden = "ShowHidden", reveal = "Reveal"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            showHidden = try? c.decodeIfPresent(Bool.self, forKey: .showHidden)
+            reveal = try? c.decodeIfPresent(Int.self, forKey: .reveal)
+        }
+    }
+
+    private static func modified() -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: path.path))?[.modificationDate] as? Date
+    }
+
+    /// The file's keys as they are now, or nil when there's no file, or one that isn't JSON, which is logged and saved over.
+    /// A file that's there but can't be read throws, so the save fails rather than writing over it.
+    private static func readFile() throws -> [String: Any]? {
         let data: Data
         do {
             data = try Data(contentsOf: path)
         } catch CocoaError.fileReadNoSuchFile {
             return nil
-        } catch {
-            logFailure("settings not re-read before saving: \(error)")
+        }
+        guard let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            logFailure("settings file isn't JSON, saved over")
             return nil
         }
-        do {
-            return try JSONDecoder().decode(Settings.self, from: data)
-        } catch {
-            logFailure("settings file damaged, saved over: \(error)")
-            return nil
-        }
+        return file
     }
 
     /// The top-level keys as they'd be written, for comparing and merging. A nil optional is a missing key.
-    private static func fields(_ settings: Settings, _ encoder: JSONEncoder) throws -> [String: Any] {
-        guard let object = try JSONSerialization.jsonObject(with: encoder.encode(settings)) as? [String: Any] else {
+    private static func fields(_ settings: Settings) throws -> [String: Any] {
+        guard let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as? [String: Any] else {
             throw CocoaError(.coderInvalidValue)
         }
         return object
+    }
+
+    /// An flock on a file of its own, held around read, merge and rename, so two processes' saves can't interleave. It
+    /// tries again for up to `wait` and then gives up, rather than holding up FM's main thread for long.
+    private struct FileLock {
+        let descriptor: Int32
+
+        init(_ url: URL, wait: TimeInterval) throws {
+            descriptor = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+            guard descriptor >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+            let deadline = Date().addingTimeInterval(wait)
+            while flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+                let error = errno
+                guard error == EWOULDBLOCK || error == EINTR, Date() < deadline else {
+                    close(descriptor)
+                    throw POSIXError(error == EWOULDBLOCK ? .ETIMEDOUT : .init(rawValue: error) ?? .EIO)
+                }
+                usleep(10_000)
+            }
+        }
+
+        func release() {
+            flock(descriptor, LOCK_UN)
+            close(descriptor)
+        }
     }
 
     private static func logFailure(_ message: String) {
