@@ -31,11 +31,16 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
         lock.withLock { calls += 1 }
         return (.interested, .doubtful)
     }
-    /// Staff FM says wouldn't join at any level, and false for FM not answering about staff at all.
+    /// Staff FM says wouldn't join at any level, staff FM gives no answer for, and false for FM not answering about staff at all.
     var staffWontJoin: Set<UInt32> = []
+    var staffUnanswered: Set<UInt32> = []
     var staffAnswers = true
+    /// The staff FM was asked about.
+    private var askedStaff: Set<UInt32> = []
+    var staffAsked: Set<UInt32> { lock.withLock { askedStaff } }
     func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? {
-        staffAnswers ? level == 1 && !staffWontJoin.contains(staff.uid) : nil
+        lock.withLock { _ = askedStaff.insert(staff.uid) }
+        return staffAnswers && !staffUnanswered.contains(staff.uid) ? level == 1 && !staffWontJoin.contains(staff.uid) : nil
     }
     func preferredJob(staff: Staff) -> Int? { nil }
     func jobPreferences(staff: Staff) -> [UInt8]? { nil }

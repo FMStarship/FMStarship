@@ -236,7 +236,8 @@ extension Toolbox {
                 + "answer (as person's Would join your club). Each row: age, job now, club, score for the job (stars for coaching "
                 + "jobs), FM's stars, key attributes, wage, how much they want the job (FM's 1-20 and its word), the job they prefer, "
                 + "would join (first team, reserves, youth or No), and against the club's best in that job. head says who the club has "
-                + "and how many places the board allows; interest says whether FM was asked who'd join. Wages are in the user's "
+                + "and how many places the board allows; interest says whether FM was asked who'd join, for whom it gave no answer, and when it stopped at the best "
+                + "\(Toolbox.staffDeepest). Wages are in the user's "
                 + "currency per the user's wage period (see game_status).",
              parameters: [
                 Parameter(name: "role", type: "string", description: "The job, as the app names it.", choices: Toolbox.staffRoleNames,

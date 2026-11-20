@@ -112,6 +112,8 @@ public struct AnalysisTable {
     public var status: String
     /// False when the list could not be narrowed by the game's own interest check, so the UI can say so.
     public var interestChecked: Bool
+    /// True when a search stopped at how far down the ranking it may look, before finding as many as it wanted.
+    public var stoppedAtDeepest = false
 
     public init(columns: [TableColumn] = [], rows: [TableRow] = [], head: String = "", status: String = "",
                 interestChecked: Bool = true) {

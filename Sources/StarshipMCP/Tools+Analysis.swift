@@ -174,6 +174,9 @@ extension Toolbox {
     /// The app's "For your" box, and its "Wants the job" box, in order.
     static let staffLevels = ["first_team", "reserves", "youth"]
     static let staffKeenness = ["open_to_it", "keen", "favourite", "anyone"]
+    /// How far down a job's ranking FM is asked who'd join: each one asked is several of FM's rules, and the server answers
+    /// one call at a time. The app's staff overview stops at 480.
+    static let staffDeepest = 600
 
     func recommendStaff(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let club = try context.ownClub(try args.string("club"))
@@ -201,20 +204,38 @@ extension Toolbox {
         if let keen = try args.choice("wants_job", Self.staffKeenness) { options.keen = Self.staffKeenness.firstIndex(of: keen) ?? 0 }
         options.onlyJoin = try args.bool("only_join") ?? true
         let limit = try args.int("limit", in: 1...25) ?? 10
-        guard var table = recommender.find(options) else { throw ToolError("The search was stopped.") }
-
         let checks = session.checks
+        let failedBefore = checks.failures
+        guard var table = recommender.find(options, wanted: limit, deepest: Self.staffDeepest) else {
+            throw ToolError("The search was stopped.")
+        }
+        // People FM couldn't answer for in this call; it remembers only the answers it gave.
+        let failed = max(checks.failures - failedBefore, 0)
+
         let team = recommender.levelNames[options.level]
-        let interest: String
+        // As the screen writes the level: "first team", otherwise the team's own name.
+        let teamText = options.level == 0 ? "first team" : team
+        var interest: String
         if !recommender.onlyJoinEnabled {
             let why = context.read.engine == nil ? "FM's rules are off on this build of FM"
                 : "FM only answers that for a club the user manages, and FM Starship found no manager at \(club.name)"
             interest = "FM couldn't be asked who'd join: \(why). This list isn't narrowed to people who'd come, and Would join is empty."
         } else if options.onlyJoin {
-            interest = !table.interestChecked
-                ? "FM didn't answer who'd join, so this list isn't narrowed to people who'd come, and Would join is empty. Ask again in a moment."
-                : table.rows.isEmpty ? "Nobody FM says would join \(club.name)'s \(team.lowercased()) passes these settings."
-                : "Everyone listed is someone FM says would join \(club.name)'s \(team.lowercased())."
+            if !table.interestChecked {
+                let asked = failed > 0 ? "any of the \(failed) people it was asked about" : "anyone it was asked about"
+                interest = "FM gave no answer about who'd join for \(asked), so this list isn't narrowed to people who'd come, and Would join "
+                    + "is empty. Don't present it as people who'd come. If asking again gives the same, FM can't answer it for "
+                    + "\(club.name) on this build of FM."
+            } else {
+                interest = table.rows.isEmpty
+                    ? failed == 0 && !table.stoppedAtDeepest ? "Nobody FM says would join \(club.name)'s \(teamText) passes these settings."
+                        : "None of those FM answered for would join \(club.name)'s \(teamText)."
+                    : "Everyone listed is someone FM says would join \(club.name)'s \(teamText)."
+                if failed > 0 {
+                    interest += " FM didn't answer for \(failed) of the people it was asked about, so they're left out; asking again may "
+                        + "get their answers."
+                }
+            }
         } else {
             // The screen only fills Would join for people FM was asked about, so the rows sent out are asked about here.
             let shown = table.rows.prefix(limit).compactMap { $0.person as? Staff }
@@ -229,14 +250,18 @@ extension Toolbox {
             interest = "Not narrowed to who'd join. Would join is FM's answer for each one listed, for the first team, reserves and youth"
                 + (unanswered == 0 ? "." : "; FM didn't answer for \(unanswered) of them, whose Would join is empty.")
         }
+        if table.stoppedAtDeepest {
+            interest += " FM was asked about the best \(Self.staffDeepest) for the job who pass these settings and no further, so there may "
+                + "be more further down: a lower wage_max or an age_max reaches others."
+        }
         table.status = table.status.replacingOccurrences(of: "'Anyone' for wanting the job", with: "wants_job anyone")
             .replacingOccurrences(of: "untick 'Only staff who'd join'", with: "only_join false")
 
         var pairs: [(String, JSON)] = [("club", .string(club.name)), ("role", .string(name)), ("team", .string(team))]
         pairs += Output.table(table, limit: limit)
         pairs.append(("interest", .string(interest)))
-        if wageMax == nil, !options.maxWage.isEmpty, let room = session.budget?.wageRoom {
-            pairs.append(("wage_max", .string("Left out, so up to the club's wage room, \(Units.wageText(room, withSuffix: true)), "
+        if wageMax == nil, !options.maxWage.isEmpty {
+            pairs.append(("wage_max", .string("Left out, so up to the club's wage room, \(recommender.startingMaxWageText), "
                 + "as the app's screen starts. Give wage_max to look further.")))
         }
         // As the screen's note: what this build of FM couldn't tell.
