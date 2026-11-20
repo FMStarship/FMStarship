@@ -7,9 +7,17 @@ import UniformTypeIdentifiers
 extension AppModel {
     private static var shortlistType: UTType { UTType(filenameExtension: ShortlistFile.fileExtension) ?? .data }
 
+    /// Where to look for FM's shortlists: everywhere FM keeps them, but inside FM only in Sports Interactive's own folder, as
+    /// the plugin's own Shortlists tab does, so macOS never asks the player whether FM may look somewhere. Nil is every folder.
+    var shortlistRoots: [URL]? { Self.shortlistRoots(insideGame: Self.isInsideGame) }
+
+    static func shortlistRoots(insideGame: Bool, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL]? {
+        insideGame ? ShortlistFile.fmFolderRoots(home: home) : nil
+    }
+
     /// "Add ... to shortlist": `PersonMenu.FillShortlists`.
     func shortlistEntries(_ people: [Person], isStaff: Bool) -> [MenuEntry] {
-        let lists = ShortlistFile.list(isStaff: isStaff)
+        let lists = ShortlistFile.list(isStaff: isStaff, roots: shortlistRoots)
         var entries = lists.map { entry -> MenuEntry in
             let have = people.filter { entry.shortlist.uids.contains($0.uid) }.count
             let note = have == people.count ? " - already in it" : have > 0 ? " - \(have) already in it" : ""
@@ -18,7 +26,7 @@ extension AppModel {
             }
         }
         if lists.isEmpty {
-            let hasFolder = ShortlistFile.folder(isStaff: isStaff) != nil
+            let hasFolder = ShortlistFile.folder(isStaff: isStaff, roots: shortlistRoots) != nil
             entries.append(MenuEntry(hasFolder ? "(no \(isStaff ? "staff" : "player") shortlists yet)" : "(FM's shortlists folder not found)", enabled: false))
         }
         entries.append(.separator)
@@ -84,7 +92,7 @@ extension AppModel {
     }
 
     func newShortlist(_ people: [Person], isStaff: Bool) {
-        guard let folder = ShortlistFile.folder(isStaff: isStaff) else {
+        guard let folder = ShortlistFile.folder(isStaff: isStaff, roots: shortlistRoots) else {
             saveAsShortlist(people, isStaff: isStaff, name: isStaff ? "FM Starship staff" : "FM Starship players")
             return
         }
@@ -111,7 +119,7 @@ extension AppModel {
             Dialogs.inform("FM shortlist", "There's nobody to save - select some rows first.")
             return
         }
-        let folder = ShortlistFile.folder(create: true, isStaff: isStaff)
+        let folder = ShortlistFile.folder(create: true, isStaff: isStaff, roots: shortlistRoots)
         let what = "\(people.count) \(isStaff ? "staff" : "players")"
         let panel = NSSavePanel()
         panel.title = "Save \(what) as an FM shortlist"
@@ -158,7 +166,7 @@ extension AppModel {
         let panel = NSOpenPanel()
         panel.title = "Open an FM shortlist"
         panel.allowedContentTypes = [Self.shortlistType]
-        panel.directoryURL = ShortlistFile.folder()
+        panel.directoryURL = ShortlistFile.folder(roots: shortlistRoots)
         Dialogs.present(panel) { [weak self] url in self?.openShortlistFile(url) }
     }
 

@@ -27,6 +27,14 @@ extension ShortlistFile {
         return roots.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
+    /// `gameRoots` inside Sports Interactive's own folder only, for inside FM. FM reads and writes there itself. Anywhere else
+    /// may be a folder macOS asks about before FM may look in it: Documents, where the Windows game keeps them, and also iCloud
+    /// Drive or a cloud drive under `~/Library`, wherever a last save went.
+    public static func fmFolderRoots(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
+        let ours = home.appendingPathComponent("Library/Application Support/Sports Interactive").standardizedFileURL.path + "/"
+        return gameRoots(home: home).filter { $0.standardizedFileURL.path.hasPrefix(ours) }
+    }
+
     private static func lastSaveRoots(in preferences: URL) -> [URL] {
         guard let files = FileManager.default.enumerator(at: preferences, includingPropertiesForKeys: nil) else { return [] }
         let value = try? NSRegularExpression(pattern: "value=\"([^\"]+)\"")

@@ -81,8 +81,9 @@ struct ShortlistsScreen: View {
 
     private func read() async {
         reading = true
+        let roots = model.shortlistRoots
         let found = await offMain {
-            (ShortlistFile.list(isStaff: false), ShortlistFile.list(isStaff: true))
+            (ShortlistFile.list(isStaff: false, roots: roots), ShortlistFile.list(isStaff: true, roots: roots))
         }
         players = found.0
         staff = found.1

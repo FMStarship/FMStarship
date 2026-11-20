@@ -1897,10 +1897,9 @@ final class FMInterface {
             return .tables([TableSection(title: "Bargains", table: table, fmColumns: bargainColumns, fmExtras: ["CA", "PA", "Would join on"])])
         case .shortlists:
             let players = Dictionary(session.db.players.map { ($0.uid, $0) }, uniquingKeysWith: { first, _ in first })
-            // Only FM's own folders, under Library: looking in Documents, where the Windows game keeps them, would make
+            // Only FM's own folders: looking in Documents, where the Windows game keeps them, or in iCloud Drive, would make
             // macOS ask the player whether FM may, which FM never does itself.
-            let library = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library").path + "/"
-            var roots = ShortlistFile.gameRoots().filter { $0.standardizedFileURL.path.hasPrefix(library) }
+            var roots = ShortlistFile.fmFolderRoots()
             #if STARSHIP_DEVELOPER
             roots += [testShortlistRoot].compactMap { $0 }
             #endif
