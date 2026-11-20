@@ -120,10 +120,11 @@ extension AppModel {
     }
 
     /// The app's window on the Players or Staff screen, with its filters open, over FM.
+    /// The sheet is up before the window shows, so showing it can't start a read that would search with a half-edited filter.
     package func editFiltersInsideGame(staff: Bool) {
         go(to: staff ? .staff : .players)
-        openInsideGame?(.main)
         editingFilter = true
+        openInsideGame?(.main)
     }
     package func title(of window: StarshipWindow) -> String {
         switch window {

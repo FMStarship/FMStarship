@@ -69,7 +69,7 @@ struct ReportGrid: View {
             VStack(alignment: .leading, spacing: Metric.gap) {
                 if !table.head.isEmpty { LeadLine(text: table.head) }
                 if !table.interestChecked {
-                    NotNarrowedBanner(text: SaveProgress.joinWarning(model.saveMovedOn))
+                    NotNarrowedBanner(text: model.joinWarning)
                 }
                 Panel(title: title) { grid }
             }

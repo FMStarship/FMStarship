@@ -44,9 +44,9 @@ final class SaveProgressTests: XCTestCase {
 
     func testTheNoticeSaysBothDaysAndWhatToDo() {
         let progress = SaveProgress(readOn: day(2029, 9, 12), now: day(2029, 9, 22))
-        XCTAssertEqual(progress?.notice, "Your save is on 22 Sep 2029; this was read on 12 Sep. Load Save to read it again.")
+        XCTAssertEqual(progress?.notice, "FM is on 22 Sep 2029, but what FM Starship shows was read on 12 Sep. Press Load Save to read it again.")
         let newYear = SaveProgress(readOn: day(2028, 12, 28), now: day(2029, 1, 3))
-        XCTAssertEqual(newYear?.notice, "Your save is on 3 Jan 2029; this was read on 28 Dec 2028. Load Save to read it again.")
+        XCTAssertEqual(newYear?.notice, "FM is on 3 Jan 2029, but what FM Starship shows was read on 28 Dec 2028. Press Load Save to read it again.")
     }
 
     func testTheModelFollowsTheDateFMHoldsNow() {
@@ -73,8 +73,10 @@ final class SaveProgressTests: XCTestCase {
         let model = model(readOn: day(2029, 9, 12))
         XCTAssertFalse(model.takeReadOnShow(), "The save hasn't moved on")
         model.saveDateSeen(day(2029, 9, 22))
+        model.saveDateSeen(day(2029, 9, 22))
         XCTAssertTrue(model.takeReadOnShow())
         XCTAssertFalse(model.takeReadOnShow(), "Not again for the same day, so a read that fails isn't started over and over")
+        model.saveDateSeen(day(2029, 9, 23))
         model.saveDateSeen(day(2029, 9, 23))
         model.loading = true
         XCTAssertFalse(model.takeReadOnShow(), "Not while a read is going on")
@@ -82,10 +84,83 @@ final class SaveProgressTests: XCTestCase {
         XCTAssertTrue(model.takeReadOnShow(), "Once more for the next day")
     }
 
+    func testNoReadWhileFMIsStillPressingOnThroughDays() {
+        let model = model(readOn: day(2029, 9, 12))
+        model.saveDateSeen(day(2029, 9, 20))
+        XCTAssertNotNil(model.saveMovedOn, "The notice is up")
+        XCTAssertFalse(model.takeReadOnShow(), "Seen once: FM may still be on its way")
+        model.saveDateSeen(day(2029, 9, 21))
+        XCTAssertFalse(model.takeReadOnShow(), "Another day since the last look")
+        XCTAssertNotNil(model.saveMovedOn, "The notice stays up")
+        model.saveDateSeen(day(2029, 9, 21))
+        XCTAssertTrue(model.takeReadOnShow(), "Two looks in a row on the same day")
+    }
+
+    func testNoReadWhileASheetIsOpen() {
+        for sheet in [\AppModel.editingFilter, \.editingColumns] {
+            let model = model(readOn: day(2029, 9, 12))
+            model.saveDateSeen(day(2029, 9, 22))
+            model.saveDateSeen(day(2029, 9, 22))
+            model[keyPath: sheet] = true
+            XCTAssertFalse(model.takeReadOnShow(), "A read would search with a half-edited filter, or columns")
+            model.windowShown()
+            XCTAssertFalse(model.loading, "Showing the window starts no read either")
+            model[keyPath: sheet] = false
+            XCTAssertTrue(model.takeReadOnShow(), "Once it's closed")
+        }
+    }
+
+    func testNoReadWhileAShortlistIsOpen() {
+        let model = model(readOn: day(2029, 9, 12))
+        model.go(to: .shortlists)
+        model.showShortlist(OpenShortlist(url: URL(fileURLWithPath: "/nowhere/Targets.fmf"), name: "Targets", isStaff: false, uids: [1]))
+        model.saveDateSeen(day(2029, 9, 22))
+        model.saveDateSeen(day(2029, 9, 22))
+        XCTAssertFalse(model.takeReadOnShow(), "A read closes the shortlist")
+        model.go(to: .players)
+        XCTAssertTrue(model.takeReadOnShow(), "Not on the Shortlists screen, nothing open is lost")
+    }
+
+    func testAnotherSaveOnTheSameDayReadsAgain() {
+        // Read on the 12th, moved on to the 22nd, read on showing. Then an earlier save, moved on to the 22nd as well.
+        let model = model(readOn: day(2029, 9, 12))
+        model.saveDateSeen(day(2029, 9, 22))
+        model.saveDateSeen(day(2029, 9, 22))
+        XCTAssertTrue(model.takeReadOnShow())
+        let earlier = Database()
+        earlier.gameDate = day(2029, 9, 15)
+        model.database = earlier
+        model.saveDateSeen(day(2029, 9, 22))
+        model.saveDateSeen(day(2029, 9, 22))
+        XCTAssertTrue(model.takeReadOnShow(), "Another save, though FM is on the same day")
+    }
+
+    func testAReadThatFailsOnItsOwnSaysSoOnTheStatusLine() {
+        let model = AppModel()
+        model.loading = true
+        model.failed("Football Manager isn't running.", automatic: true)
+        XCTAssertFalse(model.loading)
+        XCTAssertEqual(model.status, "Football Manager isn't running.")
+        XCTAssertNil(model.alert, "Nobody asked for it, so no alert")
+        model.loading = true
+        model.failed("Football Manager isn't running.")
+        XCTAssertEqual(model.alert, "Football Manager isn't running.", "Load Save pressed: the alert as before")
+    }
+
     func testTheWarningSaysNobodyIsKnownToWantToCome() {
-        XCTAssertEqual(SaveProgress.joinWarning(nil),
-                       "FM couldn't be asked who would join, so nobody in this list is known to want to come. Load Save to try again.")
-        XCTAssertEqual(SaveProgress.joinWarning(SaveProgress(readOn: day(2029, 9, 12), now: day(2029, 9, 22))),
-                       "FM couldn't be asked who would join, so nobody in this list is known to want to come. Your save has moved on to 22 Sep 2029 since it was read: Load Save to read it again.")
+        let base = "FM couldn't be asked who would join, so nobody in this list is known to want to come."
+        let progress = SaveProgress(readOn: day(2029, 9, 12), now: day(2029, 9, 22))
+        XCTAssertEqual(SaveProgress.joinWarning(nil, canReload: true), base + " Press Load Save to try again.")
+        XCTAssertEqual(SaveProgress.joinWarning(progress, canReload: true),
+                       base + " FM has moved on to 22 Sep 2029 since your save was read. Press Load Save to read it again.")
+        // A snapshot, or a build with FM's rules off: Load Save can't help.
+        XCTAssertEqual(SaveProgress.joinWarning(nil, canReload: false), base)
+        XCTAssertEqual(SaveProgress.joinWarning(progress, canReload: false), base)
+    }
+
+    func testWithoutTheLiveGameTheWarningDoesntSendYouToLoadSave() {
+        XCTAssertNil(GameRules.engine)
+        let model = model(readOn: day(2029, 9, 12))
+        XCTAssertEqual(model.joinWarning, "FM couldn't be asked who would join, so nobody in this list is known to want to come.")
     }
 }

@@ -18,6 +18,8 @@ struct MainWindow: View {
                     if model.database != nil, let progress = model.saveMovedOn {
                         SaveMovedOnNotice(progress: progress)
                             .padding([.horizontal, .top], Metric.gutter)
+                            // Opaque, so what scrolls under it doesn't show through.
+                            .background(colors.ui.ground)
                     }
                 }
                 .overlay(alignment: .bottom) {
@@ -55,6 +57,8 @@ struct MainWindow: View {
         .onAppear {
             model.openWindow = openWindow
             model.applyAppearance()
+            // Reopening the window while the app is already in front. Inside FM the plugin says when it's shown.
+            if !AppModel.isInsideGame { model.windowShown() }
         }
         // Inside FM that's FM coming to the front; the plugin says when this window is shown instead.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

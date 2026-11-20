@@ -196,8 +196,15 @@ package final class AppModel: ObservableObject {
     private var playersByUID: [UInt32: Player] = [:]
     private var staffByUID: [UInt32: Staff] = [:]
     private var laterChecks = LaterChecks()
-    /// The day a read was started for on showing the window, so that showing it again starts no more for that day.
-    private var readOnShowFor: Date?
+    /// The save and day a read was started for on showing the window, so that showing it again starts no more for them.
+    private var readOnShowFor: SaveProgress?
+    /// The day the last look at FM's date saw, and whether the look before saw the same: FM isn't pressing on through days.
+    private var lastDaySeen: Date?
+    private var daySettled = false
+    /// Outside FM a look at the date goes through the agent, off the main thread, one at a time.
+    private var lookingAtDate = false
+    /// Set when the window is shown, so the next look at the date can start a read.
+    private var readIfMovedOn = false
     /// What the poll below costs. Inside FM it runs on FM's main thread, and the plugin logs it.
     package let checkGameCost = TimerCost()
 
@@ -379,7 +386,8 @@ package final class AppModel: ObservableObject {
         gameState = GameLauncher.state
     }
 
-    func loadSave() {
+    /// `automatic` for a read the player didn't ask for, which says it failed on the status line rather than in an alert.
+    func loadSave(automatic: Bool = false) {
         guard !loading else { return }
         loading = true
         status = "Connecting to Football Manager..."
@@ -391,7 +399,7 @@ package final class AppModel: ObservableObject {
                 let data = NewData(database)
                 await self?.finished(data, engine)
             } catch {
-                await self?.failed("\(error)")
+                await self?.failed("\(error)", automatic: automatic)
             }
         }
     }
@@ -405,10 +413,10 @@ package final class AppModel: ObservableObject {
         if let engine { loadSeasonStats(database, engine) }
     }
 
-    private func failed(_ message: String) {
+    func failed(_ message: String, automatic: Bool = false) {
         loading = false
         status = message
-        alert = message
+        if !automatic { alert = message }
     }
 
     /// Everything that follows new data, wherever it came from.
@@ -419,6 +427,8 @@ package final class AppModel: ObservableObject {
         seasonStatsAvailable = true
         laterChecks = LaterChecks()
         saveMovedOn = nil
+        lastDaySeen = nil
+        daySettled = false
 
         RulesState.shared.reset()
         RulesState.shared.fill(database)
@@ -458,35 +468,80 @@ package final class AppModel: ObservableObject {
         GameRules.engine = nil
         RulesState.shared.reset()
         saveMovedOn = nil
+        lastDaySeen = nil
+        daySettled = false
         status = "Football Manager closed. Showing what was last loaded."
         cellsVersion += 1
     }
 
     /// Looks at FM's game date where the read found it: two small reads, where reading everything again takes seconds,
     /// so it's done on the poll and the save is only read again when the window is shown or Load Save is pressed.
+    /// Inside FM they're reads of FM's own memory, on its main thread as before. Outside it they're round trips to the
+    /// agent, which would hold up the app's window if FM stopped answering, so they're made off the main thread.
     private func followSaveDate(_ game: GameProcess) {
-        guard !loading, let database else { return }
-        saveDateSeen(GameReader.gameDate(of: database, in: game))
+        guard !loading, !lookingAtDate, let database else { return }
+        guard !Self.isInsideGame else {
+            dateLooked(GameReader.gameDate(of: database, in: game))
+            return
+        }
+        lookingAtDate = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let now = GameReader.gameDate(of: database, in: game)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.lookingAtDate = false
+                    // A read started or finished meanwhile: what was looked at belongs to the save before it.
+                    guard !self.loading, self.database === database else {
+                        self.readIfMovedOn = false
+                        return
+                    }
+                    self.dateLooked(now)
+                }
+            }
+        }
+    }
+
+    private func dateLooked(_ now: Date?) {
+        saveDateSeen(now)
+        readIfShown()
+    }
+
+    /// Starts the read the window's showing asked for, if `takeReadOnShow` agrees.
+    private func readIfShown() {
+        guard readIfMovedOn else { return }
+        readIfMovedOn = false
+        if takeReadOnShow() { loadSave(automatic: true) }
     }
 
     /// FM's game date as it is now, nil when it can't be told, as once FM has let go of the save that was read.
     func saveDateSeen(_ now: Date?) {
+        daySettled = now != nil && now == lastDaySeen
+        lastDaySeen = now
         let progress = SaveProgress(readOn: database?.gameDate, now: now)
         if progress != saveMovedOn { saveMovedOn = progress }
     }
 
+    /// Over a list the game couldn't narrow by who would join.
+    var joinWarning: String { SaveProgress.joinWarning(saveMovedOn, canReload: GameRules.engine != nil) }
+
     /// FM Starship's window has been shown, or the app has come to the front. If the save has moved on since it was
-    /// read, it's read again.
+    /// read, it's read again, once the date has been looked at.
     package func windowShown() {
+        readIfMovedOn = true
         if let engine = GameRules.engine as? RulesEngine, GameProcess.runningPID() == engine.pid { followSaveDate(engine.game) }
-        if takeReadOnShow() { loadSave() }
+        // A look still going on starts the read when it's done.
+        if !lookingAtDate { readIfShown() }
     }
 
-    /// Whether showing the window should start a read: once for each day the save has moved on to, so a read that
-    /// fails, or a window shown again and again, doesn't start one after another.
+    /// Whether showing the window should start a read: once for each save and day it has moved on to, so a read that
+    /// fails, or a window shown again and again, doesn't start one after another. Not while FM is still pressing on
+    /// through days, nor while the player is in the middle of something a read would throw away: a sheet, or a
+    /// shortlist, which a read closes.
     func takeReadOnShow() -> Bool {
-        guard let saveMovedOn, !loading, saveMovedOn.now != readOnShowFor else { return false }
-        readOnShowFor = saveMovedOn.now
+        guard let saveMovedOn, !loading, daySettled, !editingFilter, !editingColumns,
+              screen != .shortlists || openShortlist == nil, saveMovedOn != readOnShowFor else { return false }
+        readOnShowFor = saveMovedOn
         return true
     }
 

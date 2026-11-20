@@ -3,7 +3,7 @@ import StarshipCore
 
 /// The save FM has loaded, further on than when it was read. FM's rules are then asked about people through a read of a
 /// day that has gone, and their answers fail, so the screens say so rather than show what's left as current.
-struct SaveProgress: Equatable {
+package struct SaveProgress: Equatable {
     /// The game date the read found.
     let readOn: Date
     /// The game date FM's memory holds now.
@@ -18,14 +18,16 @@ struct SaveProgress: Equatable {
 
     /// One line over every screen.
     var notice: String {
-        "Your save is on \(Self.day(now)); this was read on \(Self.day(readOn, withYear: !sameYear)). Load Save to read it again."
+        "FM is on \(Self.day(now)), but what FM Starship shows was read on \(Self.day(readOn, withYear: !sameYear)). Press Load Save to read it again."
     }
 
-    /// Over a list the game couldn't narrow by who would join.
-    static func joinWarning(_ progress: SaveProgress?) -> String {
+    /// Over a list the game couldn't narrow by who would join. Load Save is only mentioned when it can help: with the
+    /// live game and FM's rules on (`canReload`), not for a snapshot or a build whose rules are off.
+    package static func joinWarning(_ progress: SaveProgress?, canReload: Bool) -> String {
         let warning = "FM couldn't be asked who would join, so nobody in this list is known to want to come."
-        guard let progress else { return warning + " Load Save to try again." }
-        return warning + " Your save has moved on to \(day(progress.now)) since it was read: Load Save to read it again."
+        guard canReload else { return warning }
+        guard let progress else { return warning + " Press Load Save to try again." }
+        return warning + " FM has moved on to \(day(progress.now)) since your save was read. Press Load Save to read it again."
     }
 
     private var sameYear: Bool {
