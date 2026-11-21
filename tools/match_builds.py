@@ -71,6 +71,9 @@ KINDS = {
     'trainedInNation': ('function',),
     'disciplineGlobal': ('global',),
     'countUntilNextBan': ('function',),
+    'squadRuleValue': ('function',),
+    'squadRuleNames': ('global',),
+    'squadRuleDirections': ('global',),
 }
 
 # The classes GameReader finds by name (its vt(...) calls), then FixturesReader's, and the class of a player's form

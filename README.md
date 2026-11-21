@@ -140,7 +140,8 @@ and why the others didn't play, both sides' possession, xG, shots, shots on targ
 starting eleven and bench you've picked for the next match with a warning for anyone banned
 or injured for it, FM's scout's predicted line-up of your next opponent, what's come into your inbox in about the last month
 (injuries and how long, contracts running out, transfers, fines, unhappiness, and each item's kind, date and sender), each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
-each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how your players have developed
+each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, each
+competition's squad rules counted against your squad by FM's own rules, how your players have developed
 between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
 recommended staff and bargains.
 
@@ -385,6 +386,8 @@ how each value was first found:
 | `trainedAtClub`, `trainedInNation` | The two `bl` targets in slot 2 of `OWN_PLAYER_RULE_PLAYER_IS_HOMEGROWN_PLAYER_FOR_CLUB`, which answers 2 for the first and 1 for the second |
 | `disciplineGlobal` | The global FM's code reads `GAME_DISCIPLINE` through, as `[[global] + 0x158] + 0x70` (`MacLayout.Discipline`). The object at the end has `GAME_DISCIPLINE`'s vtable, the one a vtable scan finds |
 | `countUntilNextBan` | Called in a loop over a player's `PLAYER_BOOKING_COUNT`s by FM's "one booking from a ban" check (`+0xd6d7b0` on 27.1.0, which takes a `db::COMP` and flags an answer of 1; the strings `TSF_UPCOMING_SUSPENSION` and `PLAYER_HAS_HIGH_NUMBER_OF_BOOKINGS` are a lead to it, not checked). Takes (discipline, count, rules index, out left, out length, fixture, out count, out last ban) with `[-1, 0, 0, 0]` on the stack. `BookingsReader`'s check is the test: its count must be the one read, and the latest ban for bookings must have come at its last step |
+| `squadRuleValue` | `PLAYER::get_squad_selection_rule_value`, on FM's eligibility path. Takes (player, rule type, team, -1, -1, squad-selection group, `db::COMP`, 0) with eight zeros on the stack and answers 0 or 1. `SquadRulesReader`'s check is the test: squad size must count everyone at the human clubs, and the home-grown types must agree with `trainedAtClub` and `trainedInNation` for each of them |
+| `squadRuleNames`, `squadRuleDirections` | FM's own tables of {C string, value} pairs: every squad-rule type's name (`max_squad_size` is 9, and the table ends at 65535), and `less_than`, `equals`, `more_than` for -1, 0 and 1. Found by their strings in the image |
 
 The optimizer reads FM's own tactic data from `game_plugin.bundle/Contents/Resources/shared/data/simatch.fmf`, so it follows
 patches: the `.tac` presets, `styles.xml` (favoured attributes, preferred roles, features of play) and the role complexity
@@ -435,6 +438,18 @@ FM Starship's own parts, and how to check them after a patch:
   one of FM's objects, the counter rising, dates never going back or past the game date, and every item for one of the club's
   teams or for none; and an injury report's length must match the player's own record. On Molde's save FM kept 150 items, 26 days; whether 150
   is a limit isn't known, so the answer always says when its window starts. No read or unread flag was found.
+- **Squad rules** are each competition's `FIXTURE_RULES` (`MacLayout.FixtureRules`), reached as FM's import code writes it:
+  `ACTUAL_COMP` + 0x49 picks an entry of `[[ACTUAL_COMP + 0x388] + 0x1f0] + 0x60`, -1 for none, and that entry's +0x70 is a
+  vector of `SQUAD_SELECTION_RULE`s, each a type, a limit and a direction. `SquadRulesReader` names the types from FM's own table
+  and asks FM's `squadRuleValue` whether each player counts. On 27.1.0, Eliteserien held a squad of 20 to 30, at most 25 on
+  professional or part-time contracts and 5 on youth or amateur contracts, at least 16 trained in Norway up to 21, at most 9 not
+  home-grown and at least 2 trained at the club; the Champions League, Europa League and Conference League shared at most 25,
+  at least 8 trained in the nation between 15 and 21, at least 4 of them at the club, and at least 2 goalkeepers; the cup had
+  none. FM kept no registration list for Molde, so the MCP server's `squad_rules` counts the squad asked for and never says who
+  is registered. The read is switched off with the reason when a rule set doesn't carry its own entry (+0x120) and owner
+  (+0x88), when FM's tables don't read back as FM's, or, for the counts alone, when FM's values disagree with squad size or FM's
+  own home-grown tests for the human clubs' players. The direction is read as at most, exactly and at least: Molde's squad sat
+  exactly on three limits, which a strict "less than" would make breaches.
 - **Squad overview and Staff overview** are `OverviewReport`s: each place, how it stands against the league, and the best
   person who'd join. Staff jobs come from FM's own board table, `StaffLimits.Club`. Its entries were matched to jobs by comparing
   them with who holds each job at 600 clubs, which `fmprobe staffmap 7 600` repeats if a patch reorders them.

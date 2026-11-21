@@ -37,6 +37,11 @@ public final class RulesEngine: GameRulesEngine {
         package static let trainedInNation: Int64 = 0xd1c1c4
         package static let disciplineGlobal: Int64 = 0x57b5998
         package static let countUntilNextBan: Int64 = 0x3d07978
+        package static let squadRuleValue: Int64 = 0x150efa0
+        /// FM's table of squad-rule types: {name, value} pairs, ending at the value 65535.
+        package static let squadRuleNames: Int64 = 0x5753938
+        /// FM's three names for a squad rule's direction, as {name, value} pairs.
+        package static let squadRuleDirections: Int64 = 0x5755e38
     }
 
     public static let transfer: UInt64 = 4
@@ -76,6 +81,8 @@ public final class RulesEngine: GameRulesEngine {
     private let interestAnswers = InterestAnswers()
     private let teamNames = TeamNames()
     private let roleLock = NSLock()
+    private let tablesLock = NSLock()
+    private var tables: (types: [Int: [String]]?, directions: [Int: String]?)?
     private var roleMasks: [Int: UInt64] = [:]
     private let failureLock = NSLock()
     private var failure: String?
@@ -462,6 +469,63 @@ public final class RulesEngine: GameRulesEngine {
                 NextBan(left: Int(a64_read(cpu, out, 2)), length: Int(a64_read(cpu, out + 8, 1)),
                         count: Int(a64_read(cpu, out + 16, 2)), lastBanAt: Int(a64_read(cpu, out + 24, 2)))
             }
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
+    }
+
+    /// FM's names for its squad-rule types, read once from its table, which must end where FM's does, at 65535, and name
+    /// `max_squad_size` 9, as on the build it was checked on.
+    public var squadRuleTypes: [Int: [String]]? { squadRuleTables().types }
+
+    public var squadRuleDirections: [Int: String]? { squadRuleTables().directions }
+
+    private func squadRuleTables() -> (types: [Int: [String]]?, directions: [Int: String]?) {
+        tablesLock.lock()
+        defer { tablesLock.unlock() }
+        if let tables { return tables }
+        var types: [Int: [String]]?
+        if let entries = Self.nameTable(game, at: game.pluginBase &+ Mac27.squadRuleNames, most: 2_048, endValue: 65_535) {
+            var found: [Int: [String]] = [:]
+            for entry in entries where !entry.name.isEmpty { found[Int(entry.value), default: []].append(entry.name) }
+            if found[9]?.contains("max_squad_size") == true { types = found }
+        }
+        var directions: [Int: String]?
+        if let entries = Self.nameTable(game, at: game.pluginBase &+ Mac27.squadRuleDirections, most: 3, endValue: nil) {
+            directions = Dictionary(entries.map { (Int(Int8(truncatingIfNeeded: $0.value)), $0.name) }, uniquingKeysWith: { first, _ in first })
+        }
+        tables = (types, directions)
+        return (types, directions)
+    }
+
+    /// One of FM's tables of {C string, i64} pairs: `most` of them, or up to and without the one whose value is `endValue`,
+    /// which must come within `most`. Nil where a pair can't be read.
+    static func nameTable(_ game: GameProcess, at address: Int64, most: Int, endValue: Int64?) -> [(name: String, value: Int64)]? {
+        guard most > 0, let bytes = game.read(address, count: most * 16) else { return nil }
+        var entries: [(name: String, value: Int64)] = []
+        for index in 0..<most {
+            let name = bytes.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: index * 16, as: Int64.self) }
+            let value = bytes.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: index * 16 + 8, as: Int64.self) }
+            if let endValue, value == endValue { return entries }
+            guard name > 0, let text = game.read(name, count: 96) ?? game.read(name, count: 24) else { return nil }
+            entries.append((String(decoding: text.prefix { $0 != 0 }, as: UTF8.self), value))
+        }
+        return endValue == nil ? entries : nil
+    }
+
+    /// `PLAYER::get_squad_selection_rule_value`, asked as FM's own eligibility check asks it: the player, the type, the
+    /// team, -1 twice, the group and the competition. It ran for 46 players and 15 types on 27.1.0 without a fault, and its
+    /// home-grown answers matched `homeGrown` for all of them.
+    public func squadRuleValue(player: Player, type: Int, team: Int64, group: Int, competition: Int64) -> Int? {
+        guard player.block > 0, team > 0, competition > 0, (0...Int(UInt16.max)).contains(type), (-128...127).contains(group) else { return nil }
+        do {
+            return try sandbox.call(game.pluginBase &+ Mac27.squadRuleValue,
+                                    [UInt64(bitPattern: player.block), UInt64(type), UInt64(bitPattern: team), UInt64.max, UInt64.max,
+                                     UInt64(bitPattern: Int64(group)), UInt64(bitPattern: competition), 0],
+                                    stack: [0, 0, 0, 0, 0, 0, 0, 0]) { Int(Int32(truncatingIfNeeded: a64_get_x($0, 0))) }
         } catch {
             failureLock.lock()
             failure = "\(error)"

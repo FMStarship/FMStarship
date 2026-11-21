@@ -345,6 +345,7 @@ public final class Toolbox: ToolProvider {
             ("read_seconds_ago", age.map { .int($0) }),
             ("rules", .string(rules)),
             ("player_state", Self.stateStatus(db, read.engine, read.bookings)),
+            ("squad_rules", .string(read.squadRules?.status ?? "off: they can't be read from this save")),
             ("self_checks", db.checkProblems.map { .string("failed: \($0)") }),
         ] + settings(currencyKnown: true))
     }

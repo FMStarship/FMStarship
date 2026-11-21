@@ -72,7 +72,7 @@ extension Toolbox {
         Tool(name: "game_status", title: "Game status",
              description: "Whether FM is running with FM Starship, the game date, the clubs human managers run with their budgets, "
                 + "which club the other tools use and its next fixture, whether Hidden attributes and Ability are on, whether "
-                + "condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status can be read, the units money is "
+                + "condition, sharpness, morale, playing time, suspensions, bookings toward a ban, home-grown status and squad rules can be read, the units money is "
                 + "in, and how old the read is. Call first. refresh reads the save again.",
              parameters: [Parameter(name: "refresh", type: "boolean", description: "Read the save again now.")],
              run: { _ in { _, _ in [:] } }),
@@ -221,6 +221,24 @@ extension Toolbox {
                                         + "odds, previews, coach feedback, bans and the like). Left out: all."),
                           Parameter(name: "limit", type: "integer", description: "How many items, 1-200. 50 if left out.")],
              run: { $0.inbox }),
+        Tool(name: "squad_rules", title: "Squad rules",
+             description: Toolbox.matchNames + "Each competition's squad rules as FM holds them, counted against the user's squad "
+                + "by FM's own per-player values: for each rule, FM's number (\"not home-grown: 9 of at most 9\"), how the count "
+                + "stands (within, at the limit, over the maximum, under the minimum), and which players count toward it. "
+                + "at_or_past_a_limit lists the rules the squad is on or past. Without competition, the club's league and the "
+                + "competitions in its fixtures from the last 120 days on, with no_squad_rules naming those FM holds none for, "
+                + "such as a cup. FM keeps no registration list for the club, so this counts the squad asked for as it is "
+                + "now, by FM's rules, and isn't a registration list: it doesn't settle who FM lets play in a competition. "
+                + "Rules for a matchday squad, the team on the pitch, a season or wages are given with FM's number but not "
+                + "counted. The first question takes a few seconds.",
+             parameters: [club,
+                          Parameter(name: "competition", type: "string",
+                                    description: "One competition, by its name as FM shows it, ignoring case, or part of it. Any "
+                                        + "competition FM holds fixtures of, such as one the club could qualify for."),
+                          Parameter(name: "squad", type: "string",
+                                    description: "Which of the club's players to count: \"First team\", \"Reserves\", \"U19\", ... "
+                                        + "or \"all\" for everyone at the club now (not those out on loan). First team if left out.")],
+             run: { $0.squadRules }),
         Tool(name: "staff_overview", title: "Staff overview",
              description: "Each backroom job and training area at the user's club: who's in post, how they stand against the league, and empty places.",
              parameters: [club],

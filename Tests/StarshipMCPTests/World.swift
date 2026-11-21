@@ -224,6 +224,35 @@ final class FakeInbox: InboxSource {
     }
 }
 
+/// Squad rules as `SquadRulesSource` gives them: the league's and the cup's by hand, and FM's values by uid. Counts the
+/// values it's asked for.
+final class FakeSquadRules: SquadRulesSource {
+    var off: String?
+    var countsOff: String?
+    var sets: [UInt32: SquadRuleSet] = World.squadRules()
+    /// FM's value for a player under a type, by FM's first name for it.
+    var value: (UInt32, String) -> Int = World.squadRuleValue
+    private(set) var asked: [(rule: String, players: [UInt32], team: Int64)] = []
+
+    var status: String {
+        if let off { return "off: \(off)" }
+        if let countsOff { return "on, without counts: \(countsOff)" }
+        return "on: FM's own rules and per-player values, checked against squad size and FM's own home-grown tests for 13 players at \(World.club)"
+    }
+
+    func competitionNames() -> [UInt32: String] { sets.mapValues(\.name) }
+    func league(of team: Int64) -> UInt32? { team == World.team ? World.leagueIndex : nil }
+    func rules(competition index: UInt32) -> SquadRuleSet? { off == nil ? sets[index] : nil }
+
+    func count(_ rule: SquadRule, in set: SquadRuleSet, players: [Player], team: Int64) -> SquadRuleCount {
+        asked.append((rule.name, players.map(\.uid), team))
+        if let countsOff { return SquadRuleCount(rule: rule, players: nil, notCounted: countsOff) }
+        if let why = rule.notCounted { return SquadRuleCount(rule: rule, players: nil, notCounted: why) }
+        if rule.isSize { return SquadRuleCount(rule: rule, players: players) }
+        return SquadRuleCount(rule: rule, players: players.filter { value($0.uid, rule.name) == 1 })
+    }
+}
+
 /// A save built by hand, as `GameSource` gives it. It counts its reads, and can say the save has moved on.
 final class FakeSource: GameSource {
     var database: Database
@@ -235,6 +264,7 @@ final class FakeSource: GameSource {
     var bookings: FakeBookings? = FakeBookings(World.bookings())
     var selection: FakeSelection? = FakeSelection()
     var inbox: FakeInbox? = FakeInbox(.items(World.inbox()))
+    var squadRules: FakeSquadRules? = FakeSquadRules()
     private(set) var reads = 0
 
     init(database: Database, engine: GameRulesEngine?) {
@@ -246,7 +276,7 @@ final class FakeSource: GameSource {
         if let problem { throw problem }
         reads += 1
         return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings, selection: selection,
-                        inbox: inbox)
+                        inbox: inbox, squadRules: squadRules)
     }
 
     func isCurrent(_ read: GameRead) -> Bool { current }
@@ -435,6 +465,43 @@ enum World {
                 Booking(rules: 8, competitions: ["Mock Points Cup"], teamPlays: true, plain: false, next: nil),
                 Booking(rules: 6, competitions: [], teamPlays: false, next: next(1, 1))],
         ]
+    }
+
+    // MARK: Squad rules
+
+    static let continentalIndex: UInt32 = 30
+
+    /// The league's: a squad of at most 25, at most 11 on professional contracts, at least 3 trained in the nation, at most 10
+    /// not home-grown, and at most 3 from outside the EU in a matchday squad. None for the cup. The continental cup's, which
+    /// Testing FC doesn't play in: at most 25 and at least 2 goalkeepers.
+    static func squadRules() -> [UInt32: SquadRuleSet] {
+        [
+            leagueIndex: SquadRuleSet(index: leagueIndex, name: "Mock League", record: 0x9000, group: 8, rules: [
+                SquadRule(type: 1, names: ["max_squad_size"], limit: 25, direction: .atMost),
+                SquadRule(type: 5, names: ["players_on_pt_or_ft_contract_in_squad"], limit: 11, direction: .atMost),
+                SquadRule(type: 3, names: ["homegrown_players_0_21_from_nation", "homegrown_players_from_nation"], limit: 3, direction: .atLeast),
+                SquadRule(type: 4, names: ["non_homegrown_players_in_squad"], limit: 10, direction: .atMost),
+                SquadRule(type: 7, names: ["non_eec_players_in_match_squad"], limit: 3, direction: .atMost),
+            ]),
+            cupIndex: SquadRuleSet(index: cupIndex, name: "Mock Cup", record: 0x9100, group: -1, rules: []),
+            continentalIndex: SquadRuleSet(index: continentalIndex, name: "Made-up Champions Cup", record: 0x9200, group: 0, rules: [
+                SquadRule(type: 1, names: ["max_squad_size"], limit: 25, direction: .atMost),
+                SquadRule(type: 6, names: ["goalkeepers_in_squad"], limit: 2, direction: .atLeast),
+            ]),
+        ]
+    }
+
+    /// First 1 to First 11 are on professional contracts. First 1 was trained at the club and First 2 in its nation, as
+    /// `FakeEngine.homeGrown` says, and the youngster in its nation too; everyone else isn't home-grown. First 1 is the
+    /// only goalkeeper.
+    static func squadRuleValue(_ uid: UInt32, _ type: String) -> Int {
+        switch type {
+        case "players_on_pt_or_ft_contract_in_squad": return (1...11).contains(uid) ? 1 : 0
+        case "homegrown_players_0_21_from_nation": return [1, 2, 12].contains(uid) ? 1 : 0
+        case "non_homegrown_players_in_squad": return [1, 2, 12].contains(uid) ? 0 : 1
+        case "goalkeepers_in_squad": return uid == 1 ? 1 : 0
+        default: return 0
+        }
     }
 
     // MARK: Inbox

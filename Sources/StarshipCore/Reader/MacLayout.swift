@@ -288,6 +288,9 @@ enum MacLayout {
         static let rulesSlot: Int64 = 0x48
         /// An object FM Starship doesn't name, whose `CompRules.holder` holds the list of rule sets.
         static let rulesOwner: Int64 = 0x388
+        /// i8: which entry of `CompRules.fixtureRules` holds the competition's squad rules, -1 for none. FM's import code
+        /// writes it as it adds the competition's `FixtureRules`. Eliteserien 0, the Champions League 1 in UEFA's list.
+        static let fixtureRulesSlot: Int64 = 0x49
     }
 
     /// From `ActualComp.rulesOwner` to the rule sets a competition can play under.
@@ -295,6 +298,39 @@ enum MacLayout {
         static let holder: Int64 = 0x1f0
         /// A vector of `DisciplineRules` pointers, the same objects as `Discipline.rules` holds.
         static let list: Int64 = 0x48
+        /// A vector of `FixtureRules` pointers.
+        static let fixtureRules: Int64 = 0x60
+    }
+
+    /// `sicomps::FIXTURE_RULES`, 0x138 bytes with no vtable: among other things, the squad rules of the competitions that play
+    /// under it.
+    enum FixtureRules {
+        /// A pointer to a vector of `SquadRule` pointers: the rules now. Empty for a cup with none.
+        static let squadRules: Int64 = 0x70
+        /// The `ActualComp.rulesOwner` it belongs to.
+        static let owner: Int64 = 0x88
+        /// u8, its own entry in `CompRules.fixtureRules`.
+        static let slot: Int64 = 0x120
+        /// i8, FM's squad-selection group, which FM's per-player rule value is asked with: Eliteserien 8, the Champions
+        /// League 0, -1 for none.
+        static let group: Int64 = 0x125
+    }
+
+    /// `SQUAD_SELECTION_RULE`, 0x20 bytes: one rule as a type FM's own table names, a limit and a direction.
+    enum SquadRule {
+        static let size = 0x20
+        /// 0x18 bytes of a condition, zero for every Norwegian and UEFA rule. In some American sets it holds a short tag,
+        /// which looks like it limits the rule to one kind of team.
+        static let condition = 0
+        static let conditionSize = 0x18
+        /// i32.
+        static let limit = 0x18
+        /// u16, a type in FM's table at `RulesEngine.Mac27.squadRuleNames`.
+        static let type = 0x1c
+        /// i8: -1 at most, 0 exactly, 1 at least, as FM's table at `RulesEngine.Mac27.squadRuleDirections` names them
+        /// less_than, equals and more_than. Molde's squad sits exactly at three of its maximums and minimums, which a strict
+        /// "less than" would make breaches, and FM's one text for these rules says "Maximum of".
+        static let direction = 0x1e
     }
 
     /// `GAME_DISCIPLINE`, FM's one holder of disciplinary rule sets, reached from `RulesEngine.Mac27.disciplineGlobal`.

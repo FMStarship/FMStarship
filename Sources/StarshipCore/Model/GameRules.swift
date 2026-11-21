@@ -79,6 +79,15 @@ public protocol GameRulesEngine: AnyObject {
     /// FM's own answer for one rule set: how many more yellow cards bring a ban, and how long. `bookingCount` is the
     /// player's `MacLayout.BookingCount` under it as FM's memory holds it now, or nil for a player with none yet.
     func nextBan(rules: Int, bookingCount: [UInt8]?) -> NextBan?
+    /// FM's names for its squad-rule types, by type, from its own table: a few types have two. Nil where the table isn't
+    /// found or doesn't read back as one.
+    var squadRuleTypes: [Int: [String]]? { get }
+    /// FM's names for a squad rule's direction, by its value: less_than, equals and more_than. Nil where they aren't found.
+    var squadRuleDirections: [Int: String]? { get }
+    /// FM's own value for one player under one squad-rule type, 0 or 1 for the types checked: whether he counts toward the
+    /// rule for `team` in the competition `competition` (its `db::COMP`) of squad-selection group `group`. Nil when the call
+    /// doesn't finish.
+    func squadRuleValue(player: Player, type: Int, team: Int64, group: Int, competition: Int64) -> Int?
 }
 
 extension GameRulesEngine {
@@ -87,6 +96,9 @@ extension GameRulesEngine {
     public func homeGrown(player: Player) -> HomeGrown? { nil }
     public var discipline: Int64? { nil }
     public func nextBan(rules: Int, bookingCount: [UInt8]?) -> NextBan? { nil }
+    public var squadRuleTypes: [Int: [String]]? { nil }
+    public var squadRuleDirections: [Int: String]? { nil }
+    public func squadRuleValue(player: Player, type: Int, team: Int64, group: Int, competition: Int64) -> Int? { nil }
 }
 
 public enum GameRules {

@@ -30,6 +30,7 @@ final class HiddenOffTests: XCTestCase {
         ("fixtures", [:]), ("fixtures", ["from": "2026-09-01"]), ("fixtures", ["club": "Rivals FC", "from": "2026-09-01"]),
         ("results", [:]), ("results", ["date": "2026-09-20"]), ("results", ["date": "2026-09-13"]), ("league_table", [:]),
         ("development", [:]), ("development", ["uid": 12]), ("development", ["uid": 1]), ("selection", [:]), ("inbox", [:]), ("inbox", ["kind": "injury"]), ("inbox", ["important": true]),
+        ("squad_rules", [:]), ("squad_rules", ["squad": "all"]), ("squad_rules", ["competition": "Made-up Champions Cup"]),
         // The player/manager, as a player and as staff.
         ("person", ["uid": 600]), ("person", ["uid": 600, "kind": "staff"]), ("compare", ["uids": [600, 500]]),
         ("compare", ["uids": [600, 21], "kind": "player"]), ("shortlist", ["name": "Playing staff"]),

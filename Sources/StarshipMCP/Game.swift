@@ -20,9 +20,12 @@ public struct GameRead {
     public let selection: SelectionSource?
     /// The user's inbox as FM holds it when a tool answers. Nil where it can't be read.
     public let inbox: InboxSource?
+    /// Each competition's squad rules and FM's per-player values for them. Nil where they can't be read.
+    public let squadRules: SquadRulesSource?
 
     public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil,
-                bookings: BookingSource? = nil, selection: SelectionSource? = nil, inbox: InboxSource? = nil) {
+                bookings: BookingSource? = nil, selection: SelectionSource? = nil, inbox: InboxSource? = nil,
+                squadRules: SquadRulesSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
@@ -31,8 +34,29 @@ public struct GameRead {
         self.bookings = bookings
         self.selection = selection
         self.inbox = inbox
+        self.squadRules = squadRules
     }
 }
+
+/// Squad rules as `SquadRulesReader` gives them.
+public protocol SquadRulesSource: AnyObject {
+    /// On with what its check found, or off and why, for `game_status`. Asking runs the check.
+    var status: String { get }
+    /// Why the rules are off for this read, nil while they're on.
+    var off: String? { get }
+    /// Why FM's per-player values are off, so the rules come without counts. Nil while they're on.
+    var countsOff: String? { get }
+    /// The competitions FM holds fixtures of, by database index.
+    func competitionNames() -> [UInt32: String]
+    /// A team's league, by database index.
+    func league(of team: Int64) -> UInt32?
+    /// A competition's rules. Nil when they're off or its record isn't known.
+    func rules(competition index: UInt32) -> SquadRuleSet?
+    /// One rule counted against these players for `team`.
+    func count(_ rule: SquadRule, in set: SquadRuleSet, players: [Player], team: Int64) -> SquadRuleCount
+}
+
+extension SquadRulesReader: SquadRulesSource {}
 
 /// The user's inbox, as `InboxReader` gives it.
 public protocol InboxSource: AnyObject {
@@ -149,7 +173,8 @@ final class LiveMatches: MatchSource {
 
     func matchStats(team: Int64) -> [MatchStats]? { statsReader.stats(team: team) }
 
-    /// Each competition's record by database index, for naming the rule sets yellow cards count under.
+    /// Each competition's record by database index, for naming the rule sets yellow cards count under and finding a
+    /// competition's squad rules.
     func competitionRecords() -> [UInt32: Int64] {
         if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
         return (reader ?? nil)?.competitionRecords() ?? [:]
@@ -221,7 +246,9 @@ public final class LiveGame: GameSource {
                             states: PlayerStateReader(game: process, database: database),
                             bookings: BookingsReader(game: process, database: database, engine: engine,
                                                      competitionRecords: { matches.competitionRecords() }),
-                            selection: LiveSelection(game: process), inbox: LiveInbox(game: process))
+                            selection: LiveSelection(game: process), inbox: LiveInbox(game: process),
+                            squadRules: SquadRulesReader(game: process, database: database, engine: engine,
+                                                         competitionRecords: { matches.competitionRecords() }))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {
