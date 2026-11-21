@@ -7,7 +7,7 @@ import XCTest
 /// just enough RTTI for the reader to find the classes it sweeps for. Every name and number in it is made up.
 final class FakeGame {
     /// The classes whose records the reader finds by their vtables.
-    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "TEAM"]
+    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM"]
 
     private let image: UnsafeMutableRawPointer
     private let imageSize = 0x1000
@@ -231,6 +231,28 @@ final class FakeGame {
     func player(_ values: PlayerValues) -> FakeRecord {
         typealias L = MacLayout.Player
         let record = self.record("Player", size: L.size, vtable: "ACTUAL_PLAYER")
+        playerFields(values, in: record)
+        person(values.person, in: record, person: L.person, identity: L.identity)
+        return record
+    }
+
+    /// A player FM has also given a staff record: the player part, then the staff part, around the player's person. The
+    /// staff part's own CA, PA, reputation and attributes come from `staff`, and its person from `player`.
+    @discardableResult
+    func playerCoach(_ player: PlayerValues, staff: StaffValues) -> FakeRecord {
+        typealias L = MacLayout.PlayerCoach
+        let record = self.record("PlayerCoach", size: L.size, vtable: "ACTUAL_PLAYER_AND_NON_PLAYER")
+        playerFields(player, in: record, person: L.person)
+        // FM's staff part starts with a vtable of the combined class, which isn't ACTUAL_NON_PLAYER's.
+        record.set("staffVtable", L.staff, vtables["ACTUAL_PLAYER_AND_NON_PLAYER"]! + 0x20)
+        staffFields(staff, in: record, at: L.staff)
+        person(player.person, in: record, person: L.person, identity: L.identity)
+        return record
+    }
+
+    /// A player's own fields, in the player part at the start of `record`.
+    private func playerFields(_ values: PlayerValues, in record: FakeRecord, person: Int = MacLayout.Player.person) {
+        typealias L = MacLayout.Player
         let a = L.attributes
         record.set("positions", a + L.positions, bytes: values.positions)
         record.set("attributes", a + L.raw, bytes: values.attributes)
@@ -241,23 +263,27 @@ final class FakeGame {
         record.set("topRoles", a + L.topRoles, bytes: values.topRoles)
         record.set("currentTeam", L.currentTeam, values.currentTeam)
         record.set("injuries", L.injuries, values.injuries)
-        record.set("traits", L.person + MacLayout.Person.traits, values.traits)
-        person(values.person, in: record, person: L.person, identity: L.identity)
-        return record
+        record.set("traits", person + MacLayout.Person.traits, values.traits)
     }
 
     @discardableResult
     func staff(_ values: StaffValues) -> FakeRecord {
         typealias L = MacLayout.Staff
         let record = self.record("Staff", size: L.size, vtable: "ACTUAL_NON_PLAYER")
-        record.set("attributes", L.attributes, bytes: values.attributes)
-        record.set("repCurrent", L.repCurrent, values.reputation.current)
-        record.set("repHome", L.repHome, values.reputation.home)
-        record.set("repWorld", L.repWorld, values.reputation.world)
-        record.set("ca", L.ca, values.ca)
-        record.set("pa", L.pa, values.pa)
+        staffFields(values, in: record, at: 0)
         person(values.person, in: record, person: L.person, identity: L.identity)
         return record
+    }
+
+    /// A member of staff's own fields, in the staff part that starts at `base`.
+    private func staffFields(_ values: StaffValues, in record: FakeRecord, at base: Int) {
+        typealias L = MacLayout.Staff
+        record.set("attributes", base + L.attributes, bytes: values.attributes)
+        record.set("repCurrent", base + L.repCurrent, values.reputation.current)
+        record.set("repHome", base + L.repHome, values.reputation.home)
+        record.set("repWorld", base + L.repWorld, values.reputation.world)
+        record.set("ca", base + L.ca, values.ca)
+        record.set("pa", base + L.pa, values.pa)
     }
 
     /// The parts players and staff share: the person subobject at `base`, and the identity subobject.

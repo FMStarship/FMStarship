@@ -20,6 +20,9 @@ public final class GameReader {
         var full: Int64 = 0, first: Int64 = 0, second: Int64 = 0, common: Int64 = 0, nation: Int64 = 0
         var contract: Int64 = 0, currentTeam: Int64 = 0, injuryList: Int64 = 0
         var identity: Int64 = 0
+        /// A player who also has a staff record: where its staff part is, and the contract's job.
+        var staffPart: Int64 = 0
+        var job: UInt8 = 0
         var stale = false
         /// Its contract pointer leads nowhere readable: a leftover copy, left out, and no vote on whether its region is dead.
         var unreadable = false
@@ -76,6 +79,8 @@ public final class GameReader {
     private let injuryNames = Memo<String>()
     private var teamTypes: [Int64: Int] = [:]
     private let clock: ReadClock
+    /// Runs before the staff parts of players are read, so a test can change a contract between its two reads, as FM can.
+    var beforeStaffViews: () -> Void = {}
 
     public init(game: GameProcess, status: @escaping (String) -> Void) {
         self.game = game
@@ -140,11 +145,13 @@ public final class GameReader {
         let transferManagerVt = vt("TRANSFER_MANAGER"), humanManagerVt = vt("HUMAN_NON_PLAYER")
         let tacticSessionVt = vt("TACTIC_EDIT_SESSION"), tacticArrayVt = vt("PREPARED_TACTICS_CREATOR_ARRAY")
         let loanContractVt = vt("LOAN_CONTRACT"), bTeamContractVt = vt("B_CLUB_CONTRACT")
+        // Players FM has also given a staff record. Without them the read only misses those people, so it isn't required.
+        let playerCoachVt = vt("ACTUAL_PLAYER_AND_NON_PLAYER")
         guard playerVt != 0, staffVt != 0 else { throw ReadError.classesNotFound("players or staff") }
         clock.lap("classes")
         // All of these lie in game_plugin, so one unsigned comparison against their range rules out nearly every word.
-        let found = [playerVt, staffVt, humanVt, currencyVt, teamVt, transferManagerVt, humanManagerVt, tacticSessionVt,
-                     tacticArrayVt, loanContractVt, bTeamContractVt].filter { $0 != 0 }
+        let found = [playerVt, staffVt, playerCoachVt, humanVt, currencyVt, teamVt, transferManagerVt, humanManagerVt,
+                     tacticSessionVt, tacticArrayVt, loanContractVt, bTeamContractVt].filter { $0 != 0 }
         let lowestVt = found.min() ?? 0, vtSpan = UInt64(bitPattern: (found.max() ?? 0) &- lowestVt)
 
         let pieces = game.pieces(size: 1 << 23, overlap: 0x400, writableOnly: true)
@@ -174,6 +181,13 @@ public final class GameReader {
                             if let record = record(raw, o, count, at, MacLayout.Staff.size),
                                let staff = parseStaff(record, at) {
                                 part.people.append((at, staff))
+                            }
+                        } else if word == playerCoachVt, playerCoachVt != 0, people {
+                            typealias L = MacLayout.PlayerCoach
+                            if let record = record(raw, o, count, at, L.size) {
+                                let item = parsePlayer(record, at, person: L.person, identity: L.identity)
+                                item.staffPart = at &+ Int64(L.staff)
+                                part.people.append((at, item))
                             }
                         } else if word == humanVt, humanVt != 0 {
                             part.humans.append(at)
@@ -233,6 +247,8 @@ public final class GameReader {
         status("Reading names and clubs for \(pending.count.formatted()) people...")
         DispatchQueue.concurrentPerform(iterations: pending.count) { resolve(pending[$0]) }
         pending = GameReader.liveRecords(pending)
+        // After `liveRecords`, so they count once in its regions and stay out of its free agents.
+        pending += staffViews(pending)
         clock.lap("resolve")
         applyLoans(pending, contracts: loanContracts.sorted(), bTeamContract: bTeamContractVt)
 
@@ -340,7 +356,23 @@ public final class GameReader {
         item.contract = GameReader.i64(b, base + P.contract)
     }
 
-    private func parsePlayer(_ b: [UInt8], _ address: Int64) -> Pending {
+    /// A player who holds a staff job too, a player/manager or a player/coach, is also in the staff lists, read from the
+    /// staff part of the same record. Those who only play don't count as staff, as FM doesn't offer them as staff.
+    private func staffViews(_ live: [Pending]) -> [Pending] {
+        beforeStaffViews()
+        let coaches = live.filter { $0.staffPart != 0 && $0.job & 0xfe != 0 }
+        let views: [Pending] = coaches.compactMap { item in
+            guard let b = game.read(item.staffPart, count: MacLayout.Staff.size) else { return nil }
+            return parseStaff(b, item.staffPart)
+        }
+        DispatchQueue.concurrentPerform(iterations: views.count) { resolve(views[$0]) }
+        // A view whose contract couldn't be read again has no job, club or wage, so it's left out with the stale ones.
+        // `job` is only set once the contract names this person as its owner.
+        return views.filter { !$0.stale && $0.job & 0xfe != 0 }
+    }
+
+    private func parsePlayer(_ b: [UInt8], _ address: Int64,
+                             person: Int = MacLayout.Player.person, identity: Int = MacLayout.Player.identity) -> Pending {
         typealias L = MacLayout.Player
         let a = L.attributes
         let player = Player()
@@ -354,8 +386,8 @@ public final class GameReader {
         player.raw = Array(b[(a + L.raw)..<(a + L.raw + 54)])
         player.height = GameReader.u16(b, a + L.height)
         player.topRoles = Array(b[(a + L.topRoles)..<(a + L.topRoles + 6)])
-        player.traitBits = UInt64(bitPattern: GameReader.i64(b, L.person + MacLayout.Person.traits))
-        applyPerson(b, player, item, person: L.person, identity: L.identity)
+        player.traitBits = UInt64(bitPattern: GameReader.i64(b, person + MacLayout.Person.traits))
+        applyPerson(b, player, item, person: person, identity: identity)
         item.currentTeam = GameReader.i64(b, L.currentTeam)
         item.injuryList = GameReader.i64(b, L.injuries)
         return item
@@ -472,6 +504,7 @@ public final class GameReader {
             return
         }
 
+        item.job = b[C.job]
         person.wage = Int(GameReader.u32(b, C.wage))
         person.teamIndex = GameReader.u32(b, C.teamIndex)
         person.statusFlags = b[C.statusFlags]
@@ -518,7 +551,8 @@ public final class GameReader {
             }
         }
         if let staff = person as? Staff {
-            staff.job = Names.jobs[Int(b[C.job])] ?? ""
+            // The lowest bit is "plays", which only a player's job has, so a player/manager's staff job is Manager.
+            staff.job = Names.jobs[Int(b[C.job] & 0xfe)] ?? ""
             staff.secondJob = Int(b[C.secondJob])
             let team = GameReader.i64(b, C.fallbackTeam)
             if team != 0, !person.club.isEmpty, let type = game.read(team &+ Int64(MacLayout.Team.type), count: 1) {

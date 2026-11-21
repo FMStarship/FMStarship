@@ -67,10 +67,11 @@ KINDS = {
     'shapeName': ('function',),
 }
 
-# The classes GameReader finds by name (its vt(...) calls).
-READER_CLASSES = ['ACTUAL_PLAYER', 'ACTUAL_NON_PLAYER', 'CLUB_HUMAN_MANAGER_DETAILS', 'CURRENCY_RECORD', 'TEAM',
-                  'TRANSFER_MANAGER', 'HUMAN_NON_PLAYER', 'TACTIC_EDIT_SESSION', 'PREPARED_TACTICS_CREATOR_ARRAY',
-                  'LOAN_CONTRACT', 'B_CLUB_CONTRACT']
+# The classes GameReader finds by name (its vt(...) calls). ACTUAL_PLAYER_AND_NON_PLAYER's offsets to top are where
+# MacLayout.PlayerCoach finds its staff part, person and identity: 0, -0x278, -0x370, -0x480 on 27.1.0.
+READER_CLASSES = ['ACTUAL_PLAYER', 'ACTUAL_NON_PLAYER', 'ACTUAL_PLAYER_AND_NON_PLAYER', 'CLUB_HUMAN_MANAGER_DETAILS',
+                  'CURRENCY_RECORD', 'TEAM', 'TRANSFER_MANAGER', 'HUMAN_NON_PLAYER', 'TACTIC_EDIT_SESSION',
+                  'PREPARED_TACTICS_CREATOR_ARRAY', 'LOAN_CONTRACT', 'B_CLUB_CONTRACT']
 
 RULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Sources', 'StarshipCore', 'Emu', 'RulesEngine.swift')
 
