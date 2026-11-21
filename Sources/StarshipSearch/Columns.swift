@@ -89,6 +89,8 @@ public struct Col: Identifiable {
     public let numeric: Bool
     public let hidden: Bool
     public let ability: Bool
+    /// Rows with no value go last whichever way the column is sorted, for a column that most rows leave empty.
+    public let emptiesLast: Bool
     public var width: Int
     public var visible: Bool
 
@@ -98,7 +100,7 @@ public struct Col: Identifiable {
 
     fileprivate init(_ name: String, _ group: String, _ get: @escaping (Person) -> CellValue, isDefault: Bool,
                      numeric: Bool, width: Int, hidden: Bool = false, ability: Bool = false,
-                     short: String? = nil, format: ((CellValue) -> String)? = nil) {
+                     short: String? = nil, format: ((CellValue) -> String)? = nil, emptiesLast: Bool = false) {
         self.name = name
         self.group = group
         self.get = get
@@ -109,6 +111,7 @@ public struct Col: Identifiable {
         self.ability = ability
         self.shortName = short
         self.format = format
+        self.emptiesLast = emptiesLast
         self.visible = isDefault
     }
 
@@ -245,9 +248,9 @@ public enum Columns {
             Col("Unique ID", "General", { .int(Int($0.uid)) }, isDefault: false, numeric: true, width: 80),
             Col("CA", "Ability", { .int(player($0).ca) }, isDefault: true, numeric: true, width: 38, ability: true),
             Col("PA", "Ability", { .int(player($0).pa) }, isDefault: true, numeric: true, width: 38, ability: true),
-            // Empty, not a dash, once the player is too old to grow.
+            // Empty, not a dash, once the player is too old to grow, and most players are, so those sort last either way.
             Col("Growth room", "Ability", { player($0).growthRoom.map { .int($0) } ?? .empty }, isDefault: false,
-                numeric: true, width: 50, ability: true, format: { $0.plainText }),
+                numeric: true, width: 50, ability: true, format: { $0.plainText }, emptiesLast: true),
         ]
 
         cols += contract(players: true)
@@ -452,12 +455,12 @@ public enum Columns {
     // MARK: Sorting
 
     /// `MainForm.SortRows`. Numeric columns put rows with no value last when ascending but first when
-    /// descending. Text columns compare by culture, ignoring case.
+    /// descending, or last both ways with `Col.emptiesLast`. Text columns compare by culture, ignoring case.
     public static func sortRows<Row: Person>(_ rows: [Row], by col: Col, descending: Bool) -> [Row] {
         if col.numeric {
             let keys = rows.map { row -> Double in
                 let number = col.get(row).sortNumber
-                if number.isNaN { return descending ? -.infinity : .infinity }
+                if number.isNaN { return descending && !col.emptiesLast ? -.infinity : .infinity }
                 return descending ? -number : number
             }
             return rows.indices.sorted { keys[$0] < keys[$1] }.map { rows[$0] }

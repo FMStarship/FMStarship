@@ -247,9 +247,9 @@ public struct BargainFinder {
             special = p.listedDate.map(NetFormat.numericDate) ?? ""
             specialKey = .date(p.listedDate ?? .distantFuture)
         case .wonderkid:
-            // Blank, and sorted with the other blanks, once the player is too old to grow.
+            // Blank, and sorted with the other blanks, once the player is too old to grow. Stars in Stars mode, as Growth room.
             if let room = p.growthRoom {
-                special = "+\(room)"
+                special = session.display.reveal == .stars ? session.display.ability(room) : "+\(room)"
                 specialKey = .number(Int64(room))
             }
         case .free:

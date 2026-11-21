@@ -40,4 +40,17 @@ final class WonderkidGrowthTests: XCTestCase {
         XCTAssertTrue(key[1]! < key[2]!, "Blanks sort after every number going up")
         XCTAssertTrue(key[3]! < key[4]!)
     }
+
+    func testRoomToGrowIsInStarsWhenAbilityIsInStars() throws {
+        let db = Database()
+        db.players = [player(40, age: 20), player(2, age: 24)]
+        db.gameDate = GameDate.checked(year: 2026, dayOfYear: 270)
+        let session = AnalysisSession(db: db, club: ChosenClub(team: 1, name: "Testing FC"),
+                                      display: DisplayOptions(reveal: .stars, showHidden: true))
+        let table = try XCTUnwrap(BargainFinder(session: session).find(BargainOptions(kind: .wonderkid, maxAge: "30", onlyJoin: false)))
+        let column = try XCTUnwrap(table.columns.firstIndex { $0.title == "Room to grow" })
+        var room: [UInt32: String] = [:]
+        for row in table.rows { room[try XCTUnwrap(row.person).uid] = row.cells[column] }
+        XCTAssertEqual(room, [40: "1.0★", 2: ""], "As the Growth room column shows it")
+    }
 }

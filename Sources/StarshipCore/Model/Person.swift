@@ -140,7 +140,7 @@ public final class Player: Person {
     /// A rating of 18 or more. From 15 to 17 FM calls a player Accomplished: able to play there, but it isn't their position.
     public func isNatural(at position: Int) -> Bool { pos[position] >= 18 }
 
-    /// The user's rule: growth stops around 23 for an outfield player and 27 for a goalkeeper.
+    /// The age after which Growth room is left empty: 23 for an outfield player and 27 for a goalkeeper.
     public static let lastGrowingAge = 23
     public static let lastGrowingAgeGoalkeeper = 27
 

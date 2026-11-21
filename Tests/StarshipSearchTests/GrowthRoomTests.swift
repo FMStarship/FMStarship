@@ -37,6 +37,14 @@ final class GrowthRoomTests: XCTestCase {
         XCTAssertEqual(growthRoom.get(accomplished), .empty)
     }
 
+    func testANaturalGoalkeeperWhoAlsoPlaysOutfieldGetsTheGoalkeepersAge() {
+        let both = player(age: 27)
+        both.pos[goalkeeper] = 20
+        XCTAssertEqual(growthRoom.get(both), .int(40))
+        both.age = 28
+        XCTAssertEqual(growthRoom.get(both), .empty)
+    }
+
     func testAPlayerWithNoKnownAgeHasNone() {
         XCTAssertEqual(growthRoom.get(player(age: -1)), .empty)
     }
@@ -51,7 +59,16 @@ final class GrowthRoomTests: XCTestCase {
         let ascending = Columns.sortRows(rows, by: growthRoom, descending: false).map(\.age)
         XCTAssertEqual(ascending, [20, 21, 30], "Empty last going up")
         let descending = Columns.sortRows(rows, by: growthRoom, descending: true).map(\.age)
-        XCTAssertEqual(descending, [30, 21, 20], "And first going down, as with every numeric column")
+        XCTAssertEqual(descending, [21, 20, 30], "And last going down too, so highest first doesn't start with blanks")
+    }
+
+    func testOtherNumericColumnsStillPutEmptiesFirstGoingDown() throws {
+        let height = try XCTUnwrap(Columns.forPlayers().first { $0.name == "Height" })
+        let rows = [player(age: 20), player(age: 21), player(age: 22)]
+        rows[0].height = 180
+        rows[2].height = 190
+        XCTAssertEqual(Columns.sortRows(rows, by: height, descending: true).map(\.age), [21, 22, 20])
+        XCTAssertEqual(Columns.sortRows(rows, by: height, descending: false).map(\.age), [20, 22, 21])
     }
 
     func testAFilterOnGrowthRoomLeavesTheOldOut() throws {
@@ -60,10 +77,5 @@ final class GrowthRoomTests: XCTestCase {
         XCTAssertFalse(ColumnFilter.matchesAll([(growthRoom, filter)], player(age: 24)))
         XCTAssertTrue(ColumnFilter.matchesAll([(growthRoom, filter)], player(age: 27, keeper: true)))
         XCTAssertFalse(ColumnFilter.matchesAll([(growthRoom, filter)], player(age: 28, keeper: true)))
-    }
-
-    func testTheRuleIsOneConstantPerGroup() {
-        XCTAssertEqual(Player.lastGrowingAge, 23)
-        XCTAssertEqual(Player.lastGrowingAgeGoalkeeper, 27)
     }
 }
