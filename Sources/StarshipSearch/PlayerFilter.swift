@@ -66,9 +66,16 @@ public struct PlayerFilter: SearchFilter, Equatable {
 
     public var defaults: [String: String] = [:]
 
-    public init(showHidden: Bool, showAbility: Bool) {
+    /// "Men or women"'s choice for the players the chosen club can sign: men for a men's club, women for a women's.
+    public static let ownSide = "Your club's side"
+    /// What "Men or women" starts on and Reset goes back to: `ownSide` for the Players search, "Any" for the rest.
+    public let startingGender: String
+
+    public init(showHidden: Bool, showAbility: Bool, gender: String = "Any") {
         self.showHidden = showHidden
         self.showAbility = showAbility
+        self.gender = gender
+        startingGender = gender
         markDefaults()
     }
 
@@ -94,7 +101,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterField("nation", "Nation", .choice(\.nation, .nations, editable: true)),
             FilterField("club", "Club", .text(\.club), placeholder: .text("Any club")),
             FilterField("squad", "Squad", .choice(\.squad, .fixed(["Any"] + Names.squadOrder), editable: false)),
-            FilterField("gender", "Men or women", .choice(\.gender, .fixed(["Any", "Men", "Women"]), editable: false)),
+            FilterField("gender", "Men or women", .choice(\.gender, .fixed(["Any", PlayerFilter.ownSide, "Men", "Women"]), editable: false)),
             FilterField("league", "League", .choice(\.league, .leagues, editable: true)),
             FilterField("region", "Region", .choice(\.region, .regions, editable: false)),
             FilterField("age", "Age", .range(min: \.ageMin, max: \.ageMax)),
@@ -191,7 +198,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
         region = "Any"
         position = "Any"
         squad = "Any"
-        gender = "Any"
+        gender = startingGender
         trait1 = "Any"
         trait2 = "Any"
         role = "Any"
@@ -244,7 +251,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterText.pick(nation, ""),
             FilterText.typed(self.club, ""),
             squad == "Any" ? nil : squad,
-            FilterText.pick(gender, ""),
+            genderText,
             FilterText.pick(league, ""),
             FilterText.pick(region, ""),
             FilterText.range("age", ageMin, ageMax),
@@ -294,11 +301,25 @@ public struct PlayerFilter: SearchFilter, Equatable {
         return Net.join(marked + activeRuleTexts + closing)
     }
 
-    /// The filter read once, ready to test many players.
-    public func criteria() -> PlayerCriteria { PlayerCriteria(self) }
+    /// "Men or women" in the summary, while it isn't what the filter starts on.
+    private var genderText: String? {
+        guard gender != startingGender else { return nil }
+        switch gender {
+        case "Any", "": return "men and women"
+        case Self.ownSide: return "your club's side"
+        default: return FilterText.pick(gender, "")
+        }
+    }
+
+    /// The filter read once, ready to test many players. `clubSignsWomen` is the chosen club's side, as
+    /// `AnalysisSession.clubSignsWomen` has it; nil when there's no club or the save doesn't say, and then
+    /// `ownSide` keeps both.
+    public func criteria(clubSignsWomen: Bool? = nil) -> PlayerCriteria { PlayerCriteria(self, clubSignsWomen: clubSignsWomen) }
 
     /// One-off check. To test many players, build `criteria()` once.
-    public func matches(_ player: Player) -> Bool { criteria().matches(player) }
+    public func matches(_ player: Player, clubSignsWomen: Bool? = nil) -> Bool {
+        criteria(clubSignsWomen: clubSignsWomen).matches(player)
+    }
 }
 
 /// A `PlayerFilter` parsed for matching: the original's `Criteria()` closure. Excludes the interest filter,
@@ -350,14 +371,18 @@ public struct PlayerCriteria {
     private static let importantMatchesIndex = Names.playerIndex["Important Matches"]!
     private static let injuryPronenessIndex = Names.playerIndex["Injury Proneness"]!
 
-    fileprivate init(_ filter: PlayerFilter) {
+    fileprivate init(_ filter: PlayerFilter, clubSignsWomen: Bool?) {
         name = NameTest(filter.name)
         nation = TextTest(filter.nation)
         club = TextTest(filter.club)
         league = TextTest(filter.league)
         media = TextTest(filter.media)
         squad = filter.squad == "Any" ? nil : filter.squad
-        women = filter.gender == "Any" ? nil : filter.gender == "Women"
+        switch filter.gender {
+        case PlayerFilter.ownSide: women = clubSignsWomen
+        case "Any", "": women = nil
+        default: women = filter.gender == "Women"
+        }
         region = RegionTest(filter.region)
         ageMin = Net.int32(filter.ageMin)
         ageMax = Net.int32(filter.ageMax)

@@ -47,6 +47,22 @@ final class SidesTests: XCTestCase {
         XCTAssertTrue(womens.canSign(womens.db.players[13]))
     }
 
+    /// The player search's "Your club's side" goes by the same rule, and keeps both when the save doesn't say.
+    func testTheSearchsSideIsTheOneTheClubSignsFrom() {
+        let mens = session(womensClub: false), womens = session(womensClub: true)
+        XCTAssertEqual(mens.clubSignsWomen, false)
+        XCTAssertEqual(womens.clubSignsWomen, true)
+        for session in [mens, womens] {
+            for player in session.db.players {
+                XCTAssertEqual(session.canSign(player), player.isWoman == session.clubSignsWomen)
+            }
+        }
+        womens.db.knowsSides = false
+        XCTAssertNil(womens.clubSignsWomen, "Unknown sides filter nothing")
+        let noClub = AnalysisSession(db: mens.db, club: ChosenClub(), display: DisplayOptions(reveal: .numbers, showHidden: true))
+        XCTAssertNil(noClub.clubSignsWomen, "No club, no side")
+    }
+
     func testSigningsOnlyComeFromTheClubsOwnSide() {
         func found(_ session: AnalysisSession) -> Set<UInt32> {
             let table = SigningRecommender(session: session).find(RecommendOptions(), status: { _ in })
