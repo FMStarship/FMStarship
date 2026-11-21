@@ -401,7 +401,7 @@ public final class RulesEngine: GameRulesEngine {
         guard conditionFunction != 0, sharpnessFunction != 0 else { return nil }
         do {
             func ask(_ function: Int64) throws -> Int {
-                try sandbox.call(function, [UInt64(player.block), 1]) { Int(Int16(truncatingIfNeeded: a64_get_x($0, 0))) }
+                try sandbox.call(function, [UInt64(bitPattern: player.block), 1]) { Int(Int16(truncatingIfNeeded: a64_get_x($0, 0))) }
             }
             let fitness = Fitness(condition: try ask(conditionFunction), sharpness: try ask(sharpnessFunction))
             guard Fitness.range.contains(fitness.condition), Fitness.range.contains(fitness.sharpness) else { return nil }
@@ -418,11 +418,11 @@ public final class RulesEngine: GameRulesEngine {
     public func homeGrown(player: Player) -> HomeGrown? {
         let club = player.clubObject
         guard club != 0 else { return nil }
-        let nation = game.readPointer(club + Int64(MacLayout.Club.nation))
+        let nation = game.readPointer(club &+ Int64(MacLayout.Club.nation))
         let out = UInt64(A64_SCRATCH)
         do {
             func ask(_ function: Int64, _ place: Int64) throws -> Bool {
-                try sandbox.call(game.pluginBase + function, [UInt64(player.block), UInt64(place), out]) { a64_get_x($0, 0) & 0xff != 0 }
+                try sandbox.call(game.pluginBase + function, [UInt64(bitPattern: player.block), UInt64(bitPattern: place), out]) { a64_get_x($0, 0) & 0xff != 0 }
             }
             if try ask(Mac27.trainedAtClub, club) { return .club }
             guard nation != 0 else { return nil }
