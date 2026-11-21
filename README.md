@@ -136,7 +136,8 @@ FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://mode
 use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
 shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match
-and why the others didn't play, the starting eleven and bench you've picked for the next match with a warning for anyone banned
+and why the others didn't play, both sides' possession, xG, shots, shots on target and fouls in your recent matches, the
+starting eleven and bench you've picked for the next match with a warning for anyone banned
 or injured for it, FM's scout's predicted line-up of your next opponent, what's come into your inbox in about the last month
 (injuries and how long, contracts running out, transfers, and each item's kind, date and sender), each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
 each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how your players have developed
@@ -195,8 +196,10 @@ The first question after FM starts takes about 5 seconds on a big save, while th
 after the game date moves on, when it's read again. The first question about a club's matches takes a couple of seconds more.
 Other answers are instant. Fixtures and results are only given once a club's league results add up to its row in the league
 table, and FM keeps each player's last 20 matches for a team, so an older match can miss players. That check has only been tried
-on a league with one stage: in a league with play-offs, a split or groups it's unverified, and may switch them off. It doesn't
-know a match's team stats, such as shots, possession or team xG, FM's words for condition and morale, or squad registration yet.
+on a league with one stage: in a league with play-offs, a split or groups it's unverified, and may switch them off. A match's
+team stats come from FM's post-match news, which FM keeps for your club's matches of the last few weeks only, and not for every
+match. It doesn't know when in a match the shots came, each shot's xG, FM's words for condition and morale, or squad
+registration yet.
 
 ## Updates
 
@@ -455,6 +458,15 @@ FM Starship's own parts, and how to check them after a patch:
   come from the same record as his form. `tools/match_builds.py` lists these classes among the reader's. To find them again,
   `fmprobe humanteams` gives each human club's team, and `fmprobe fx TEAM` reads that team's matches and table, and runs the
   self-check.
+- **A match's team stats** are read by `MatchStatsReader`, when `results` is asked about the user's club. FM keeps them only in
+  a summary inside each post-match news item about the club (`MATCH_REPORT_NEWS` and others), so only for the last few weeks'
+  matches. The sweep finds the summary by its shape, with offsets in `MacLayout.MatchSummary`: the club's team, the opponent's
+  team, and possession that adds up to 100. Its date comes from the match's `FIXTURE_RESULT` where the copy points at the
+  match's `GAME_MATCH_STATS`, else from the `SCORELINE` before it. Its self-check is per match: the club's shots, on target,
+  fouls, goals (less own goals for it) and xG must be what its players' match records add up to, xG within 0.01, both goals
+  the score, and the opponent's xG what the club's goalkeepers faced. The opponent's shots, on target, fouls and possession
+  aren't covered by it, so the summary is only read on the build that `Mac27.fingerprint` names. `fmprobe matchstats TEAM` lists
+  what the reader finds and runs the check.
 - **Players' state** is read with the save: condition, sharpness, the day FM last brought them up to date, and morale from the
   player's record, playing time happiness from his contract, and bans as FM stores them, from the same head read of the record
   that holds his injuries, with offsets in `MacLayout`. That costs the read two more reads for each ban, and `clock` logs its

@@ -107,16 +107,35 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("results", ["date": "2026-09-20"])["didnt_play"], ["Young Prospect"], "healed by then")
     }
 
-    /// A goal for Testing FC scored by a Rivals FC player is an own goal.
+    /// A goal for Testing FC that FM marks as an own goal, scored by a Rivals FC player, is one.
     func testAnOwnGoalIsMarked() throws {
         let harness = Harness()
         let matches = try XCTUnwrap(harness.source.matches)
         var ours = try XCTUnwrap(matches.teams[World.team])
-        ours.fixtures[0].goals.append(MatchGoal(scorer: 21, assist: nil, home: true, minute: 50, addedMinute: 0))
+        ours.fixtures[0].goals.append(MatchGoal(scorer: 21, assist: nil, home: true, minute: 50, addedMinute: 0, ownGoal: true))
         matches.teams[World.team] = ours
         let first = try harness.answer("results", ["date": "2026-09-13"])
         XCTAssertEqual(first["scorers"]?.array?.last, "50' Rival 21 (own goal)")
         XCTAssertEqual(first["scorers"]?.array?.first, "23' First 9, assist First 10", "his own side's goals aren't marked")
+    }
+
+    /// FM's kind decides it, and the scorer's club can only veto it: a player who has moved since keeps his goal.
+    func testAnOwnGoalNeedsFMsKind() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        var ours = try XCTUnwrap(matches.teams[World.team])
+        ours.fixtures[0].goals += [
+            // Scored for Testing FC by a player at Rivals FC now, but not an own goal: he has moved since.
+            MatchGoal(scorer: 21, assist: nil, home: true, minute: 50, addedMinute: 0),
+            // An own goal by a player at Testing FC now: he may have moved since, so it can't be told.
+            MatchGoal(scorer: 5, assist: nil, home: true, minute: 60, addedMinute: 0, ownGoal: true),
+            // An own goal by a player who isn't in the read, named by the side that conceded it.
+            MatchGoal(scorer: 9_996, assist: nil, home: true, minute: 70, addedMinute: 0, ownGoal: true),
+        ]
+        matches.teams[World.team] = ours
+        let scorers = try XCTUnwrap(try harness.answer("results", ["date": "2026-09-13"])["scorers"]?.array)
+        XCTAssertEqual(Array(scorers.suffix(3)), ["50' Rival 21", "60' First 5",
+                                                  .string("70' a \(World.rivals) player FM Starship can't name (own goal)")])
     }
 
     func testOneResultWithThePlayers() throws {

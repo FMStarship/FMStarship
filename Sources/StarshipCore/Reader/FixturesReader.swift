@@ -1,7 +1,6 @@
 import Foundation
 
-/// One goal from a result's list. FM marks each goal with a kind, but which kind is a penalty isn't known, so they're all
-/// just goals here.
+/// One goal from a result's list. FM marks each goal with a kind: one is an own goal, and which is a penalty isn't known.
 public struct MatchGoal: Sendable, Equatable {
     /// The scorer's `Person.index`.
     public var scorer: UInt32
@@ -11,13 +10,16 @@ public struct MatchGoal: Sendable, Equatable {
     public var minute: Int
     /// The minutes added on, as in 45+1.
     public var addedMinute: Int
+    /// FM's kind says the scorer put it in his own net.
+    public var ownGoal: Bool
 
-    public init(scorer: UInt32, assist: UInt32?, home: Bool, minute: Int, addedMinute: Int) {
+    public init(scorer: UInt32, assist: UInt32?, home: Bool, minute: Int, addedMinute: Int, ownGoal: Bool = false) {
         self.scorer = scorer
         self.assist = assist
         self.home = home
         self.minute = minute
         self.addedMinute = addedMinute
+        self.ownGoal = ownGoal
     }
 }
 
@@ -188,6 +190,11 @@ public struct PlayerMatch: Sendable {
     public var red = 0
     /// Outfield players only.
     public var xG: Double?
+    /// Goalkeepers only: the xG of the shots he faced.
+    public var xGFaced: Double?
+    public var shots = 0
+    public var shotsOnTarget = 0
+    public var fouls = 0
 
     public init(date: Date, team: Int64, opponent: Int64) {
         self.date = date
@@ -428,7 +435,8 @@ public final class FixturesReader {
         for k in stride(from: 0, to: e.count, by: G.size) where G.countedKinds.contains(e[k + G.kind]) {
             let assist = le32(e, k + G.assist)
             goals.append(MatchGoal(scorer: le32(e, k + G.scorer), assist: assist == .max ? nil : assist,
-                                   home: e[k + G.side] == 0, minute: Int(e[k + G.minute]), addedMinute: Int(e[k + G.addedMinute])))
+                                   home: e[k + G.side] == 0, minute: Int(e[k + G.minute]), addedMinute: Int(e[k + G.addedMinute]),
+                                   ownGoal: e[k + G.kind] == G.ownGoalKind))
         }
         guard goals.filter(\.home).count == home, goals.filter({ !$0.home }).count == away else { return [] }
         return goals
@@ -570,7 +578,14 @@ public final class FixturesReader {
                     match.assists = Int(r[M.assists])
                     match.yellow = Int(r[M.yellow])
                     match.red = Int(r[M.red])
-                    if r[M.position] != 0 { match.xG = Double(le16(r, M.xG)) / 100 }
+                    match.shots = Int(r[M.shots])
+                    match.shotsOnTarget = Int(r[M.shotsOnTarget])
+                    match.fouls = Int(r[M.fouls])
+                    if r[M.position] != 0 {
+                        match.xG = Double(le16(r, M.xG)) / 100
+                    } else {
+                        match.xGFaced = Double(le16(r, M.xG)) / 100
+                    }
                 }
                 history.matches.append(match)
             }

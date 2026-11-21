@@ -170,12 +170,16 @@ enum MacLayout {
     /// The player's own match record, 0x28 bytes, which `FormEntry.record` points at.
     enum MatchRecord {
         static let size = 0x28
-        /// xG × 100, for outfield players only: a goalkeeper's means something else.
+        /// xG × 100 for an outfield player. A goalkeeper's is the xG of the shots he faced, which adds up to the
+        /// opponent's in the match's summary.
         static let xG = 4
         /// 0 for a goalkeeper.
         static let position = 6
         static let goals = 7
+        static let shots = 0x09
+        static let shotsOnTarget = 0x0a
         static let assists = 0x0b
+        static let fouls = 0x0d
         static let red = 0x10
         static let minutes = 0x15
         /// Rating × 10.
@@ -227,6 +231,38 @@ enum MacLayout {
         static let minute = 14
         static let addedMinute = 15
         static let countedKinds: Set<UInt8> = [0, 1, 2]
+        /// An own goal: its scorer plays for the other side.
+        static let ownGoalKind: UInt8 = 1
+    }
+
+    /// The summary of one of the user's club's matches that FM keeps in each post-match news item about it, such as
+    /// `MATCH_REPORT_NEWS` (at +0x1e0), 0xe0 bytes after the item's `db::SCORELINE`. Found by `MatchStatsReader`'s sweep.
+    enum MatchSummary {
+        /// The user's club's team, home or away, then the opponent's.
+        static let team = 0x10
+        static let opponent = 0x18
+        /// u32 possession %, ours then theirs, which add up to 100.
+        static let possession = 0x20
+        /// u16 xG × 100, ours then theirs.
+        static let xG = 0x28
+        /// u8 each, ours then theirs.
+        static let fouls = 0x2c
+        static let shots = 0x2d
+        static let shotsOnTarget = 0x2e
+        static let theirFouls = 0x2f
+        static let theirShots = 0x30
+        static let theirShotsOnTarget = 0x31
+        static let goals = 0x37
+        /// 0 when the user's club was at home, 1 away.
+        static let away = 0x38
+        static let theirGoals = 0x3c
+        /// The match's `GAME_MATCH_STATS`, in some copies, whose `result` is its `sicomps::FIXTURE_RESULT`.
+        static let matchStats = 0x68
+        static let matchStatsResult: Int64 = 0x18
+        static let size = 0x70
+        /// The SCORELINE's date, before the summary: u16 day of the year, then u16 year.
+        static let day = -0xc4
+        static let year = -0xc2
     }
 
     /// `db::FIXTURE_NAME`, which a fixture's `name` points at.

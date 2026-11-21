@@ -106,11 +106,25 @@ extension Toolbox {
             return try oneResult(match, club: club, matches: matches, context)
         }
         let limit = try args.int("limit", in: 1...50) ?? 10
-        let rows = played.prefix(limit).map { row($0, team: matches.team, columns: Self.resultColumns, scores: true, context) }
+        // The club's xG and shots, where FM still has the match's team stats: only for the user's club.
+        let checked = checkedStats(club: club, matches: matches, context)
+        let withStats = checked.off == nil
+        var columns = Self.resultColumns
+        if withStats { columns += ["xg", "shots"] }
+        let rows: [JSON] = played.prefix(limit).map { match in
+            var cells = row(match, team: matches.team, columns: Self.resultColumns, scores: true, context).array ?? []
+            if withStats {
+                let stats = checked.stats[match.date]
+                cells += [stats.map { .double($0.ours.xG) } ?? .null, stats.map { .int($0.ours.shots) } ?? .null]
+            }
+            return .array(cells)
+        }
         var pairs: [(String, JSON)] = [("club", .string(club)), ("found", .int(played.count))]
         if played.count > limit { pairs.append(("shown", .int(limit))) }
-        return .object(pairs + [("columns", .array(Self.resultColumns.map { .string($0) })), ("rows", .array(Array(rows))),
-                                ("note", "Newest first. Ask with date for one match's players.")])
+        var note = "Newest first. Ask with date for one match's players"
+        note += withStats ? " and both sides' team stats. xg and shots are the club's, where FM still has the match's team stats "
+            + "and FM Starship's check of them passed: " + Self.statsKept(club, checked, today: context.db.gameDate) : "."
+        return .object(pairs + [("columns", .array(columns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }
 
     /// One result, with how each of the club's players did in it.
@@ -118,6 +132,8 @@ extension Toolbox {
         let cells = row(match, team: matches.team, columns: Self.resultColumns, scores: true, context).array ?? []
         var pairs: [(String, JSON)] = [("club", .string(club))]
         for (name, value) in zip(Self.resultColumns, cells) where value != .null { pairs.append((name, value)) }
+        pairs.append(("team_stats", teamStats(match, club: club, checked: checkedStats(club: club, matches: matches, context),
+                                              today: context.db.gameDate)))
         guard let engine = context.read.engine else {
             pairs.append(("players", "Not available: players' match records come with FM's rules, which are off on this build of FM."))
             return .object(pairs)
@@ -205,12 +221,12 @@ extension Toolbox {
             guard !list.isEmpty else { return nil }
             return .array(list.sorted { ($0.minute, $0.addedMinute) < ($1.minute, $1.addedMinute) }.map { goal in
                 var text = goal.addedMinute > 0 ? "\(goal.minute)+\(goal.addedMinute)' " : "\(goal.minute)' "
-                // A goal's scorer and assister are on the side it's for, except an own goal's scorer.
+                // A goal's scorer and assister are on the side it's for, except an own goal's scorer. FM's kind says it's an
+                // own goal, unless the scorer plays for the side it's for: then he may have moved since, and it's left unmarked.
                 let side = goal.home ? match.homeName : match.awayName
-                text += playerName(goal.scorer, side: side, context)
-                if let scorer = playersByIndex(context.read)[goal.scorer], Self.playsFor(scorer) == (goal.home ? match.awayName : match.homeName) {
-                    text += " (own goal)"
-                }
+                let ownGoal = goal.ownGoal && playersByIndex(context.read)[goal.scorer].map { Self.playsFor($0) != side } ?? true
+                text += playerName(goal.scorer, side: ownGoal ? (goal.home ? match.awayName : match.homeName) : side, context)
+                if ownGoal { text += " (own goal)" }
                 if let assist = goal.assist { text += ", assist " + playerName(assist, side: side, context) }
                 return .string(text)
             })

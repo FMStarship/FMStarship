@@ -104,6 +104,11 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
             match.assists = uid == 10 && day == World.firstMatch ? 1 : 0
             match.yellow = uid == 4 ? 1 : 0
             match.xG = uid == 1 ? nil : Double(uid) / 20
+            match.xGFaced = uid == 1 ? 0.85 : nil
+            // 15 shots, 3 on target and 3 fouls, as `World.matchStats` has them.
+            match.shots = max(0, uid - 6)
+            match.shotsOnTarget = uid >= 9 ? 1 : 0
+            match.fouls = uid % 3 == 0 ? 1 : 0
             return match
         }
         switch uid {
@@ -132,6 +137,15 @@ final class FakeMatches: MatchSource {
         sweeps += 1
         guard classesFound else { return nil }
         return teams[team] ?? TeamMatches(team: team, fixtures: [], table: nil, check: .noTable)
+    }
+
+    /// The club's match stats one sweep of FM's news finds. Nil for a build of FM they haven't been checked on.
+    var stats: [MatchStats]? = World.matchStats()
+    private(set) var statsSweeps = 0
+
+    func matchStats(team: Int64) -> [MatchStats]? {
+        statsSweeps += 1
+        return stats?.filter { $0.team == team }
     }
 
     /// The competitions one sweep of FM's memory names.
@@ -525,6 +539,18 @@ enum World {
             rivalsTeam: TeamMatches(team: rivalsTeam, fixtures: [first], table: table, check: .passed),
             otherTeam: TeamMatches(team: otherTeam, fixtures: [second, next], table: table, check: .passed),
         ])
+    }
+
+    /// FM's post-match news holds team stats for both league matches. Its figures for the 1-1 at Other Town are what the
+    /// players' records add up to; the 2-0 against Rivals FC has two goals, and the records only one, so its check fails.
+    static func matchStats() -> [MatchStats] {
+        func side(_ possession: Int, _ xG100: Int, _ shots: Int, _ onTarget: Int, _ fouls: Int, _ goals: Int) -> MatchSideStats {
+            MatchSideStats(possession: possession, xG100: xG100, shots: shots, shotsOnTarget: onTarget, fouls: fouls, goals: goals)
+        }
+        return [MatchStats(date: GameDate.date(year: 2026, dayOfYear: firstMatch) ?? Date(), team: team, opponent: rivalsTeam, home: true,
+                           ours: side(64, 325, 15, 3, 3, 2), theirs: side(36, 85, 4, 2, 8, 0)),
+                MatchStats(date: GameDate.date(year: 2026, dayOfYear: secondMatch) ?? Date(), team: team, opponent: otherTeam, home: false,
+                           ours: side(46, 325, 15, 3, 3, 1), theirs: side(54, 85, 9, 4, 11, 1))]
     }
 
     // MARK: Development

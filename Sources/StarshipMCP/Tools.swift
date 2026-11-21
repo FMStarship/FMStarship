@@ -229,8 +229,11 @@ extension Toolbox {
              run: { $0.fixtures }),
         Tool(name: "results", title: "Results",
              description: Toolbox.matchNames + "A club's played matches, newest first, with score, result, aggregate (with the teams' "
-                + "names), attendance and goals. With date, one match, with each of the club's players who played: minutes, rating, goals, assists, cards "
-                + "and xG, and those who didn't with why (unused substitute, not in the matchday squad, suspended, injured). FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
+                + "names), attendance and goals, and for the user's club its xG and shots where known. With date, one match, with each "
+                + "of the club's players who played: minutes, rating, goals, assists, cards and xG, and those who didn't with why "
+                + "(unused substitute, not in the matchday squad, suspended, injured); and for the user's club, both sides' team stats "
+                + "(possession, xG, shots, shots on target, fouls, goals) while FM still has the match's post-match news, about the last "
+                + "few weeks. FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
              parameters: [matchClub,
                           Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),
                           Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out.")],

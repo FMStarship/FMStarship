@@ -116,6 +116,13 @@ public protocol MatchSource: AnyObject {
     func matches(team: Int64) -> TeamMatches?
     /// Every competition with a fixture in FM's memory, by database index, which is all a player's match record holds.
     func competitionNames() -> [UInt32: String]
+    /// The team stats of the user's club's recent matches, from FM's post-match news, before FM Starship's check. Nil on a
+    /// build of FM they haven't been checked on.
+    func matchStats(team: Int64) -> [MatchStats]?
+}
+
+extension MatchSource {
+    public func matchStats(team: Int64) -> [MatchStats]? { nil }
 }
 
 /// The running game's, through `FixturesReader`, which is set up on the first question about a match.
@@ -137,6 +144,10 @@ final class LiveMatches: MatchSource {
         if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
         return (reader ?? nil)?.competitionNames() ?? [:]
     }
+
+    private lazy var statsReader = MatchStatsReader(game: game, rtti: Rtti(game))
+
+    func matchStats(team: Int64) -> [MatchStats]? { statsReader.stats(team: team) }
 
     /// Each competition's record by database index, for naming the rule sets yellow cards count under.
     func competitionRecords() -> [UInt32: Int64] {

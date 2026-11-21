@@ -159,6 +159,9 @@ public final class Toolbox: ToolProvider {
     private var namesByIndex: [UInt32: String] = [:]
     private var reportsRead: Int?
     private var reportsFound: [ScoutReport]?
+    /// The match stats sweep, with the read, team and number of played matches it was made for.
+    var statsKey: [Int]?
+    var statsFound: [MatchStats]?
     /// The time now, which a test can move on.
     var clock: () -> Date = Date.init
     /// Where the app keeps its development records, which `development` only reads. A test points it at a folder of its own.

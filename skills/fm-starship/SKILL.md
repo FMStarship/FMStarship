@@ -27,7 +27,7 @@ chosen in FM Starship.
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
 | `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
-| `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't |
+| `results` | A club's played matches, newest first, with the user's club's xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
 | `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club. `since`, `kind` and `limit` narrow it. FM keeps only about the last month |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
@@ -124,7 +124,14 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   isn't one FM Starship knows but one of his injuries covered the day. A name with no mark is a reason FM Starship can't read, so
   don't guess it. The matchday squad is the players who played and the unused substitutes. FM keeps these entries for
   first-team players; a reserve or youth player who wasn't involved may have none. Scorers marked "(own goal)" play for the side
-  that conceded.
+  that conceded: FM marks the goal as one, and he doesn't play for the side it counts for now.
+- **Team stats** (`team_stats` in a result, the club's side first): possession %, xG, shots, shots on target, fouls and goals
+  for both sides, as FM's match stats screen has them. FM keeps them only in its post-match news about the user's club, so only
+  for the user's club and only while that news is kept: about the last few weeks, and not for every match even then. When
+  there are none, `team_stats` says why and how far back FM has them now; don't fill the gap from the players' figures. Before
+  they're given, the club's shots, on target, fouls, goals and xG must be what its players' match records add up to, both
+  goals the score, and the opponent's xG what the club's goalkeepers faced; a match that fails is left out with the reason. The
+  results list's `xg` and `shots` are the club's own, from the same stats.
 - **The matchday squad** (`selection`) is the line-up as saved in FM's tactics when you ask: the user may still change it, so
   say it's what's picked now, not the team that will play. `starting_eleven` has each place's position and role with and without
   the ball; `bench` is the substitutes in FM's order, `place` numbered from 1 with the user's gaps kept. FM names only as many
@@ -229,7 +236,10 @@ When they're off, they don't exist for you. They aren't sent at all, not as blan
 
 FM Starship doesn't read these yet, so don't state them, and don't work them out from something else:
 
-- A match's team stats: shots, possession and team xG. Don't add up the players' xG and call it the team's.
+- A match's team stats for a match `results` gives none for: an older match, another club's, or one that failed the check.
+  Don't add up the players' xG and call it the team's, and the opponent's players have no match records to add up.
+- When in a match the shots came, clear-cut chances, corners, each shot's xG and an xG timeline. FM Starship has only each
+  side's totals and the goals' minutes, so don't tell a minute-by-minute xG story or say a side was on top in a spell.
 - Which goals were penalties, extra time and penalty shoot-outs, and the player of the match.
 - Fixtures and results when the tools switch them off: their check against the league table failed, or there's no league
   match yet to check them against.

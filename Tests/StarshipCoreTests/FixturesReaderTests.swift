@@ -299,6 +299,18 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(found.fixtures.first?.goals.count, 0)
     }
 
+    /// FM's goal kind 1 is an own goal: its scorer plays for the side that conceded it.
+    func testKnowsAnOwnGoalByItsKind() throws {
+        let world = World()
+        var match = world.values(home: world.rovers, away: world.minnows, day: 104, league: false)
+        match.score = (2, 1)
+        match.goals = [(11, nil, true, 0, 10, 0), (31, nil, true, 1, 30, 0), (32, nil, false, 2, 80, 0)]
+        world.game.match(match)
+        let goals = try XCTUnwrap(world.reader().teamMatches(team: world.rovers).fixtures.first?.goals)
+        XCTAssertEqual(goals.map(\.ownGoal), [false, true, false])
+        XCTAssertEqual(goals.map(\.home), [true, true, false], "an own goal counts for the side it went in for")
+    }
+
     func testNothingToCheckAgainst() throws {
         let fresh = World { game, rovers, town, _ in
             [game.tableRow(team: rovers, overall: (0, 0, 0, 0, 0, 0, 0), home: (0, 0, 0, 0, 0, 0, 0),
@@ -351,7 +363,8 @@ final class FixturesReaderTests: XCTestCase {
 
     func testReadsAPlayersMatchHistory() throws {
         let world = World()
-        let played = FakeGame.PlayedValues(minutes: 78, rating: 74, goals: 1, assists: 2, yellow: 1, red: 0, xG: 63, position: 12)
+        let played = FakeGame.PlayedValues(minutes: 78, rating: 74, goals: 1, assists: 2, yellow: 1, red: 0, xG: 63, position: 12,
+                                           shots: 4, shotsOnTarget: 2, fouls: 3)
         let keeper = FakeGame.PlayedValues(minutes: 90, rating: 66, xG: 614, position: 0)
         let history = world.game.history([
             (world.rovers, [FakeGame.HistoryEntry(opponent: world.town, day: 100, competition: World.leagueIndex, played: played),
@@ -370,6 +383,7 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(latest.team, world.rovers)
         XCTAssertEqual(latest.competitionIndex, World.cupIndex)
         XCTAssertNil(latest.xG, "a goalkeeper's xG field means something else")
+        XCTAssertEqual(latest.xGFaced, 6.14, "the xG of the shots he faced")
         XCTAssertEqual(latest.rating, 6.6)
         let unused = found.matches[1]
         XCTAssertFalse(unused.played)
@@ -381,6 +395,8 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual([first.minutes, first.goals, first.assists, first.yellow, first.red], [78, 1, 2, 1, 0])
         XCTAssertEqual(first.rating, 7.4)
         XCTAssertEqual(first.xG, 0.63)
+        XCTAssertNil(first.xGFaced)
+        XCTAssertEqual([first.shots, first.shotsOnTarget, first.fouls], [4, 2, 3])
         XCTAssertNil(found.fullFrom[world.rovers])
         XCTAssertEqual(found.fullFrom[world.minnows], GameDate.date(year: 2028, dayOfYear: 20), "only a full list loses matches")
 

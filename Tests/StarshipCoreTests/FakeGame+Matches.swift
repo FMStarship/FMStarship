@@ -142,10 +142,13 @@ extension FakeGame {
         var assists: UInt8 = 0
         var yellow: UInt8 = 0
         var red: UInt8 = 0
-        /// xG × 100.
+        /// xG × 100, or for a goalkeeper the xG he faced.
         var xG: UInt16 = 0
         /// 0 for a goalkeeper.
         var position: UInt8 = 12
+        var shots: UInt8 = 0
+        var shotsOnTarget: UInt8 = 0
+        var fouls: UInt8 = 0
     }
 
     /// One match in a player's history. Nil `played` for a substitute who didn't come on.
@@ -185,6 +188,9 @@ extension FakeGame {
                     stats.set("minutes", M.minutes, played.minutes)
                     stats.set("rating", M.rating, played.rating)
                     stats.set("yellow", M.yellow, played.yellow)
+                    stats.set("shots", M.shots, played.shots)
+                    stats.set("shotsOnTarget", M.shotsOnTarget, played.shotsOnTarget)
+                    stats.set("fouls", M.fouls, played.fouls)
                     entry.set("record", E.record, stats.address)
                 }
                 record.set("entry \(i)", G.entries + 8 * i, entry.address)
