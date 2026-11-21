@@ -79,9 +79,14 @@ final class StaffLevelTeamsTests: XCTestCase {
         XCTAssertNil(rules.knownStaffLevelTeams, "not kept while a level is missing")
 
         engine.failing = []
-        XCTAssertEqual(rules.staffText(person), "First team, U19", "asked again, and the U19 named once")
-        let calls = engine.levelTeamCalls
-        XCTAssertEqual(rules.staffText(person), "First team, U19")
+        var calls = engine.levelTeamCalls
+        XCTAssertEqual(rules.staffText(person), "First team, Reserves", "the text never asks FM, as it's drawn on the main thread")
+        XCTAssertEqual(engine.levelTeamCalls, calls)
+        XCTAssertNotNil(rules.staffCheck(person))
+        XCTAssertEqual(engine.levelTeamCalls, calls + 3, "the check asks again, even for someone already known")
+        XCTAssertEqual(rules.staffText(person), "First team, U19", "the U19 named once")
+        calls = engine.levelTeamCalls
+        XCTAssertNotNil(rules.staffCheck(coach(8)))
         XCTAssertEqual(engine.levelTeamCalls, calls, "kept once FM answered for every level")
 
         rules.reset()

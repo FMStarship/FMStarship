@@ -7,9 +7,8 @@ public typealias StaffInterest = (firstTeam: Bool, reserves: Bool, youth: Bool)
 
 /// Asks `GameRules.engine` and remembers the answers. Each one means running game code, so a list reads what
 /// is already known (`known`, `text`) and a background pass does the asking (`check`, `checkAll`).
-/// Without an engine everything answers nil or "", which the app shows as "not available". The one exception is
-/// `staffText`: the first time for a team, it asks FM which team its staff rule is about at each level, a short call of FM's
-/// code, unless `checkAllStaff` has already asked.
+/// Without an engine everything answers nil or "", which the app shows as "not available". `staffText` names the teams FM's
+/// staff rule asks about only once `staffCheck` or `checkAllStaff` has asked FM for them, and FM's level names until then.
 public final class RulesState: @unchecked Sendable {
     public static let shared = RulesState()
 
@@ -168,7 +167,14 @@ public final class RulesState: @unchecked Sendable {
 
     private static let boardJobs: Set<String> = ["Chairperson", "President", "Director", "Owner", "Managing Director"]
 
+    /// Also asks FM for the teams Interest names, off the main thread, so that `staffText` doesn't have to.
     public func staffCheck(_ staff: Staff) -> StaffInterest? {
+        guard GameRules.engine != nil, team != 0, manager != 0, staff.block != 0 else { return nil }
+        _ = staffLevelTeams()
+        return askStaff(staff)
+    }
+
+    private func askStaff(_ staff: Staff) -> StaffInterest? {
         let team = self.team
         guard let engine = GameRules.engine, team != 0, manager != 0, staff.block != 0 else { return nil }
         let key = Key(index: staff.index, team: team)
@@ -208,20 +214,21 @@ public final class RulesState: @unchecked Sendable {
         return lock.withLock { levelTeams[team] }
     }
 
-    /// The teams FM says they'd join, named as the teams FM asked about: for Molde, FM's reserves level is its U19.
+    /// The teams FM says they'd join, named as the teams FM asked about: for Molde, FM's reserves level is its U19. It never asks
+    /// FM, as it's drawn on the main thread: until `staffCheck` has found the teams, it uses FM's level names.
     public func staffText(_ staff: Staff) -> String {
         guard let known = staffKnown(staff) else { return "" }
         return TeamAtLevel.joinText(answers: [known.firstTeam, known.reserves, known.youth],
-                                    teams: staffLevelTeams().map { $0 as [TeamAtLevel?] })
+                                    teams: knownStaffLevelTeams.map { $0 as [TeamAtLevel?] })
     }
 
     public func checkAllStaff(_ staff: [Staff], workers: Int = RulesState.defaultWorkers,
                               cancelled: () -> Bool = { false }, progress: (Int, Int) -> Void = { _, _ in }) {
-        // The teams Interest names, asked here off the main thread so that `staffText` doesn't have to.
+        // The teams Interest names, asked once here off the main thread so that `staffText` doesn't have to.
         _ = staffLevelTeams()
         let todo = staff.filter { staffKnown($0) == nil }
         Self.forEach(todo, workers: workers, reportEvery: 100, cancelled: cancelled, progress: progress) {
-            _ = staffCheck($0)
+            _ = askStaff($0)
         }
     }
 

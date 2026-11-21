@@ -484,6 +484,37 @@ final class RecommendStaffTests: XCTestCase {
         }
     }
 
+    /// Takes job answers asked before the board's limits could be read are about FM's own level team, the U19 at Molde. Once
+    /// the limits are read the job is at the second team, so they're dropped and asked again there.
+    func testTakesJobIsAskedAgainWhenTheJobsTeamBecomesKnown() throws {
+        let engine = FakeEngine()
+        engine.likeMolde()
+        engine.staffWontTake = [601]
+        GameRules.engine = engine
+        defer { GameRules.engine = nil }
+        let checks = GameChecks(club: ChosenClub(team: World.team, name: World.club, manager: 500))
+        let people = [World.staff(601, name: "Coach A", job: "Coach", block: 6010, at: World.rivals),
+                      World.staff(602, name: "Coach B", job: "Coach", block: 6020, at: World.rivals)]
+        let limits = engine.limits
+        engine.limits = nil
+        checks.checkStaffJob(people, job: 2, level: 1)
+        XCTAssertEqual(engine.staffJobsAsked.map(\.at), [FakeEngine.under19, FakeEngine.under19])
+        XCTAssertEqual(checks.staffJobText(people[0], job: 2, level: 1), "No")
+
+        engine.limits = limits
+        engine.staffWontTake = []
+        checks.checkStaffJob(people, job: 2, level: 1)
+        let again = engine.staffJobsAsked.dropFirst(2)
+        XCTAssertEqual(again.count, 2, "the U19's answers aren't the second team's")
+        XCTAssertTrue(again.allSatisfy { $0.at == FakeEngine.secondTeam && $0.job == 2 })
+        XCTAssertEqual(checks.staffJobText(people[0], job: 2, level: 1), "Yes", "FM's answer about the second team")
+
+        engine.staffWontTake = [601]
+        checks.checkStaffJob(people, job: 2, level: 1)
+        XCTAssertEqual(engine.staffJobsAsked.count, 4, "kept while the team stays the same")
+        XCTAssertEqual(checks.staffJobText(people[0], job: 2, level: 1), "Yes")
+    }
+
     func testNoAnswerAboutTheJobIsNeverAYes() throws {
         let engine = FakeEngine()
         let harness = harness(engine)
