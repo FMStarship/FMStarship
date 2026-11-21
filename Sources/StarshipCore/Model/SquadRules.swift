@@ -42,6 +42,27 @@ public struct SquadRule: Sendable, Equatable {
             + "transfer window or wages), which FM Starship doesn't count"
     }
 
+    /// Why FM's value for it can't be had for a player at another club, as if he joined the club its team is asked for. Nil
+    /// where it can. FM works out home-grown status, nationality and the EU against the club and nation of the team it's
+    /// asked for, from the player's own history and nationalities, and a goalkeeper is one wherever he plays, so those FM
+    /// gives as if he were at the club. Squad size counts him. Contract rules read his contract with the club, which he
+    /// doesn't have yet, and other types haven't been checked.
+    public var notKnownElsewhere: String? {
+        if isSize || names.contains(where: Self.elsewhereNames.contains) { return nil }
+        if names.contains(where: { $0.contains("contract") || $0.contains("amateur") }) {
+            return "FM reads it from his contract with the club, which a player at another club doesn't have yet"
+        }
+        return "FM Starship hasn't checked that FM's value for it holds for a player at another club"
+    }
+
+    /// The types FM works out against the club its team is asked for, or by the player alone, as on 27.1.0.
+    public static let elsewhereNames: Set<String> = [
+        "homegrown_players_from_club", "homegrown_players_0_21_from_club", "homegrown_players_from_nation",
+        "homegrown_players_0_21_from_nation", "homegrown_players_15_21_from_club", "homegrown_players_15_21_from_nation",
+        "homegrown_players_0_21_ignore_loans_from_club_in_squad", "non_homegrown_players_in_squad", "all_foreign_players_in_squad",
+        "non_eec_players_in_squad", "goalkeepers_in_squad",
+    ]
+
     /// Whether FM's name for a type is a count of players in the squad.
     static func countsSquad(_ name: String) -> Bool {
         if ["match_squad", "_11", "on_bench", "season", "window", "wage"].contains(where: name.contains) { return false }

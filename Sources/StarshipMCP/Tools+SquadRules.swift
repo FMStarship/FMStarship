@@ -91,6 +91,7 @@ extension Toolbox {
                      + "for the whole club (everyone at the club now, not those out on loan), and has a standing only where the "
                      + "two agree; elsewhere it depends on which players FM counts. Never tell the user the squad is registered, "
                      + "legal or breaking a rule unless the standing says so. FM's own registration screen settles who FM lets play."]
+        let change = try squadChange(args, club: club, players: players, context: context)
         let indexes = try ruleCompetitions(named, club: club, source: source, context: context, notes: &notes)
         let countsOff = source.countsOff
         if let countsOff {
@@ -100,6 +101,9 @@ extension Toolbox {
         var limits: [String] = []
         var depends: [String] = []
         var none: [String] = []
+        var changedLimits: [String] = []
+        var changedDepends: [String] = []
+        var notKnown: [String] = []
         var competitions: [JSON] = []
         for index in indexes {
             guard let set = source.rules(competition: index) else { continue }
@@ -133,6 +137,42 @@ extension Toolbox {
                         depends.append("\(name), \(text)")
                     }
                 }
+                var changed: JSON?
+                if let change, let counted = whole.players, let inFirst = first?.count, let inWhole = whole.count {
+                    let found = Self.changedCount(rule, in: set, counted: counted, change: change, source: source, team: club.team)
+                    let limit = Self.limitText(rule)
+                    switch found {
+                    case .notKnown(let why):
+                        let text = "\(words): \(limit): not known with the change: \(why)"
+                        notKnown.append("\(name), \(text)")
+                        changed = .object([("not_known", .string(why)), ("text", .string(text))])
+                    case .counted(let after, let joining, let leaving):
+                        let standing = Self.standingText(first: after.first, whole: after.whole)
+                        let firstAfter = after.first.count ?? 0, wholeAfter = after.whole.count ?? 0
+                        let counts = "first team \(inFirst) → \(firstAfter), whole club \(inWhole) → \(wholeAfter)"
+                        var text: String
+                        if let standing {
+                            text = inFirst == inWhole && firstAfter == wholeAfter ? "\(words): \(inWhole) → \(wholeAfter) of \(limit)"
+                                : "\(words): \(counts), of \(limit)"
+                            text += " (\(standing))"
+                            if after.whole.standing != .within { changedLimits.append("\(name), \(text)") }
+                        } else {
+                            text = "\(words): \(limit): depends on which players FM counts: \(counts)"
+                            changedDepends.append("\(name), \(text)")
+                        }
+                        func people(_ list: [Player]) -> JSON? {
+                            list.isEmpty || rule.isSize ? nil : .array(list.map { .object([("uid", .int(Int($0.uid))), ("name", .string($0.name))]) })
+                        }
+                        changed = .object(dropping: [
+                            ("first_team", .int(firstAfter)),
+                            ("whole_club", .int(wholeAfter)),
+                            ("standing", standing.map { .string($0) }),
+                            ("text", .string(text)),
+                            ("joining", people(joining)),
+                            ("leaving", people(leaving)),
+                        ])
+                    }
+                }
                 let everyone = !players.isEmpty && whole.count == players.count
                 return .object(dropping: [
                     ("rule", .string(words)),
@@ -148,6 +188,7 @@ extension Toolbox {
                     }),
                     ("everyone_counts", everyone && !rule.isSize ? .bool(true) : nil),
                     ("not_counted", countsOff == nil ? whole.notCounted.map { .string($0) } : nil),
+                    ("if_changed", changed),
                 ])
             }
             competitions.append(.object([("competition", .string(name)), ("rules", .array(rules))]))
@@ -156,6 +197,30 @@ extension Toolbox {
         if countsOff == nil {
             notes.append("Each rule's players are those at the whole club who count toward it, with their squad: the ones in the "
                          + "\(Self.firstTeam) make the first team's count.")
+        }
+        var changed: JSON?
+        if let change {
+            let leaving = Set(change.leaving.map(\.uid))
+            let joining = change.joining.count
+            notes.append("if_changed counts the squad as if the players in add joined the club's first team and those in remove left "
+                         + "the club, by FM's own value for each, and stands by the same rule as the counts now. FM gives a player "
+                         + "at another club's home-grown status, nationality and position as if he were at this club, from his own "
+                         + "history, so he's trained at the club only if he was; a rule it can't answer for him is not known rather "
+                         + "than guessed.")
+            changed = .object(dropping: [
+                ("add", .array(change.joining.map { player in
+                    .object([("uid", .int(Int(player.uid))), ("name", .string(player.name)), ("joins", .string(Self.joins(player, club: club)))])
+                } + change.promoted.map { player in
+                    .object([("uid", .int(Int(player.uid))), ("name", .string(player.name)),
+                             ("joins", .string("the first team, from the \(player.squad.isEmpty ? "club's other squads" : player.squad)"))])
+                })),
+                ("remove", .array(change.leaving.map { .object([("uid", .int(Int($0.uid))), ("name", .string($0.name)), ("squad", .string($0.squad))]) })),
+                ("first_team", .int(firstTeam.filter { !leaving.contains($0.uid) }.count + joining + change.promoted.count)),
+                ("whole_club", .int(players.filter { !leaving.contains($0.uid) }.count + joining)),
+                ("at_or_past_a_limit", countsOff != nil ? nil : .array(changedLimits.map { .string($0) })),
+                ("depends_on_which_players_fm_counts", countsOff != nil || changedDepends.isEmpty ? nil : .array(changedDepends.map { .string($0) })),
+                ("not_known", countsOff != nil || notKnown.isEmpty ? nil : .array(notKnown.map { .string($0) })),
+            ])
         }
         return .object(dropping: [
             ("club", .string(club.name)),
@@ -166,8 +231,95 @@ extension Toolbox {
             ("no_squad_rules", none.isEmpty ? nil : .array(none.map { .string($0) })),
             ("at_or_past_a_limit", countsOff != nil ? nil : .array(limits.map { .string($0) })),
             ("depends_on_which_players_fm_counts", countsOff != nil || depends.isEmpty ? nil : .array(depends.map { .string($0) })),
+            ("if_changed", changed),
             ("notes", .array(notes.map { .string($0) })),
         ])
+    }
+
+    /// Who an answer with add or remove counts as joining or leaving.
+    struct SquadChange {
+        /// Joining the club: from another club, from none, or back from a loan.
+        var joining: [Player]
+        /// At the club already, and into the first team.
+        var promoted: [Player]
+        var leaving: [Player]
+        /// Those joining who aren't contracted to the club, for whom FM's value can't be had for every rule.
+        var elsewhere: Set<UInt32>
+    }
+
+    /// The players in add and remove, refused where one isn't a player in the save, is in both, or can't join or leave as
+    /// asked. Nil where neither is given.
+    private func squadChange(_ args: Arguments, club: ChosenClub, players: [Player], context: CallContext) throws -> SquadChange? {
+        func list(_ key: String) throws -> [Player] {
+            var seen = Set<UInt32>()
+            return try (args.array(key) ?? []).compactMap { item in
+                guard let uid = item.int else { throw ToolError("Each uid in \(key) must be a whole number.") }
+                guard let player = try context.person(uid, kind: "player") as? Player else {
+                    throw ToolError("uid \(uid) is a member of staff, not a player.")
+                }
+                return seen.insert(player.uid).inserted ? player : nil
+            }
+        }
+        let add = try list("add"), remove = try list("remove")
+        guard !add.isEmpty || !remove.isEmpty else { return nil }
+        if let both = add.first(where: { player in remove.contains { $0.uid == player.uid } }) {
+            throw ToolError("\(both.name) (uid \(both.uid)) is in both add and remove.")
+        }
+        let here = Set(players.map(\.uid))
+        for player in remove where !here.contains(player.uid) {
+            throw ToolError(player.clubFull == club.name
+                            ? "\(player.name) (uid \(player.uid)) is out on loan, so he isn't counted now. Leave him out of remove."
+                            : "\(player.name) (uid \(player.uid)) isn't at \(club.name), so he can't leave it.")
+        }
+        var change = SquadChange(joining: [], promoted: [], leaving: remove, elsewhere: [])
+        for player in add {
+            if !here.contains(player.uid) {
+                change.joining.append(player)
+                if player.clubFull != club.name { change.elsewhere.insert(player.uid) }
+            } else if player.squad == Self.firstTeam {
+                throw ToolError("\(player.name) (uid \(player.uid)) is in \(club.name)'s first team already.")
+            } else {
+                change.promoted.append(player)
+            }
+        }
+        return change
+    }
+
+    /// Where a player in add comes from.
+    static func joins(_ player: Player, club: ChosenClub) -> String {
+        if player.clubFull == club.name { return "back from his loan at \(player.loanClubFull)" }
+        return player.clubFull.isEmpty ? "from no club" : "from \(player.clubFull)"
+    }
+
+    enum ChangedCount {
+        /// The two counts after the change, with who joining counts toward it and who leaving did.
+        case counted((first: SquadRuleCount, whole: SquadRuleCount), joining: [Player], leaving: [Player])
+        case notKnown(String)
+    }
+
+    /// One rule counted again as if the change were made, from those at the whole club who count toward it now. Only those
+    /// joining are asked of FM, for the club's team; a player at another club only for a rule FM answers for him.
+    static func changedCount(_ rule: SquadRule, in set: SquadRuleSet, counted: [Player], change: SquadChange,
+                             source: SquadRulesSource, team: Int64) -> ChangedCount {
+        let outside = change.joining.filter { change.elsewhere.contains($0.uid) }
+        if !outside.isEmpty, let why = rule.notKnownElsewhere {
+            return .notKnown("\(why) (\(outside.map(\.name).joined(separator: ", ")))")
+        }
+        var joined: [Player] = []
+        if !change.joining.isEmpty {
+            let found = source.count(rule, in: set, players: change.joining, team: team)
+            guard let players = found.players else {
+                return .notKnown(found.notCounted ?? "FM's value for it wasn't had for those joining")
+            }
+            joined = players
+        }
+        let leaving = Set(change.leaving.map(\.uid)), promoted = Set(change.promoted.map(\.uid))
+        let joining = Set(change.joining.map(\.uid))
+        let whole = counted.filter { !leaving.contains($0.uid) } + joined
+        let first = whole.filter { $0.squad == firstTeam || promoted.contains($0.uid) || joining.contains($0.uid) }
+        return .counted((SquadRuleCount(rule: rule, players: first), SquadRuleCount(rule: rule, players: whole)),
+                        joining: joined + counted.filter { promoted.contains($0.uid) },
+                        leaving: counted.filter { leaving.contains($0.uid) })
     }
 
     /// The competitions asked about: the one named, else the club's league and the competitions in its fixtures from

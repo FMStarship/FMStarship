@@ -16,6 +16,11 @@ final class SquadRulesToolTests: XCTestCase {
 
     private static func uids(_ rule: JSON) -> [Int] { (rule["players"]?.array ?? []).compactMap { $0["uid"]?.int } }
 
+    /// "uid name" for each in a list of people.
+    private static func people(_ list: JSON?) -> [String] {
+        (list?.array ?? []).map { "\($0["uid"]?.int ?? -1) \($0["name"]?.string ?? "")" }
+    }
+
     /// Only the first note may name registration, to say what the answer isn't.
     private func assertNeverRegistration(_ answer: JSON, file: StaticString = #filePath, line: UInt = #line) {
         var rest = answer
@@ -86,7 +91,112 @@ final class SquadRulesToolTests: XCTestCase {
         XCTAssertTrue(asked.allSatisfy { $0.team == World.team && $0.players.sorted() == Array(1...13) },
                       "everyone at the club, asked once, for the club's team")
         assertNeverRegistration(answer)
-        XCTAssertEqual(try harness.refusal("squad_rules", ["squad": "all"]), "squad_rules doesn't take squad. It takes club, competition.")
+        XCTAssertEqual(try harness.refusal("squad_rules", ["squad": "all"]), "squad_rules doesn't take squad. It takes club, competition, add, remove.")
+    }
+
+    /// add and remove count each rule again as if those players joined the first team or left, by FM's own values, with a
+    /// standing by the same rule. A player at another club is asked of FM for the club's team, and a contract rule, which FM
+    /// reads from his contract with the club, isn't known for him.
+    func testWhatIfAPlayerJoinsAndAnotherLeaves() throws {
+        let harness = Harness()
+        let answer = try harness.answer("squad_rules", ["add": [21], "remove": [5]])
+        let league = Self.rules(answer, "Mock League")
+        XCTAssertEqual(league.map { $0["text"] }.first, "squad size: first team 12, whole club 13, of at most 25 (within)",
+                       "the counts now are as without add or remove")
+        XCTAssertEqual(league.map { $0["if_changed"]?["text"] }, [
+            "squad size: first team 12 → 12, whole club 13 → 13, of at most 25 (within)",
+            .string("players on a professional or part-time contract: at most 11: not known with the change: FM reads it from his "
+                    + "contract with the club, which a player at another club doesn't have yet (Rival 21)"),
+            .string("trained in the club's nation up to 21, at the club or elsewhere: at least 3: depends on which players FM counts: "
+                    + "first team 2 → 2, whole club 3 → 3"),
+            "not home-grown: 10 → 10 of at most 10 (at the limit)",
+            nil,
+        ])
+        XCTAssertEqual(Self.people(league[3]["if_changed"]?["joining"]), ["21 Rival 21"])
+        XCTAssertEqual(Self.people(league[3]["if_changed"]?["leaving"]), ["5 First 5"])
+        XCTAssertNil(league[2]["if_changed"]?["standing"])
+        XCTAssertNil(league[0]["if_changed"]?["joining"], "squad size counts everyone")
+        XCTAssertNil(league[1]["if_changed"]?["first_team"])
+
+        let changed = try XCTUnwrap(answer["if_changed"])
+        XCTAssertEqual(Self.people(changed["add"]), ["21 Rival 21"])
+        XCTAssertEqual(changed["add"]?.array?.first?["joins"], "from Rivals FC")
+        XCTAssertEqual(Self.people(changed["remove"]), ["5 First 5"])
+        XCTAssertEqual(changed["remove"]?.array?.first?["squad"], "First team")
+        XCTAssertEqual(changed["first_team"], 12)
+        XCTAssertEqual(changed["whole_club"], 13)
+        XCTAssertEqual(changed["at_or_past_a_limit"], ["Mock League, not home-grown: 10 → 10 of at most 10 (at the limit)"])
+        XCTAssertEqual(changed["not_known"]?.array?.count, 1)
+        XCTAssertEqual(changed["depends_on_which_players_fm_counts"]?.array?.count, 1)
+        XCTAssertTrue((answer["notes"]?.array ?? []).contains { $0.string?.hasPrefix("if_changed counts the squad as if") ?? false })
+
+        let asked = try XCTUnwrap(harness.source.squadRules?.asked)
+        XCTAssertTrue(asked.allSatisfy { $0.team == World.team }, "the joining player is asked of FM for the club's team")
+        XCTAssertEqual(asked.filter { $0.players == [21] }.map(\.rule),
+                       ["max_squad_size", "homegrown_players_0_21_from_nation", "non_homegrown_players_in_squad"],
+                       "never for the contract rule")
+        assertNeverRegistration(answer)
+
+        let over = try harness.answer("squad_rules", ["add": [21]])
+        XCTAssertEqual(Self.rules(over, "Mock League")[3]["if_changed"]?["text"], "not home-grown: 10 → 11 of at most 10 (over the maximum by 1)")
+        XCTAssertEqual(Self.rules(over, "Mock League")[3]["if_changed"]?["standing"], "over the maximum by 1")
+        XCTAssertEqual(over["if_changed"]?["whole_club"], 14)
+    }
+
+    /// A player at the club in another squad joins the first team; one out on loan comes back. Neither is from another club,
+    /// so every rule is known.
+    func testWhatIfAPlayerAtTheClubJoinsTheFirstTeam() throws {
+        let harness = Harness()
+        let answer = try harness.answer("squad_rules", ["add": [12]])
+        let league = Self.rules(answer, "Mock League")
+        XCTAssertEqual(league.map { $0["if_changed"]?["text"] }, [
+            "squad size: first team 12 → 13, whole club 13 → 13, of at most 25 (within)",
+            "players on a professional or part-time contract: 11 → 11 of at most 11 (at the limit)",
+            "trained in the club's nation up to 21, at the club or elsewhere: first team 2 → 3, whole club 3 → 3, of at least 3 (at the limit)",
+            "not home-grown: 10 → 10 of at most 10 (at the limit)",
+            nil,
+        ])
+        XCTAssertEqual(Self.people(league[2]["if_changed"]?["joining"]), ["12 Young Prospect"])
+        XCTAssertEqual(Self.people(answer["if_changed"]?["add"]), ["12 Young Prospect"])
+        XCTAssertEqual(answer["if_changed"]?["add"]?.array?.first?["joins"], "the first team, from the U19")
+        XCTAssertNil(answer["if_changed"]?["not_known"])
+        XCTAssertEqual(harness.source.squadRules?.asked.filter { $0.players == [12] }.count, 0, "his values are the ones asked already")
+
+        let loaned = Harness()
+        loaned.source.database.players.first { $0.uid == 13 }?.loanClubFull = World.rivals
+        let back = try loaned.answer("squad_rules", ["add": [13]])
+        XCTAssertEqual(back["if_changed"]?["add"]?.array?.first?["joins"], "back from his loan at Rivals FC")
+        XCTAssertEqual(Self.rules(back, "Mock League")[1]["if_changed"]?["text"],
+                       "players on a professional or part-time contract: 11 → 11 of at most 11 (at the limit)",
+                       "his contract is with the club, so FM's value for it is had")
+        XCTAssertEqual(try loaned.refusal("squad_rules", ["remove": [13]]),
+                       "Hurt Player (uid 13) is out on loan, so he isn't counted now. Leave him out of remove.")
+
+        let continental = try harness.answer("squad_rules", ["competition": "champions", "remove": [1]])
+        XCTAssertEqual(Self.rules(continental, "Made-up Champions Cup")[1]["if_changed"]?["text"],
+                       "goalkeepers: 1 → 0 of at least 2 (under the minimum by 2)")
+    }
+
+    func testWhatIfRefusesWhatCantJoinOrLeave() throws {
+        let harness = Harness()
+        XCTAssertEqual(try harness.refusal("squad_rules", ["add": [9999]]), "Nobody in this save has uid 9999.")
+        XCTAssertEqual(try harness.refusal("squad_rules", ["add": [501]]), "uid 501 is a member of staff, not a player.")
+        XCTAssertEqual(try harness.refusal("squad_rules", ["remove": [500]]), "uid 500 is a member of staff, not a player.")
+        XCTAssertEqual(try harness.refusal("squad_rules", ["add": ["21"]]), "Each uid in add must be a whole number.")
+        XCTAssertEqual(try harness.refusal("squad_rules", ["add": [21], "remove": [21]]), "Rival 21 (uid 21) is in both add and remove.")
+        XCTAssertEqual(try harness.refusal("squad_rules", ["remove": [21]]), "Rival 21 (uid 21) isn't at Testing FC, so he can't leave it.")
+        XCTAssertEqual(try harness.refusal("squad_rules", ["add": [1]]), "First 1 (uid 1) is in Testing FC's first team already.")
+        XCTAssertNil(try harness.answer("squad_rules", ["add": [], "remove": []])["if_changed"])
+    }
+
+    /// Without FM's values, the change gives only the squad's size.
+    func testWhatIfWithoutFMsValues() throws {
+        let harness = Harness()
+        harness.source.squadRules?.countsOff = "its check failed: made up"
+        let answer = try harness.answer("squad_rules", ["add": [21]])
+        XCTAssertTrue(Self.rules(answer, "Mock League").allSatisfy { $0["if_changed"] == nil })
+        XCTAssertEqual(answer["if_changed"]?["whole_club"], 14)
+        XCTAssertNil(answer["if_changed"]?["at_or_past_a_limit"])
     }
 
     /// Counts that stand the same way give that standing, with both numbers where they differ; counts that don't give none.

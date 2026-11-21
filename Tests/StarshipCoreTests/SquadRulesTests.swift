@@ -374,4 +374,22 @@ final class SquadRulesTests: XCTestCase {
             XCTAssertFalse(counted(name), name)
         }
     }
+
+    /// FM's value is had for a player at another club only for the types FM works out against the club it's asked for, or by
+    /// the player alone. A contract rule reads his contract with the club, which he doesn't have.
+    func testOnlySomeRulesAreKnownForAPlayerAtAnotherClub() {
+        func elsewhere(_ names: [String]) -> String? { SquadRule(type: 1, names: names, limit: 1, direction: .atMost).notKnownElsewhere }
+        for name in ["max_squad_size", "min_squad_size", "homegrown_players_15_21_from_club", "homegrown_players_15_21_from_nation",
+                     "homegrown_players_0_21_ignore_loans_from_club_in_squad", "non_homegrown_players_in_squad",
+                     "all_foreign_players_in_squad", "non_eec_players_in_squad", "goalkeepers_in_squad"] {
+            XCTAssertNil(elsewhere([name]), name)
+        }
+        XCTAssertNil(elsewhere(["homegrown_players_from_nation", "homegrown_players_0_21_from_nation"]))
+        XCTAssertEqual(elsewhere(["players_on_pt_or_ft_contract_in_squad"]),
+                       "FM reads it from his contract with the club, which a player at another club doesn't have yet")
+        XCTAssertEqual(elsewhere(["outfield_youth_or_amateur_players_in_squad"]),
+                       "FM reads it from his contract with the club, which a player at another club doesn't have yet")
+        XCTAssertEqual(elsewhere(["loan_players_in_squad_excluding_affiliate_loans"]),
+                       "FM Starship hasn't checked that FM's value for it holds for a player at another club")
+    }
 }

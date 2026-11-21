@@ -233,11 +233,21 @@ extension Toolbox {
                 + "club's league and the competitions in its fixtures from the last 120 days on, with no_squad_rules naming "
                 + "those FM holds none for, such as a cup. It isn't a registration list: it doesn't settle who FM lets play in "
                 + "a competition. Rules for a matchday squad, the team on the pitch, a season or wages are given with FM's "
-                + "number but not counted. The first question takes a few seconds.",
+                + "number but not counted. With add or remove, if_changed counts each rule again as if those players joined "
+                + "the first team or left the club, by FM's own values and the same standing rule, as in \"not home-grown: 9 → 10 "
+                + "of at most 9 (over the maximum by 1)\", with a list of the rules then at or past a limit; a rule FM can't "
+                + "answer for a player at another club, such as a contract rule, is not_known. The first question takes a few seconds.",
              parameters: [club,
                           Parameter(name: "competition", type: "string",
                                     description: "One competition, by its name as FM shows it, ignoring case, or part of it. Any "
-                                        + "competition FM holds fixtures of, such as one the club could qualify for.")],
+                                        + "competition FM holds fixtures of, such as one the club could qualify for."),
+                          Parameter(name: "add", type: "array",
+                                    description: "Players' uids to count as joining the first team: from another club or none, "
+                                        + "back from a loan, or from another of the club's squads.",
+                                    items: ["type": "integer"]),
+                          Parameter(name: "remove", type: "array",
+                                    description: "Players' uids at the club to count as leaving it.",
+                                    items: ["type": "integer"])],
              run: { $0.squadRules }),
         Tool(name: "staff_overview", title: "Staff overview",
              description: "Each backroom job and training area at the user's club: who's in post, how they stand against the league, and empty places.",
