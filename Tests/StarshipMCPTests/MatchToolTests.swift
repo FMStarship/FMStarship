@@ -208,8 +208,7 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(rows(rivals).first?["result"], "L")
         XCTAssertEqual(rows(rivals).first?["scorers"], .null)
         XCTAssertEqual(rows(rivals).first?["opponent_scorers"], ["23' First 9, assist First 10", "45+1' First 11"])
-        // A cup opponent outside the league, which FM has no table for here.
-        XCTAssertTrue(try harness.refusal("results", ["club": .string(World.minnows)]).contains("no league table"))
+        XCTAssertFalse(rivals.columnNames.contains("checked"), "a checked club's rows aren't marked")
 
         let unknown = try harness.refusal("fixtures", ["club": "Other"])
         XCTAssertTrue(unknown.contains("Did you mean: \(World.otherTown)?"), unknown)
@@ -244,9 +243,61 @@ final class MatchToolTests: XCTestCase {
         XCTAssertNotNil(try harness.answer("game_status")["next_fixture"], "dates aren't scores")
         XCTAssertEqual(try harness.answer("league_table")["note"], .string("\(World.club) hasn't played a league match yet this season."))
 
+    }
+
+    /// A club in a league FM runs in the background has no table to check its scores against, so they're given marked
+    /// not checked, with a sentence saying so.
+    func testAClubWithNoTableGetsScoresMarkedNotChecked() throws {
+        let harness = Harness()
+        let ours = try XCTUnwrap(harness.source.matches?.teams[World.team])
+        let cupTie = ours.fixtures[2], later = ours.fixtures[4]
+        harness.source.matches?.teams[World.minnowsTeam] = TeamMatches(team: World.minnowsTeam, fixtures: [cupTie, later],
+                                                                        table: nil, check: .noTable)
+
+        let results = try harness.answer("results", ["club": .string(World.minnows)])
+        XCTAssertEqual(results["found"], 1)
+        XCTAssertEqual(results.columnNames, Toolbox.resultColumns + ["checked"])
+        let tie = try XCTUnwrap(rows(results).first)
+        XCTAssertEqual(tie["score"], "2-4")
+        XCTAssertEqual(tie["result"], "L")
+        XCTAssertEqual(tie["aggregate"], .string("\(World.minnows) 3-6 \(World.club)"))
+        XCTAssertEqual(tie["opponent_scorers"], .null)
+        XCTAssertEqual(tie["checked"], false)
+        let note = try XCTUnwrap(results["note"]?.string)
+        XCTAssertTrue(note.contains("no league table FM Starship can read"), note)
+        XCTAssertTrue(note.contains("couldn't check these scores"), note)
+        XCTAssertTrue(note.contains("read the same way as the scores of a league with a table"), note)
+
+        let one = try harness.answer("results", ["club": .string(World.minnows), "date": "2026-09-23"])
+        XCTAssertEqual(one["score"], "2-4")
+        XCTAssertEqual(one["checked"], false)
+        XCTAssertTrue(one["note"]?.string?.contains("couldn't check these scores") ?? false)
+        let noRules = Harness(engine: nil)
+        noRules.source.matches?.teams[World.minnowsTeam] = harness.source.matches?.teams[World.minnowsTeam]
+        let bare = try noRules.answer("results", ["club": .string(World.minnows), "date": "2026-09-23"])
+        XCTAssertEqual(bare["checked"], false)
+        XCTAssertTrue(bare["note"]?.string?.contains("couldn't check these scores") ?? false, "said without the players too")
+
+        let fixtures = try harness.answer("fixtures", ["club": .string(World.minnows), "from": "2026-09-01"])
+        XCTAssertEqual(fixtures.columnNames, Toolbox.fixtureColumns + ["checked"])
+        XCTAssertEqual(rows(fixtures).map { $0["score"] }, ["2-4", .null])
+        XCTAssertEqual(rows(fixtures).map { $0["checked"] }, [false, .null], "a match still to come has no score to check")
+        XCTAssertTrue(fixtures["note"]?.string?.contains("checked: false") ?? false)
+
+        // The user's own club, were its league one with no table.
         harness.source.matches?.teams[World.team]?.check = .noTable
         harness.source.current = false
-        XCTAssertTrue(try harness.refusal("results").contains("no league table"))
+        XCTAssertEqual(rows(try harness.answer("results")).map { $0["checked"] }, [false, false, false])
+    }
+
+    /// A failed check still switches scores off, for another club as for the user's.
+    func testAFailedCheckStillRefusesAnotherClub() throws {
+        let harness = Harness()
+        harness.source.matches?.teams[World.rivalsTeam]?.check = .failed("a match was half-made")
+        for tool in ["fixtures", "results"] {
+            let sentence = try harness.refusal(tool, ["club": .string(World.rivals)])
+            XCTAssertTrue(sentence.hasPrefix("FM Starship's check of \(World.rivals)'s matches failed"), sentence)
+        }
     }
 
     func testWithoutMatchesTheToolsSaySo() throws {

@@ -257,7 +257,9 @@ extension Toolbox {
              description: Toolbox.matchNames + "A club's matches, oldest first, from today unless from or to is given: date, kick-off, "
                 + "competition, stage, league round, home or away (H/A), opponent, and for played matches the score (home team "
                 + "first), the result for the club, the aggregate of a two-legged tie with the teams' names (\"Apoel Nikosia 2-4 Molde "
-                + "FK\"), attendance, and the goals with their minutes and assists. The first question about a club takes a few seconds.",
+                + "FK\"), attendance, and the goals with their minutes and assists. Scores are checked against the league table; for a "
+                + "club whose competition has no table FM Starship can read, such as a league FM runs in the background, they're "
+                + "given with checked false and a note saying so. The first question about a club takes a few seconds.",
              parameters: [matchClub,
                           Parameter(name: "from", type: "string", description: "First date, YYYY-MM-DD. Today if neither from nor to is given."),
                           Parameter(name: "to", type: "string", description: "Last date, YYYY-MM-DD."),
@@ -269,7 +271,9 @@ extension Toolbox {
                 + "of the club's players who played: minutes, rating, goals, assists, cards and xG, and those who didn't with why "
                 + "(unused substitute, not in the matchday squad, suspended, injured); and for the user's club, both sides' team stats "
                 + "(possession, xG, shots, shots on target, fouls, goals) while FM still has the match's post-match news, about the last "
-                + "few weeks. FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
+                + "few weeks. FM keeps only each player's last 20 matches for a team, so an older match can miss players. Scores are "
+                + "checked against the league table; for a club whose competition has no table FM Starship can read, such as a league "
+                + "FM runs in the background, they're given with checked false and a note saying so.",
              parameters: [matchClub,
                           Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),
                           Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out.")],

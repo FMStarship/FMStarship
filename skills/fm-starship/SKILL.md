@@ -120,6 +120,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   its league and the clubs it plays, by their full names. FM keeps each player's last 20 matches for a team, so a player's stats
   for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with
   play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
+  Scores are checked against the club's league table. A club whose competition has no table FM Starship can read, such as
+  one in a league FM runs in the background, gets its scores anyway with `checked` false and a note: they're read the same way
+  as checked ones, but tell the user they weren't checked when you use them, such as for an opponent's recent form.
   Kick-off, attendance and aggregate are only there on builds of FM that FM Starship has been checked on.
 - **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked from FM's own
   entry: "(unused substitute)", "(not in the matchday squad)", "(suspended)" or "(injured)", and "(injured)" too when FM's reason
@@ -271,7 +274,7 @@ FM Starship doesn't read these yet, so don't state them, and don't work them out
   side's totals and the goals' minutes, so don't tell a minute-by-minute xG story or say a side was on top in a spell.
 - Which goals were penalties, extra time and penalty shoot-outs, and the player of the match.
 - Fixtures and results when the tools switch them off: their check against the league table failed, or there's no league
-  match yet to check them against.
+  match yet to check them against. Scores marked `checked` false weren't checked, so don't present them as confirmed.
 - Condition, sharpness, morale, playing time, suspensions, bookings toward a ban, home-grown status or squad rules when `game_status` says one is off.
 - FM's words for condition and morale, wear ("very little wear" and the like), match load and training load.
 - How many substitutes a competition lets a team name, and the line-up an AI club will actually pick.

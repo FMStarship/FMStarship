@@ -3,8 +3,8 @@ import StarshipAnalysis
 import StarshipCore
 
 /// Fixtures, results and league tables. Nothing in them is hidden in FM: they're all on FM's fixtures, table and match
-/// screens. They're read on the first question about a team, and only given once its league results add up to its row in
-/// the league table.
+/// screens. They're read on the first question about a team. Its scores are given once its league results add up to its
+/// row in the league table, or marked not checked when its competition has no table to check them against.
 extension Toolbox {
     static let fixtureColumns = ["date", "kick_off", "competition", "stage", "round", "venue", "opponent", "score", "result",
                                  "aggregate", "attendance", "scorers", "opponent_scorers"]
@@ -54,13 +54,18 @@ extension Toolbox {
             + "Starship doesn't follow those yet, so fixtures, results and the league table are switched off rather than guessed."
     }
 
-    /// Why results can't be given when there's nothing to check them against.
+    /// Why results are left out, or marked not checked, when there's nothing to check them against.
     static func uncheckedSentence(_ club: String, _ check: TeamMatches.Check) -> String {
         check == .nothingPlayed
             ? "\(club) hasn't played a league match yet this season, so FM Starship can't check its results against the league "
                 + "table, and leaves them out until it has."
-            : "\(club)'s competition has no league table FM Starship can read, so it can't check the results against one, and leaves them out."
+            : "\(club)'s competition has no league table FM Starship can read, such as a league FM runs in the background, so "
+                + "FM Starship couldn't check these scores against one, and marks them checked: false. They're read the same way "
+                + "as the scores of a league with a table, such as the user's, which are checked, but nothing has confirmed these."
     }
+
+    /// A club with no league table to check its scores against gets them anyway, marked not checked.
+    static func marksUnchecked(_ check: TeamMatches.Check) -> Bool { check == .noTable }
 
     /// Why there's no league table to give.
     static func noTableSentence(_ club: String) -> String {
@@ -77,12 +82,13 @@ extension Toolbox {
         let limit = try args.int("limit", in: 1...100) ?? 25
         if let from, let to, to < from { throw ToolError("to is before from.") }
         let found = matches.fixtures.filter { match in (from.map { match.date >= $0 } ?? true) && (to.map { match.date <= $0 } ?? true) }
-        let checked = matches.check == .passed
-        let rows = found.prefix(limit).map { row($0, team: matches.team, columns: Self.fixtureColumns, scores: checked, context) }
+        let checked = matches.check == .passed, unchecked = Self.marksUnchecked(matches.check)
+        let columns = Self.fixtureColumns + (unchecked ? ["checked"] : [])
+        let rows = found.prefix(limit).map { row($0, team: matches.team, columns: columns, scores: checked || unchecked, context) }
         var pairs: [(String, JSON?)] = [("club", .string(club)), ("from", from.map { .string(Output.iso($0)) }),
                                         ("to", to.map { .string(Output.iso($0)) }), ("found", .int(found.count))]
         if found.count > limit { pairs.append(("shown", .int(limit))) }
-        pairs += [("columns", .array(Self.fixtureColumns.map { .string($0) })), ("rows", .array(rows))]
+        pairs += [("columns", .array(columns.map { .string($0) })), ("rows", .array(rows))]
         if !checked, found.contains(where: \.played) { pairs.append(("note", .string(Self.uncheckedSentence(club, matches.check)))) }
         return .object(dropping: pairs)
     }
@@ -92,10 +98,11 @@ extension Toolbox {
     func results(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let (club, matches) = try matchTeam(try args.string("club"), context)
         switch matches.check {
-        case .passed: break
+        case .passed, .noTable: break
         case .failed(let why): throw ToolError(Self.failedSentence(club, why))
-        case .noTable, .nothingPlayed: throw ToolError(Self.uncheckedSentence(club, matches.check))
+        case .nothingPlayed: throw ToolError(Self.uncheckedSentence(club, matches.check))
         }
+        let unchecked = Self.marksUnchecked(matches.check)
         let played = matches.fixtures.filter(\.played).reversed()
         if let day = try Self.date(args, "date") {
             guard let match = played.first(where: { $0.date == day }) else {
@@ -109,10 +116,11 @@ extension Toolbox {
         // Both sides' xG and shots, where FM still has the match's team stats: only for the user's club.
         let checked = checkedStats(club: club, matches: matches, context)
         let withStats = checked.off == nil
-        var columns = Self.resultColumns
+        let base = Self.resultColumns + (unchecked ? ["checked"] : [])
+        var columns = base
         if withStats { columns += ["xg", "shots", "opponent_xg", "opponent_shots"] }
         let rows: [JSON] = played.prefix(limit).map { match in
-            var cells = row(match, team: matches.team, columns: Self.resultColumns, scores: true, context).array ?? []
+            var cells = row(match, team: matches.team, columns: base, scores: true, context).array ?? []
             if withStats {
                 let stats = checked.stats[match.date]
                 cells += [stats.map { .double($0.ours.xG) } ?? .null, stats.map { .int($0.ours.shots) } ?? .null,
@@ -126,6 +134,7 @@ extension Toolbox {
         note += withStats ? " and both sides' team stats. xg and shots are the club's and opponent_xg and opponent_shots the opponent's, where FM still "
             + "has the match's team stats "
             + "and FM Starship's check of them passed: " + Self.statsKept(club, checked, today: context.db.gameDate) : "."
+        if unchecked { note += " " + Self.uncheckedSentence(club, matches.check) }
         return .object(pairs + [("columns", .array(columns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }
 
@@ -134,10 +143,13 @@ extension Toolbox {
         let cells = row(match, team: matches.team, columns: Self.resultColumns, scores: true, context).array ?? []
         var pairs: [(String, JSON)] = [("club", .string(club))]
         for (name, value) in zip(Self.resultColumns, cells) where value != .null { pairs.append((name, value)) }
+        let unchecked = Self.marksUnchecked(matches.check)
+        if unchecked { pairs.append(("checked", false)) }
         pairs.append(("team_stats", teamStats(match, club: club, checked: checkedStats(club: club, matches: matches, context),
                                               today: context.db.gameDate)))
         guard let engine = context.read.engine else {
             pairs.append(("players", "Not available: players' match records come with FM's rules, which are off on this build of FM."))
+            if unchecked { pairs.append(("note", .string(Self.uncheckedSentence(club, matches.check)))) }
             return .object(pairs)
         }
         var played: [(Player, PlayerMatch)] = [], didntPlay: [(Player, PlayerMatch)] = [], gone = 0
@@ -169,6 +181,7 @@ extension Toolbox {
             note += " FM keeps only each player's last \(MatchHistory.kept) matches for a team, and this match has gone from "
                 + (gone == 1 ? "one player's," : "\(gone) players',") + " so they may be missing."
         }
+        if unchecked { note += " " + Self.uncheckedSentence(club, matches.check) }
         pairs.append(("note", .string(note)))
         return .object(pairs)
     }
@@ -214,7 +227,8 @@ extension Toolbox {
 
     // MARK: Rows
 
-    /// One match as a row of `columns`, from the team's side. Scores only when the check has passed.
+    /// One match as a row of `columns`, from the team's side. Scores only when the check has passed or there's no table to
+    /// check them against; a "checked" column is false for a played match, as its score wasn't checked.
     private func row(_ match: MatchFixture, team: Int64, columns: [String], scores: Bool, _ context: CallContext) -> JSON {
         let home = match.home == team
         let result = scores ? match : MatchFixture(date: match.date, home: match.home, away: match.away)
@@ -257,6 +271,7 @@ extension Toolbox {
             case "attendance": return result.attendance.map { .int($0) }
             case "scorers": return goals(ours: true)
             case "opponent_scorers": return goals(ours: false)
+            case "checked": return match.played ? false : nil
             default: return nil
             }
         }
