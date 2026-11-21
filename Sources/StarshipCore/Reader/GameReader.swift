@@ -79,6 +79,8 @@ public final class GameReader {
     private let injuryNames = Memo<String>()
     private var teamTypes: [Int64: Int] = [:]
     private let clock: ReadClock
+    /// Runs before the staff parts of players are read, so a test can change a contract between its two reads, as FM can.
+    var beforeStaffViews: () -> Void = {}
 
     public init(game: GameProcess, status: @escaping (String) -> Void) {
         self.game = game
@@ -357,13 +359,16 @@ public final class GameReader {
     /// A player who holds a staff job too, a player/manager or a player/coach, is also in the staff lists, read from the
     /// staff part of the same record. Those who only play don't count as staff, as FM doesn't offer them as staff.
     private func staffViews(_ live: [Pending]) -> [Pending] {
+        beforeStaffViews()
         let coaches = live.filter { $0.staffPart != 0 && $0.job & 0xfe != 0 }
         let views: [Pending] = coaches.compactMap { item in
             guard let b = game.read(item.staffPart, count: MacLayout.Staff.size) else { return nil }
             return parseStaff(b, item.staffPart)
         }
         DispatchQueue.concurrentPerform(iterations: views.count) { resolve(views[$0]) }
-        return views.filter { !$0.stale }
+        // A view whose contract couldn't be read again has no job, club or wage, so it's left out with the stale ones.
+        // `job` is only set once the contract names this person as its owner.
+        return views.filter { !$0.stale && $0.job & 0xfe != 0 }
     }
 
     private func parsePlayer(_ b: [UInt8], _ address: Int64,

@@ -427,6 +427,27 @@ final class ReaderLayoutTests: XCTestCase {
         XCTAssertEqual(database.staff.map(\.block), [live.address + Int64(MacLayout.PlayerCoach.staff)])
     }
 
+    /// A player/manager's contract is read again for his staff side. If that read fails, the staff side has no job, club
+    /// or wage, so it's left out, and he's still read as a player.
+    func testLeavesOutAStaffSideWhoseContractCantBeReadAgain() throws {
+        let world = World()
+        var player = FakeGame.PlayerValues()
+        player.person.contract?.team = world.roversFirst
+        player.person.contract?.job = 17
+        let record = world.game.playerCoach(player, staff: FakeGame.StaffValues())
+
+        let reader = GameReader(game: world.game.process(), status: { _ in })
+        reader.beforeStaffViews = {
+            // Below 4 GB, which no Mac process maps, so the contract can't be read.
+            let contract = record.address + Int64(MacLayout.PlayerCoach.person + MacLayout.Person.contract)
+            UnsafeMutableRawPointer(bitPattern: Int(contract))!.storeBytes(of: Int64(0x8000_0000), as: Int64.self)
+        }
+        let database = try reader.readAll()
+        XCTAssertEqual(database.players.map(\.block), [record.address])
+        XCTAssertEqual(database.players.first?.clubFull, "Mockport Rovers FC")
+        XCTAssertEqual(database.staff.count, 0)
+    }
+
     /// With no contract there's no staff job, so a free agent FM has given a staff record is a player only.
     func testReadsAFreeAgentWithAStaffRecordAsAPlayer() throws {
         let world = World()
