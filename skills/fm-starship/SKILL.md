@@ -84,6 +84,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **Staff FM keeps only some of**: for a club in a league FM runs in the background, FM most likely keeps only its key
   people, such as the chairperson and the manager. When an AI club's read has no coaching or medical staff, `staff` says so in
   `note`: the rest of its staff isn't known, so don't say the club has no coaches.
+- **Player/managers and player/coaches** are a player and a member of staff under one uid. `person` answers as the player and
+  says so in `also_staff`, with his job; ask again with `kind: "staff"` for his staff side. `compare` takes `kind` too, and
+  without it puts him with the others' side. A shortlist gives him as its own kind.
 - **Would join your club** is FM's own answer, with how keen they are: Interested, Persuadable, Doubtful or Not interested.
   `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`. Null there means FM wasn't asked
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club

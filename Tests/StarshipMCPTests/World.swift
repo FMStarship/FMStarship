@@ -325,6 +325,21 @@ enum World {
         return db
     }
 
+    /// A player/manager at Rivals FC, as FM keeps some: a player and a member of staff under one uid, as the reader reads
+    /// him, with the staff side at its own block.
+    static let playerCoach: UInt32 = 600
+
+    static func addPlayerCoach(to db: Database) {
+        let player = player(playerCoach, name: "Playing Manager", age: 34, ca: 171, pa: 183, at: rivals)
+        player.fitness = Fitness(condition: 10_000, sharpness: 9_650)
+        player.storedBans = []
+        let staff = staff(playerCoach, name: "Playing Manager", job: "Manager", block: Int64(playerCoach) + 0x278, at: rivals)
+        player.prepare()
+        staff.prepare()
+        db.players.append(player)
+        db.staff.append(staff)
+    }
+
     /// First 1 is tired and unhappy with his playing time. FM last brought First 2's condition up to date three days ago,
     /// so it takes FM's getters.
     static func state(_ players: [Player]) {

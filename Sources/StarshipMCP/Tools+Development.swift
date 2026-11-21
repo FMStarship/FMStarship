@@ -100,7 +100,7 @@ extension Toolbox {
             }
             return (object(moved.filter { $0.by > 0 }), object(moved.filter { $0.by < 0 }), moved.reduce(0) { $0 + $1.by })
         }
-        func live(_ uid: UInt32) -> Player? { (try? context.person(Int(uid))) as? Player }
+        func live(_ uid: UInt32) -> Player? { (try? context.person(Int(uid), kind: "player")) as? Player }
         // By the squad he's in now, as `squad` names them, with "On loan" for those out on loan.
         let squad = try args.string("squad")
         if let squad {

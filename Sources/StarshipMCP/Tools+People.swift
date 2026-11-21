@@ -248,7 +248,8 @@ extension Toolbox {
 
     func person(_ args: Arguments, _ context: CallContext) throws -> JSON {
         guard let uid = try args.int("uid") else { throw ToolError("person needs a uid.") }
-        let person = try context.person(uid)
+        let kind = try args.choice("kind", ["player", "staff"])
+        let person = try context.person(uid, kind: kind)
         let visibility = context.visibility
         let own = try? context.ownClub(nil)
         let session = own.map { context.session(for: $0) }
@@ -259,6 +260,12 @@ extension Toolbox {
         let recent = try args.int("matches", in: 0...40) ?? 10
         if let player = person as? Player {
             pairs.append(("kind", "player"))
+            // A player/manager or player/coach, whose staff side is asked for apart.
+            if kind == nil, let staff = context.staffSide(of: player) {
+                let job = staff.job.isEmpty ? "a member of staff" : staff.job
+                pairs.append(("also_staff", .string("uid \(uid) is also a member of staff: \(job)"
+                    + (staff.club.isEmpty ? "" : " at \(staff.club)") + ". Ask person with kind staff for that side.")))
+            }
             if player.injury != nil { _ = RulesState.shared.injuryCheck(player) }
             Self.refreshSeason(player, context.read.engine)
             catalogue = Columns.forPlayers()
@@ -359,10 +366,11 @@ extension Toolbox {
             let names = entries.map(\.shortlist.name)
             throw ToolError("No shortlist is called \(name)." + (names.isEmpty ? " There are none in FM's folder." : " There are: \(names.joined(separator: ", "))."))
         }
+        // By the shortlist's own kind, as a player/manager is a player and a member of staff under one uid.
         let everyone = people(context.read)
-        let found = entry.shortlist.uids.compactMap { everyone[$0] }
         let staff = entry.shortlist.isStaff
-        let people: [Person] = staff ? found.filter { $0 is Staff } : found.filter { $0 is Player }
+        let people: [Person] = staff ? entry.shortlist.uids.compactMap { everyone.staff[$0] }
+            : entry.shortlist.uids.compactMap { everyone.players[$0] }
         let catalogue = staff ? Columns.forStaff() : Columns.forPlayers()
         let columns = Output.columns(staff ? Self.staffListColumns : Self.playerListColumns, in: catalogue, context.visibility)
         var pairs: [(String, JSON)] = [("name", .string(entry.shortlist.name)), ("kind", .string(staff ? "staff" : "players")),

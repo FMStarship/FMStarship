@@ -106,7 +106,10 @@ extension Toolbox {
                 + "goals and assists, or why he didn't play (unused substitute, not in the matchday squad, suspended, injured), his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, his yellow cards toward a ban under each rule set, home-grown status, contract, "
                 + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
-                          Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out.")],
+                          Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out."),
+                          Parameter(name: "kind", type: "string",
+                                    description: "For a uid that's a player and a member of staff, as a player/manager is: which side. The player if left out.",
+                                    choices: ["player", "staff"])],
              run: { $0.person }),
         Tool(name: "search_players", title: "Search players",
              description: Toolbox.names + "Players anywhere in the save, filtered as in FM Starship's player search. Money is in the user's "
@@ -228,7 +231,10 @@ extension Toolbox {
         Tool(name: "compare", title: "Compare",
              description: "Two to four players, or two to four staff, side by side.",
              parameters: [Parameter(name: "uids", type: "array", description: "Two to four uids, all players or all staff.",
-                                    items: ["type": "integer"], required: true), club],
+                                    items: ["type": "integer"], required: true), club,
+                          Parameter(name: "kind", type: "string",
+                                    description: "Players or staff, for a uid that's both, as a player/manager is. If left out, staff when every uid is one and not every uid is a player, else players.",
+                                    choices: ["player", "staff"])],
              run: { $0.compare }),
         Tool(name: "development", title: "Development",
              description: "How a club's players have developed, from FM Starship's own record, not FM's: a snapshot of the squad on "

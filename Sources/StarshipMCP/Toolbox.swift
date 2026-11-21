@@ -106,12 +106,27 @@ final class CallContext {
     /// The analysis seen from a club, kept while the read, the settings and the club stay the same.
     func session(for club: ChosenClub) -> AnalysisSession { toolbox.session(read: read, club: club, visibility: visibility) }
 
-    func person(_ uid: Int) throws -> Person {
-        guard uid >= 0, uid <= Int(UInt32.max), let person = toolbox.people(read)[UInt32(uid)] else {
-            throw ToolError("Nobody in this save has uid \(uid).")
+    /// The player or member of staff with this uid. A player/manager or player/coach is both under one uid: `kind`
+    /// ("player" or "staff") picks a side, and with none he's the player.
+    func person(_ uid: Int, kind: String? = nil) throws -> Person {
+        guard uid >= 0, uid <= Int(UInt32.max) else { throw ToolError("Nobody in this save has uid \(uid).") }
+        let people = toolbox.people(read)
+        let player = people.players[UInt32(uid)], staff = people.staff[UInt32(uid)]
+        switch kind {
+        case "player":
+            if let player { return player }
+            throw ToolError(staff == nil ? "Nobody in this save has uid \(uid)." : "uid \(uid) is a member of staff, not a player.")
+        case "staff":
+            if let staff { return staff }
+            throw ToolError(player == nil ? "Nobody in this save has uid \(uid)." : "uid \(uid) is a player, not a member of staff.")
+        default:
+            guard let person = player ?? staff else { throw ToolError("Nobody in this save has uid \(uid).") }
+            return person
         }
-        return person
     }
+
+    /// The staff side of a player who is also a member of staff, as a player/manager is.
+    func staffSide(of player: Player) -> Staff? { toolbox.people(read).staff[player.uid] }
 }
 
 /// FM Starship's tools for an agent. Every call reads the user's settings first, so Hidden attributes and Ability are
@@ -134,7 +149,8 @@ public final class Toolbox: ToolProvider {
     private var sessionKey: SessionKey?
     private var cachedSession: AnalysisSession?
     private var peopleRead: Int?
-    private var peopleByUID: [UInt32: Person] = [:]
+    private var playersByUID: [UInt32: Player] = [:]
+    private var staffByUID: [UInt32: Staff] = [:]
     private var indexRead: Int?
     private var peopleByIndex: [UInt32: Player] = [:]
     private var matchesRead: Int?
@@ -197,15 +213,17 @@ public final class Toolbox: ToolProvider {
         return session
     }
 
-    func people(_ read: GameRead) -> [UInt32: Person] {
-        if peopleRead != read.number || peopleByUID.isEmpty {
-            var all: [UInt32: Person] = [:]
-            for person in read.database.staff { all[person.uid] = person }
-            for person in read.database.players { all[person.uid] = person }
-            peopleByUID = all
+    /// Players and staff by uid, kept apart as the app keeps them: a player/manager is in both under one uid.
+    func people(_ read: GameRead) -> (players: [UInt32: Player], staff: [UInt32: Staff]) {
+        if peopleRead != read.number || (playersByUID.isEmpty && staffByUID.isEmpty) {
+            var players: [UInt32: Player] = [:], staff: [UInt32: Staff] = [:]
+            for person in read.database.staff { staff[person.uid] = person }
+            for person in read.database.players { players[person.uid] = person }
+            playersByUID = players
+            staffByUID = staff
             peopleRead = read.number
         }
-        return peopleByUID
+        return (playersByUID, staffByUID)
     }
 
     /// Players by the index FM's goal lists name them by.

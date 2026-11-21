@@ -112,10 +112,20 @@ extension Toolbox {
     func compare(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let uids = try args.array("uids") ?? []
         guard (2...4).contains(uids.count) else { throw ToolError("compare takes two to four uids.") }
-        let people = try uids.map { item -> Person in
+        let numbers = try uids.map { item -> Int in
             guard let uid = item.int else { throw ToolError("Each uid must be a whole number.") }
-            return try context.person(uid)
+            return uid
         }
+        // A player/manager is a player and a member of staff under one uid, so with no kind given he's on the side the
+        // others are all on: with staff, as staff.
+        var kind = try args.choice("kind", ["player", "staff"])
+        if kind == nil {
+            let all = self.people(context.read)
+            if !numbers.allSatisfy({ all.players[UInt32(clamping: $0)] != nil }), numbers.allSatisfy({ all.staff[UInt32(clamping: $0)] != nil }) {
+                kind = "staff"
+            }
+        }
+        let people = try numbers.map { try context.person($0, kind: kind) }
         guard people.allSatisfy({ $0 is Player }) || people.allSatisfy({ $0 is Staff }) else {
             throw ToolError("compare takes players or staff, not both.")
         }

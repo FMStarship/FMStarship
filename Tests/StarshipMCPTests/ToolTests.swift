@@ -512,6 +512,46 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("search_staff", ["rules": [["attribute": "Adaptability", "at_most": 12]]])["found"], 3)
     }
 
+    /// A player/manager is a player and a member of staff under one uid. person answers as the player and says he's staff
+    /// too, kind picks a side, compare puts him with the others' side, and a shortlist takes him as its own kind.
+    func testAPlayerManagerIsAPlayerAndAMemberOfStaff() throws {
+        let harness = Harness()
+        World.addPlayerCoach(to: harness.source.database)
+        let uid = Int(World.playerCoach)
+
+        let asPlayer = try harness.answer("person", ["uid": .int(uid)])
+        XCTAssertEqual(asPlayer["kind"], "player")
+        let also = try XCTUnwrap(asPlayer["also_staff"]?.string)
+        XCTAssertTrue(also.contains("Manager at \(World.rivals)"), also)
+        XCTAssertEqual(try harness.answer("person", ["uid": .int(uid), "kind": "player"])["kind"], "player")
+        let asStaff = try harness.answer("person", ["uid": .int(uid), "kind": "staff"])
+        XCTAssertEqual(asStaff["kind"], "staff")
+        XCTAssertNil(asStaff["also_staff"])
+        XCTAssertNil(try harness.answer("person", ["uid": 21])["also_staff"], "one who only plays isn't staff")
+        XCTAssertTrue(try harness.refusal("person", ["uid": 21, "kind": "staff"]).contains("is a player, not a member of staff"))
+        XCTAssertTrue(try harness.refusal("person", ["uid": 502, "kind": "player"]).contains("is a member of staff, not a player"))
+        XCTAssertTrue(try harness.refusal("person", ["uid": 600, "kind": "coach"]).contains("player, staff"))
+
+        let withStaff = try harness.answer("compare", ["uids": [.int(uid), 502]])
+        XCTAssertEqual(withStaff["people"]?.array?.compactMap { $0["name"]?.string }, ["Playing Manager", "Rival Coach"])
+        let rows = withStaff["rows"]?.array ?? []
+        XCTAssertFalse(rows.contains { $0.array?.first == "Consistency" }, "compared as staff, without a player's attributes")
+        let withPlayers = try harness.answer("compare", ["uids": [.int(uid), 21]])
+        XCTAssertTrue((withPlayers["rows"]?.array ?? []).contains { $0.array?.first == "Consistency" })
+        XCTAssertNotNil(try harness.answer("compare", ["uids": [.int(uid), 500], "kind": "staff"])["rows"])
+        XCTAssertTrue(try harness.refusal("compare", ["uids": [.int(uid), 502], "kind": "player"]).contains("502"))
+
+        try harness.saveShortlist("Coaches", isStaff: true, uids: [World.playerCoach, 502])
+        try harness.saveShortlist("Targets", isStaff: false, uids: [World.playerCoach, 21])
+        for name in ["Coaches", "Targets"] {
+            let list = try harness.answer("shortlist", ["name": .string(name)])
+            XCTAssertEqual(list["people"], 2, name)
+            XCTAssertNil(list["not_in_this_save"], name)
+            XCTAssertEqual(list.rowsByName.first?["uid"], .int(uid), name)
+        }
+        XCTAssertEqual(try harness.answer("shortlist", ["name": "Coaches"]).rowsByName.first?["Job"], "Manager")
+    }
+
     // MARK: Shortlists
 
     func testShortlistsFromFMsFolder() throws {

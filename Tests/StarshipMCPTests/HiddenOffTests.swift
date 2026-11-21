@@ -30,6 +30,10 @@ final class HiddenOffTests: XCTestCase {
         ("fixtures", [:]), ("fixtures", ["from": "2026-09-01"]), ("fixtures", ["club": "Rivals FC", "from": "2026-09-01"]),
         ("results", [:]), ("results", ["date": "2026-09-20"]), ("results", ["date": "2026-09-13"]), ("league_table", [:]),
         ("development", [:]), ("development", ["uid": 12]), ("development", ["uid": 1]), ("selection", [:]),
+        // The player/manager, as a player and as staff.
+        ("person", ["uid": 600]), ("person", ["uid": 600, "kind": "staff"]), ("compare", ["uids": [600, 500]]),
+        ("compare", ["uids": [600, 21], "kind": "player"]), ("shortlist", ["name": "Playing staff"]),
+        ("shortlist", ["name": "Playing targets"]),
     ]
 
     private static let abilityNames = ["CA", "PA", "Growth room", "Current ability", "Potential ability", "Likely peak",
@@ -70,6 +74,15 @@ final class HiddenOffTests: XCTestCase {
         return harness
     }
 
+    /// With the player/manager, a player and a member of staff under one uid, and shortlists of both kinds holding him.
+    private func sweepHarness(_ hidden: Bool, _ reveal: Reveal) throws -> Harness {
+        let harness = try harness(hidden, reveal)
+        World.addPlayerCoach(to: harness.source.database)
+        try harness.saveShortlist("Playing staff", isStaff: true, uids: [World.playerCoach, 502])
+        try harness.saveShortlist("Playing targets", isStaff: false, uids: [World.playerCoach, 21])
+        return harness
+    }
+
     private func assertNothing(_ names: [String], numbers: String, in harness: Harness, file: StaticString = #filePath, line: UInt = #line) {
         for (tool, arguments) in Self.calls {
             guard let result = harness.toolbox.call(tool, arguments: arguments) else { return XCTFail(tool, file: file, line: line) }
@@ -95,13 +108,13 @@ final class HiddenOffTests: XCTestCase {
 
     func testHiddenAttributesOffSendsNothingHiddenFromAnyTool() throws {
         for reveal in Reveal.allCases {
-            let harness = try harness(false, reveal)
+            let harness = try sweepHarness(false, reveal)
             assertNothing(Self.abilityNames + Self.hiddenNames, numbers: World.hiddenNumbers, in: harness)
         }
     }
 
     func testAbilityOffSendsNoCAOrPAFromAnyTool() throws {
-        let harness = try harness(true, .hidden)
+        let harness = try sweepHarness(true, .hidden)
         assertNothing(Self.abilityNames, numbers: #"\b(171|183|137|197|139|177)\b"#, in: harness)
     }
 
