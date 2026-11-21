@@ -17,6 +17,17 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
   macOS could ask whether FM may.
 - **Inside FM, cancelling the filter window no longer brings back filters on hidden attributes** after Hidden attributes was
   switched off in FM Starship's tab.
+- **FM Starship no longer risks closing FM when FM's memory holds a leftover or freed record,** as it could on some saves when
+  you pressed Load Save inside FM.
+- **About 2,000 players FM Starship was missing are found,** most of them over 30, Harry Kane among them. FM keeps them as a
+  player and a member of staff at once, and the few who really are player-coaches show as staff too.
+- **The "self-checks failed: duplicate players" warning no longer appears for leftover copies FM keeps in memory,** and they no
+  longer show up in searches.
+- **Recommended staff compares against your staff at the team you're recruiting for,** not everyone with that job at the club.
+- **A player's profile shows his cup and continental matches under the right names,** and no longer shows an international count
+  that didn't match FM's.
+- **Growth room shows only for players young enough to still grow,** up to 23, and up to 27 for goalkeepers, and sorting by it
+  puts the most room first.
 
 ## 27.0.8
 
