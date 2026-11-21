@@ -32,6 +32,16 @@ enum MacLayout {
         static let jobPreferences = 0x198
     }
 
+    /// ACTUAL_PLAYER_AND_NON_PLAYER: a player FM has also given a staff record, as it does for most players from about 30,
+    /// and for player-coaches. The player part at the start is laid out as a player's, and the staff part as a member of
+    /// staff's, around one shared person.
+    enum PlayerCoach {
+        static let size = 0x4a0
+        static let staff = 0x278                        // read as `Staff` from here
+        static let person = staff + Staff.person        // 0x370
+        static let identity = staff + Staff.identity    // 0x480
+    }
+
     /// Shared by players and staff, relative to the person subobject.
     enum Person {
         static let fullName = 0x10

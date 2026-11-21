@@ -29,6 +29,21 @@ final class ReaderLayoutTests: XCTestCase {
     }
 
     func testReadsEveryFieldOfAPlayer() throws {
+        try checkEveryFieldOfAPlayer { world, values in world.game.player(values) }
+    }
+
+    /// The player part of a player FM has also given a staff record reads as any player does, with the name, traits and
+    /// contract from the person further on. One who only plays, contract job 1, isn't staff.
+    func testReadsEveryFieldOfAPlayerWithAStaffRecord() throws {
+        try checkEveryFieldOfAPlayer { world, values in
+            var values = values
+            values.person.contract?.job = 1
+            return world.game.playerCoach(values, staff: FakeGame.StaffValues())
+        }
+    }
+
+    /// Lays out a player with `make` and checks every field the reader takes from it.
+    private func checkEveryFieldOfAPlayer(_ make: (World, FakeGame.PlayerValues) -> FakeRecord) throws {
         let world = World()
         var values = FakeGame.PlayerValues()
         values.ca = 143
@@ -62,7 +77,7 @@ final class ReaderLayoutTests: XCTestCase {
         contract.statusFlags = 0x43
         contract.clauses = [(2_500_000, 0), (0xffff_ffff, 0), (1_800_000, 16), (900_000, 18), (4_444, 7)]
         values.person.contract = contract
-        let record = world.game.player(values)
+        let record = make(world, values)
 
         let database = try world.game.read()
         XCTAssertEqual(database.players.count, 1)
@@ -189,6 +204,71 @@ final class ReaderLayoutTests: XCTestCase {
         XCTAssertEqual(staff.region, "Made-up Continent")
         XCTAssertEqual(staff.areaRecord, world.area)
         XCTAssertEqual(staff.squad, "U23")
+    }
+
+    /// A player/manager is a player and a member of staff: one record, read twice. The staff side's CA, PA, reputation
+    /// and attributes are its own, and its job is the staff job the contract gives alongside playing.
+    func testReadsAPlayerManagerAsAPlayerAndAMemberOfStaff() throws {
+        let world = World()
+        var player = FakeGame.PlayerValues()
+        player.ca = 84
+        player.pa = 97
+        player.person.index = 18_115
+        player.person.uid = 77_001
+        player.person.commonName = "Mock Playmanager"
+        player.person.birth = (day: 90, year: 1998)
+        player.person.contract?.team = world.roversFirst
+        player.person.contract?.wage = 3_100
+        // Bit 0 is "plays", and 16 is Manager.
+        player.person.contract?.job = 17
+        let shown = (0..<52).map { UInt8(1 + $0 * 3 % 20) }
+        var staff = FakeGame.StaffValues()
+        staff.ca = 128
+        staff.pa = 150
+        staff.reputation = (current: 2_100, home: 2_400, world: 900)
+        staff.attributes = shown.indices.map { $0 == 13 || $0 >= 26 ? shown[$0] * 5 : shown[$0] }
+        let record = world.game.playerCoach(player, staff: staff)
+
+        let database = try world.game.read()
+        XCTAssertEqual(database.players.count, 1)
+        XCTAssertEqual(database.staff.count, 1)
+        let asPlayer = try XCTUnwrap(database.players.first), asStaff = try XCTUnwrap(database.staff.first)
+        XCTAssertEqual(asPlayer.block, record.address)
+        XCTAssertEqual(asStaff.block, record.address + Int64(MacLayout.PlayerCoach.staff))
+        for person in [asPlayer, asStaff] as [Person] {
+            XCTAssertEqual(person.index, 18_115)
+            XCTAssertEqual(person.uid, 77_001)
+            XCTAssertEqual(person.name, "Mock Playmanager")
+            XCTAssertEqual(person.birthYear, 1998)
+            XCTAssertEqual(person.clubFull, "Mockport Rovers FC")
+            XCTAssertEqual(person.wage, 3_100)
+        }
+        XCTAssertEqual(asPlayer.ca, 84)
+        XCTAssertEqual(asPlayer.pa, 97)
+        XCTAssertEqual(asPlayer.squad, "First team")
+        XCTAssertEqual(asStaff.ca, 128)
+        XCTAssertEqual(asStaff.pa, 150)
+        XCTAssertEqual(asStaff.repCurrent, 2_100)
+        XCTAssertEqual(asStaff.repHome, 2_400)
+        XCTAssertEqual(asStaff.repWorld, 900)
+        XCTAssertEqual(asStaff.attr, shown)
+        XCTAssertEqual(asStaff.job, "Manager")
+    }
+
+    /// A member of staff's contract job is even, so taking off the "plays" bit leaves it as it was.
+    func testStaffJobsKeepTheirNames() throws {
+        let world = World()
+        for (uid, job) in [(1, 16), (2, 20), (3, 64)] as [(UInt32, UInt8)] {
+            var staff = FakeGame.StaffValues()
+            staff.person.uid = uid
+            staff.person.index = uid
+            staff.person.contract?.fallbackTeam = world.townFirst
+            staff.person.contract?.job = job
+            world.game.staff(staff)
+        }
+
+        let jobs = try world.game.read().staff.sorted { $0.uid < $1.uid }.map(\.job)
+        XCTAssertEqual(jobs, ["Manager", "Assistant Manager", "Head of Youth Development"])
     }
 
     /// FM keeps a PA it hasn't settled as a negative range, and a value it doesn't know as all ones.
@@ -332,6 +412,35 @@ final class ReaderLayoutTests: XCTestCase {
         XCTAssertEqual(Set(database.players.map(\.block)), [live.address, freeAgent.address])
     }
 
+    /// A dead copy of a player/manager points at the live contract too, which names only the live record, so neither its
+    /// player side nor its staff side is read.
+    func testLeavesOutADeadCopyOfAPlayerManager() throws {
+        let world = World()
+        var player = FakeGame.PlayerValues()
+        player.person.contract?.team = world.roversFirst
+        player.person.contract?.job = 17
+        let live = world.game.playerCoach(player, staff: FakeGame.StaffValues())
+        _ = world.game.copy(live)
+
+        let database = try world.game.read()
+        XCTAssertEqual(database.players.map(\.block), [live.address])
+        XCTAssertEqual(database.staff.map(\.block), [live.address + Int64(MacLayout.PlayerCoach.staff)])
+    }
+
+    /// With no contract there's no staff job, so a free agent FM has given a staff record is a player only.
+    func testReadsAFreeAgentWithAStaffRecordAsAPlayer() throws {
+        let world = World()
+        var player = FakeGame.PlayerValues()
+        player.person.commonName = "Made-up Veteran"
+        player.person.contract = nil
+        let record = world.game.playerCoach(player, staff: FakeGame.StaffValues())
+
+        let database = try world.game.read()
+        XCTAssertEqual(database.players.map(\.block), [record.address])
+        XCTAssertEqual(database.players.first?.name, "Made-up Veteran")
+        XCTAssertEqual(database.staff.count, 0)
+    }
+
     func testReadsAFreeAgent() throws {
         let world = World()
         var player = FakeGame.PlayerValues()
@@ -354,11 +463,18 @@ final class ReaderLayoutTests: XCTestCase {
             player.person.index = UInt32(uid)
             player.person.commonName = "Made-up Player \(uid)"
             player.person.contract?.team = uid.isMultiple(of: 2) ? world.roversFirst : world.townFirst
-            world.game.player(player)
+            // Some are player/managers, read as players and as staff, which isn't a duplicate.
+            if uid.isMultiple(of: 100) {
+                player.person.contract?.job = 17
+                world.game.playerCoach(player, staff: FakeGame.StaffValues())
+            } else {
+                world.game.player(player)
+            }
         }
 
         let database = try world.game.read()
         XCTAssertEqual(database.players.count, 1000)
+        XCTAssertEqual(database.staff.count, 10)
         XCTAssertEqual(database.checks, "PASS")
     }
 

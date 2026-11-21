@@ -243,6 +243,13 @@ Records are found by class name, so the reader usually keeps working. Its offset
 `Sources/StarshipCore/Reader/MacLayout.swift`. If they move, Load Save's self-check fails and FM Starship warns that
 the numbers on screen may be wrong.
 
+Players FM has also given a staff record, which it does for most players from about 30 and for player-coaches, are a
+third class, `ACTUAL_PLAYER_AND_NON_PLAYER`: a player's record, then a member of staff's, around one person.
+`MacLayout.PlayerCoach` says where the staff part, the person and the identity start. Those are the class's offsets to
+top, negated, which `tools/match_builds.py` prints under the reader's classes (0, -0x278, -0x370, -0x480 on 27.1.0). If they
+change, change `PlayerCoach` to match. The self-check doesn't notice these people going missing, so after a patch, check
+that well-known players in their thirties are still found.
+
 The rule functions are found by address, which only holds for one build. `RulesEngine` compares a fingerprint of
 `game_plugin` and **refuses to start on any other build**, so those features switch off rather than give wrong
 answers. To bring them back, find the new values for the `Mac27` constants in
