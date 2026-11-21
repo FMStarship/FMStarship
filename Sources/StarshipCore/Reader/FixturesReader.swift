@@ -167,11 +167,19 @@ public struct PlayerMatch: Sendable {
     /// The competition's name when it's his team's own league, which names a reserve league's matches that no fixture in
     /// memory names. Empty otherwise: `FixturesReader.competitionNames` names the rest.
     public var competitionName = ""
-    /// False when he didn't play. FM keeps an entry with no record of his match for every player of the team who didn't:
-    /// on the bench, left out or suspended.
+    /// Why a player didn't play, as FM's entry says.
+    public enum Absence: String, Sendable {
+        case unusedSubstitute = "unused substitute"
+        case notInSquad = "not in the matchday squad"
+        case suspended
+        case injured
+    }
+
+    /// False when he didn't play. FM keeps an entry with no record of his match for every first-team player who didn't:
+    /// on the bench, left out, suspended or injured.
     public var played = false
-    /// He didn't play because he was suspended, as FM's entry says.
-    public var suspended = false
+    /// Why he didn't play, as FM's entry says. Nil when he played, or for a reason FM Starship doesn't know.
+    public var absence: Absence?
     public var minutes = 0
     public var rating: Double?
     public var goals = 0
@@ -553,7 +561,7 @@ public final class FixturesReader {
                 match.competitionIndex = le32(b, E.competition)
                 if let league, league.index == match.competitionIndex { match.competitionName = league.name }
                 let stats = le64(b, E.record)
-                if stats == 0 { match.suspended = b[E.reason] == MacLayout.FormEntry.suspended }
+                if stats == 0 { match.absence = absence(b[E.reason]) }
                 if stats != 0, let r = game.read(stats, count: M.size) {
                     match.played = true
                     match.minutes = Int(r[M.minutes])
@@ -570,6 +578,18 @@ public final class FixturesReader {
         }
         history.matches.sort { $0.date > $1.date }
         return history
+    }
+
+    /// FM's reason byte, where its meaning is known.
+    static func absence(_ reason: UInt8) -> PlayerMatch.Absence? {
+        typealias E = MacLayout.FormEntry
+        switch reason {
+        case E.unusedSubstitute: return .unusedSubstitute
+        case E.notInSquad: return .notInSquad
+        case E.suspended: return .suspended
+        case E.injured: return .injured
+        default: return nil
+        }
     }
 
     /// A team's own league: its database index and name.

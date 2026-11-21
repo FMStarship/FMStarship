@@ -29,7 +29,7 @@ final class HiddenOffTests: XCTestCase {
         ("recommend_staff", ["role": "Director of Football", "only_join": false]), ("recommend_staff", ["role": "Manager", "level": "youth"]),
         ("fixtures", [:]), ("fixtures", ["from": "2026-09-01"]), ("fixtures", ["club": "Rivals FC", "from": "2026-09-01"]),
         ("results", [:]), ("results", ["date": "2026-09-20"]), ("results", ["date": "2026-09-13"]), ("league_table", [:]),
-        ("development", [:]), ("development", ["uid": 12]), ("development", ["uid": 1]),
+        ("development", [:]), ("development", ["uid": 12]), ("development", ["uid": 1]), ("selection", [:]),
     ]
 
     private static let abilityNames = ["CA", "PA", "Growth room", "Current ability", "Potential ability", "Likely peak",

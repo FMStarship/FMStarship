@@ -8,6 +8,9 @@ public struct TacticSlot {
     }
 
     public var player: Player?
+    /// The database index FM's tactic names him by. Nil for an empty place; set with no `player` for someone FM Starship
+    /// doesn't read.
+    public var index: UInt32?
     /// `Names.positions` indexes.
     public let position: Int
     public let positionWithoutBall: Int
@@ -17,8 +20,10 @@ public struct TacticSlot {
     public let role: Int
     public let roleWithoutBall: Int
 
-    public init(player: Player?, position: Int, positionWithoutBall: Int, side: Side, sideWithoutBall: Side, role: Int, roleWithoutBall: Int) {
+    public init(player: Player?, position: Int, positionWithoutBall: Int, side: Side, sideWithoutBall: Side, role: Int, roleWithoutBall: Int,
+                index: UInt32? = nil) {
         self.player = player
+        self.index = index ?? player?.index
         self.position = position
         self.positionWithoutBall = positionWithoutBall
         self.side = side
@@ -33,7 +38,7 @@ public struct TacticSlot {
     /// "DC (R)" where a line has two or three of the same position.
     public var label: String { Self.label(position: position, side: side) }
 
-    static func label(position: Int, side: Side) -> String {
+    public static func label(position: Int, side: Side) -> String {
         let name = Names.positions[position]
         switch side {
         case .left: return "\(name) (L)"
@@ -50,14 +55,38 @@ public struct TacticSlot {
     }
 }
 
+/// A substitute's place on the bench, as FM's tactic lists it.
+public struct BenchPlace {
+    /// The database index FM names him by.
+    public let index: UInt32
+    /// Nil for someone FM Starship doesn't read.
+    public var player: Player?
+
+    public init(index: UInt32, player: Player?) {
+        self.index = index
+        self.player = player
+    }
+}
+
 public struct Tactic {
     public var slots: [TacticSlot]
+    /// The substitutes in bench order, with the user's gaps kept as nil. Empty where the tactic was made by hand.
+    public var bench: [BenchPlace?] = []
+    /// The PREPARED_TACTICS_CREATOR_ARRAY it was read from, which `SelectionReader` reads again. 0 where it was made by hand.
+    public var array: Int64 = 0
     /// What the game itself calls this shape, when its rules are running.
     public var fmShape: String?
     public var fmShapeWithoutBall: String?
 
-    public init(slots: [TacticSlot]) {
+    public init(slots: [TacticSlot], bench: [BenchPlace?] = [], array: Int64 = 0) {
         self.slots = slots
+        self.bench = bench
+        self.array = array
+    }
+
+    /// The bench's places with someone in them, in order, numbered from 1 as FM's bench is.
+    public var substitutes: [(place: Int, sub: BenchPlace)] {
+        bench.enumerated().compactMap { offset, place in place.map { (offset + 1, $0) } }
     }
 
     /// Which line of the team a position stands in: goalkeeper, defence, screen, midfield, attacking midfield, attack.

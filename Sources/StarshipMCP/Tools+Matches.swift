@@ -138,13 +138,15 @@ extension Toolbox {
                     .int(record.goals), .int(record.assists), .int(record.yellow), .int(record.red), record.xG.map { .double($0) } ?? .null])
         }
         pairs += [("columns", .array((["uid"] + Self.matchPlayerColumns).map { .string($0) })), ("rows", .array(rows))]
-        // FM keeps an entry for every player of the team who didn't play, not only the substitutes who didn't come on.
+        // FM keeps an entry for every first-team player who didn't play, not only the substitutes who didn't come on.
         if !didntPlay.isEmpty {
             pairs.append(("didnt_play", .array(didntPlay.map { player, record in
-                .string(player.name + (record.suspended ? " (suspended)" : Self.injured(player, on: match.date) ? " (injured)" : ""))
+                .string(player.name + (Self.absence(record, player).map { " (\($0))" } ?? ""))
             })))
         }
-        var note = "Only players at \(club) now are listed. xG is left out for goalkeepers."
+        var note = "Only players at \(club) now are listed. xG is left out for goalkeepers. didnt_play says why, where FM's record "
+            + "does: an unused substitute, not in the matchday squad, suspended or injured. A name without one is a reason FM Starship "
+            + "doesn't know."
         if gone > 0 {
             note += " FM keeps only each player's last \(MatchHistory.kept) matches for a team, and this match has gone from "
                 + (gone == 1 ? "one player's," : "\(gone) players',") + " so they may be missing."
@@ -247,6 +249,13 @@ extension Toolbox {
 
     /// The club a player plays for now: his loan club while he's on loan.
     static func playsFor(_ player: Player) -> String { player.loanClubFull.isEmpty ? player.clubFull : player.loanClubFull }
+
+    /// Why he didn't play in a match he has an entry for: FM's reason where FM Starship knows it, else an injury FM keeps
+    /// that covers the day. Nil when neither says.
+    static func absence(_ match: PlayerMatch, _ player: Player) -> String? {
+        if let absence = match.absence { return absence.rawValue }
+        return injured(player, on: match.date) ? PlayerMatch.Absence.injured.rawValue : nil
+    }
 
     /// Whether one of his injuries, as FM keeps them, covers the day.
     static func injured(_ player: Player, on day: Date) -> Bool {

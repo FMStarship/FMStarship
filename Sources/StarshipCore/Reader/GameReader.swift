@@ -925,19 +925,25 @@ public final class GameReader {
             .flatMap { session in T.sessionArrays.map { session + $0 } }
         let candidates = edited + arrays.filter { !edited.contains($0) }
         for human in database.humanClubs {
-            let tactic = candidates.lazy.compactMap { self.readTactic($0, players: byIndex) }.first { tactic in
+            let tactic = candidates.lazy.compactMap { GameReader.tactic(at: $0, in: self.game, players: byIndex) }.first { tactic in
                 tactic.slots.filter { $0.player?.clubFull == human.name || $0.player?.loanClub == human.name }.count >= 9
             }
             if let tactic { database.tactics[human.team] = tactic }
         }
     }
 
-    private func readTactic(_ array: Int64, players: [UInt32: Player]) -> Tactic? {
+    /// A PREPARED_TACTICS_CREATOR_ARRAY's eleven, with their places and roles, and its bench. Nil when its creator's places
+    /// don't read as a tactic, as for a dead copy. Pointers read from memory are only added to with &+, so a bad one can't trap.
+    static func tactic(at array: Int64, in game: GameProcess, players: [UInt32: Player]) -> Tactic? {
         typealias T = MacLayout.Tactic
-        let creator = game.readPointer(game.readPointer(array + T.arrayCreators))
-        guard creator != 0, let ids = game.read(array + T.arrayPlayers, count: T.slots * 4),
+        let creator = game.readPointer(game.readPointer(array &+ T.arrayCreators))
+        guard creator != 0, let ids = game.read(array &+ T.arrayPlayers, count: T.places * 4),
               let withBall = game.read(creator &+ T.withBall, count: T.slots * Int(T.slotSize)),
               let withoutBall = game.read(creator &+ T.withoutBall, count: T.slots * Int(T.slotSize)) else { return nil }
+        func id(_ slot: Int) -> UInt32? {
+            let id = ids.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: slot * 4, as: UInt32.self) }
+            return id == T.empty ? nil : id
+        }
 
         func place(_ bytes: [UInt8], _ slot: Int) -> (position: Int, side: TacticSlot.Side, role: Int)? {
             let at = slot * Int(T.slotSize)
@@ -953,12 +959,14 @@ public final class GameReader {
         var slots: [TacticSlot] = []
         for slot in 0..<T.slots {
             guard let with = place(withBall, slot), let without = place(withoutBall, slot) else { return nil }
-            let id = ids.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: slot * 4, as: UInt32.self) }
-            slots.append(TacticSlot(player: players[id], position: with.position, positionWithoutBall: without.position,
-                                    side: with.side, sideWithoutBall: without.side, role: with.role, roleWithoutBall: without.role))
+            let index = id(slot)
+            slots.append(TacticSlot(player: index.flatMap { players[$0] }, position: with.position, positionWithoutBall: without.position,
+                                    side: with.side, sideWithoutBall: without.side, role: with.role, roleWithoutBall: without.role,
+                                    index: index))
         }
         guard slots.first?.position == 0 else { return nil }
-        return Tactic(slots: slots)
+        let bench = (T.slots..<T.places).map { slot in id(slot).map { BenchPlace(index: $0, player: players[$0]) } }
+        return Tactic(slots: slots, bench: bench, array: array)
     }
 
     private func readCurrencies(_ addresses: [Int64], into database: Database) {

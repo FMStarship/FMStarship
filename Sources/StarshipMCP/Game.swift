@@ -16,15 +16,49 @@ public struct GameRead {
     public let states: PlayerStateSource?
     /// Players' yellow cards toward a ban, by FM's own count. Nil where they can't be read.
     public let bookings: BookingSource?
+    /// The user's matchday squad as FM holds it when a tool answers, and FM's scout reports. Nil where they can't be read again.
+    public let selection: SelectionSource?
 
     public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil,
-                bookings: BookingSource? = nil) {
+                bookings: BookingSource? = nil, selection: SelectionSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
         self.matches = matches
         self.states = states
         self.bookings = bookings
+        self.selection = selection
+    }
+}
+
+/// The matchday squad and the scout's reports, as `SelectionReader` gives them.
+public protocol SelectionSource: AnyObject {
+    /// The tactic as FM holds it now: the user can change the line-up without the date moving. Nil when it can't be read again.
+    func tactic(again tactic: Tactic, players: [UInt32: Player]) -> Tactic?
+    /// FM's opposition reports, newest first. Nil when this build of FM doesn't have the class they're found by.
+    func scoutReports(players: [UInt32: Player]) -> [ScoutReport]?
+}
+
+/// The running game's, through a `SelectionReader` made on the first question.
+final class LiveSelection: SelectionSource {
+    private let game: GameProcess
+    private var reader: SelectionReader?
+
+    init(game: GameProcess) {
+        self.game = game
+    }
+
+    private var found: SelectionReader {
+        if let reader { return reader }
+        let made = SelectionReader(game: game, rtti: Rtti(game))
+        reader = made
+        return made
+    }
+
+    func tactic(again tactic: Tactic, players: [UInt32: Player]) -> Tactic? { found.tactic(again: tactic, players: players) }
+
+    func scoutReports(players: [UInt32: Player]) -> [ScoutReport]? {
+        found.findsReports ? found.scoutReports(players: players) : nil
     }
 }
 
@@ -150,7 +184,8 @@ public final class LiveGame: GameSource {
             return GameRead(database: database, engine: engine, number: reads, matches: matches,
                             states: PlayerStateReader(game: process, database: database),
                             bookings: BookingsReader(game: process, database: database, engine: engine,
-                                                     competitionRecords: { matches.competitionRecords() }))
+                                                     competitionRecords: { matches.competitionRecords() }),
+                            selection: LiveSelection(game: process))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {

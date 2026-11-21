@@ -142,15 +142,38 @@ final class CompetitionStatsTests: XCTestCase {
         XCTAssertEqual(rows[13]?["Match load (14 days)"], .null, "FM keeps no match of his, so it isn't known")
     }
 
-    /// FM's entry for a player who didn't play says when he was suspended, and the result marks him.
-    func testAResultMarksTheSuspendedPlayers() throws {
+    /// FM's entry for a player who didn't play says why, and the result marks him: one with a reason FM Starship doesn't know
+    /// is left unmarked, unless an injury FM keeps covers the day.
+    func testAResultSaysWhyEachPlayerDidntPlay() throws {
         let harness = Harness()
         let engine = try XCTUnwrap(harness.source.engine as? FakeEngine)
-        var banned = PlayerMatch(date: GameDate.date(year: 2026, dayOfYear: World.secondMatch)!, team: World.team, opponent: World.otherTeam)
-        banned.suspended = true
-        engine.moreMatches[3] = [banned]
-        let result = try harness.answer("results", ["date": .string(Output.iso(banned.date))])
-        XCTAssertEqual(result["didnt_play"]?.array?.compactMap(\.string).sorted(), ["First 3 (suspended)", "Young Prospect"])
+        let day = GameDate.date(year: 2026, dayOfYear: World.secondMatch)!
+        func missed(_ absence: PlayerMatch.Absence?) -> [PlayerMatch] {
+            var match = PlayerMatch(date: day, team: World.team, opponent: World.otherTeam)
+            match.absence = absence
+            return [match]
+        }
+        engine.moreMatches = [3: missed(.suspended), 4: missed(.unusedSubstitute), 5: missed(.notInSquad), 6: missed(.injured),
+                              7: missed(nil)]
+        let hurt = try XCTUnwrap(harness.source.database.players.first { $0.uid == 7 })
+        let injury = Injury()
+        injury.date = GameDate.date(year: 2026, dayOfYear: World.secondMatch - 3)!
+        injury.length = 10
+        hurt.injuries = [injury]
+        let result = try harness.answer("results", ["date": .string(Output.iso(day))])
+        XCTAssertEqual(result["didnt_play"]?.array?.compactMap(\.string).sorted(),
+                       ["First 3 (suspended)", "First 4 (unused substitute)", "First 5 (not in the matchday squad)", "First 6 (injured)",
+                        "First 7 (injured)", "Young Prospect"])
+        // The same in his recent matches and the squad's last match.
+        let person = try harness.answer("person", ["uid": 4])
+        let recent = try XCTUnwrap(person["Recent matches"])
+        XCTAssertEqual(recent.rowsByName.first?["didnt_play"], "unused substitute")
+        XCTAssertEqual(recent.rowsByName.first?["minutes"], .null)
+        XCTAssertEqual(recent.rowsByName.last?["didnt_play"], .null, "he played that one")
+        let rows = Self.rows(try harness.answer("squad", ["squad": "all"]))
+        XCTAssertEqual(rows[5]?["Last match didn't play"], "not in the matchday squad")
+        XCTAssertEqual(rows[9]?["Last match didn't play"], .null, "he played")
+        XCTAssertEqual(rows[12]?["Last match didn't play"], "reason not known")
     }
 
     func testAMatchMoreThanFourteenDaysAgoDoesntCount() throws {
@@ -180,7 +203,8 @@ final class CompetitionStatsTests: XCTestCase {
             Self.match(267, team: "Loan Club", index: 77, opponent: "Away Town", goals: 1),
         ]
         let recent = try XCTUnwrap(try harness.answer("person", ["uid": 9])["Recent matches"])
-        XCTAssertEqual(recent.columnNames, ["date", "team", "competition", "opponent", "minutes", "rating", "goals", "assists", "yellow", "red"])
+        XCTAssertEqual(recent.columnNames, ["date", "team", "competition", "opponent", "minutes", "rating", "goals", "assists", "yellow", "red",
+                                            "didnt_play"])
         let rows = recent.rowsByName
         XCTAssertEqual(rows.map { $0["competition"] }, ["Mock Cup", "Mock Reserve League", .null, "Mock League", "Mock League"])
         XCTAssertEqual(rows.map { $0["date"] }, ["2026-09-26", "2026-09-25", "2026-09-24", "2026-09-20", "2026-09-13"])

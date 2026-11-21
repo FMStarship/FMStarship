@@ -141,6 +141,8 @@ public final class Toolbox: ToolProvider {
     private var matchesByTeam: [Int64: (matches: TeamMatches?, at: Date)] = [:]
     private var namesRead: Int?
     private var namesByIndex: [UInt32: String] = [:]
+    private var reportsRead: Int?
+    private var reportsFound: [ScoutReport]?
     /// The time now, which a test can move on.
     var clock: () -> Date = Date.init
     /// Where the app keeps its development records, which `development` only reads. A test points it at a folder of its own.
@@ -246,6 +248,17 @@ public final class Toolbox: ToolProvider {
             namesRead = read.number
         }
         return namesByIndex
+    }
+
+    /// FM's opposition reports, swept for once for each read of the save: FM writes them as the days go by. Nil when they
+    /// can't be read.
+    func scoutReports(_ read: GameRead) -> [ScoutReport]? {
+        guard let source = read.selection else { return nil }
+        if reportsRead != read.number {
+            reportsFound = source.scoutReports(players: playersByIndex(read))
+            reportsRead = read.number
+        }
+        return reportsFound
     }
 
     /// How long a sweep stands while it holds a match due today or earlier that isn't played yet.

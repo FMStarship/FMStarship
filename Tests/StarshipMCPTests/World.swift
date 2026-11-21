@@ -110,7 +110,7 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
         case 1...11: return MatchHistory(matches: (moreMatches[player.uid] ?? []) + [match(World.secondMatch, opponent: World.otherTeam),
                                                                                         match(World.firstMatch, opponent: World.rivalsTeam)],
                                          fullFrom: fullFrom[player.uid] ?? [:])
-        case 12: return MatchHistory(matches: [match(World.secondMatch, opponent: World.otherTeam, played: false)])
+        case 12: return MatchHistory(matches: (moreMatches[player.uid] ?? []) + [match(World.secondMatch, opponent: World.otherTeam, played: false)])
         case 13: return MatchHistory(fullFrom: [World.team: GameDate.date(year: 2026, dayOfYear: World.firstMatch + 2) ?? Date()])
         default: return MatchHistory()
         }
@@ -177,6 +177,22 @@ final class FakeBookings: BookingSource {
     func bookings(of player: Player) -> [Booking]? { off == nil ? bookings[player.uid] ?? [] : nil }
 }
 
+/// The matchday squad and scout reports as `SelectionSource` gives them: the line-up as FM holds it now, which a test can
+/// change between calls, and the reports it sets. Counts its sweeps for reports.
+final class FakeSelection: SelectionSource {
+    /// The line-up now, from the one the read found. Nil for one that can't be read again.
+    var now: ((Tactic) -> Tactic?) = { $0 }
+    var reports: [ScoutReport]? = []
+    private(set) var sweeps = 0
+
+    func tactic(again tactic: Tactic, players: [UInt32: Player]) -> Tactic? { now(tactic) }
+
+    func scoutReports(players: [UInt32: Player]) -> [ScoutReport]? {
+        sweeps += 1
+        return reports
+    }
+}
+
 /// A save built by hand, as `GameSource` gives it. It counts its reads, and can say the save has moved on.
 final class FakeSource: GameSource {
     var database: Database
@@ -186,6 +202,7 @@ final class FakeSource: GameSource {
     var matches: FakeMatches? = World.matches()
     var states: FakeStates? = FakeStates(World.bans())
     var bookings: FakeBookings? = FakeBookings(World.bookings())
+    var selection: FakeSelection? = FakeSelection()
     private(set) var reads = 0
 
     init(database: Database, engine: GameRulesEngine?) {
@@ -196,7 +213,7 @@ final class FakeSource: GameSource {
     func read() throws -> GameRead {
         if let problem { throw problem }
         reads += 1
-        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings)
+        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings, selection: selection)
     }
 
     func isCurrent(_ read: GameRead) -> Bool { current }
@@ -329,11 +346,13 @@ enum World {
         var bookings = Ban(issued: GameDate.date(year: 2026, dayOfYear: 244)!, matches: 1, served: 0)
         bookings.competition = "Mock League"
         bookings.associationName = "Mockovia"
+        bookings.competitionIndex = leagueIndex
         bookings.reason = .bookings
         bookings.domestic = true
         bookings.countsForClub = true
         var red = Ban(issued: GameDate.date(year: 2026, dayOfYear: cupMatch)!, matches: 3, served: 1)
         red.competition = "Mock Cup"
+        red.competitionIndex = cupIndex
         red.associationName = "Mockovia"
         red.reason = .redCard
         red.opponent = minnows
@@ -369,15 +388,17 @@ enum World {
         ]
     }
 
-    /// A 4-4-2 with the first eleven in it.
-    static func tactic(_ players: [Player]) -> Tactic {
+    /// A 4-4-2 with the first eleven in it, and the youngster and the injured player on the bench, with a gap between them.
+    static func tactic(_ players: [Player], bench: [UInt32?] = [12, nil, 13]) -> Tactic {
         let places: [(String, TacticSlot.Side)] = [("GK", .centre), ("DR", .right), ("DC", .right), ("DC", .left), ("DL", .left),
                                                    ("MR", .right), ("MC", .right), ("MC", .left), ("ML", .left), ("ST", .right), ("ST", .left)]
         return Tactic(slots: places.enumerated().map { index, place in
             let position = Names.positions.firstIndex(of: place.0)!
             return TacticSlot(player: players.first { $0.uid == UInt32(index + 1) }, position: position, positionWithoutBall: position,
                               side: place.1, sideWithoutBall: place.1, role: 0, roleWithoutBall: 0)
-        })
+        }, bench: (bench + Array(repeating: nil, count: 15 - bench.count)).map { index in
+            index.map { index in BenchPlace(index: index, player: players.first { $0.index == index }) }
+        }, array: 0x1000)
     }
 
     // MARK: Matches

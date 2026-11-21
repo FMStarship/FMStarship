@@ -84,7 +84,8 @@ extension Toolbox {
                 + "for a reserve or B-team player is the reserve league; Cup and Continental stats aren't named, since FM's split "
                 + "doesn't say which competition (person's Recent matches does). Last match is each "
                 + "player's latest match in FM's record of his form, with its competition and opponent and his minutes and rating "
-                + "(both empty if he didn't play: on the bench, left out or suspended), which shows rotation. Match load (14 days) is FM's: the matches he "
+                + "(both empty if he didn't play, and Last match didn't play then says why: unused substitute, not in the matchday "
+                + "squad, suspended, injured, or reason not known), which shows rotation. Match load (14 days) is FM's: the matches he "
                 + "played in the last 14 days and his minutes, out of 90 a match. "
                 + "Condition and Sharpness are percentages, Morale 1-20, Playing time his happiness with it from -100 to 100, "
                 + "Suspended the matches he's banned for in each competition, Bookings FM's own count of his yellow cards toward a "
@@ -101,7 +102,7 @@ extension Toolbox {
         Tool(name: "person", title: "Person",
              description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats in total and "
                 + "by competition (league, cup, continental), form, his recent matches with competition, opponent, minutes, rating, "
-                + "goals and assists, his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, his yellow cards toward a ban under each rule set, home-grown status, contract, "
+                + "goals and assists, or why he didn't play (unused substitute, not in the matchday squad, suspended, injured), his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, his yellow cards toward a ban under each rule set, home-grown status, contract, "
                 + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
                           Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out.")],
@@ -185,6 +186,14 @@ extension Toolbox {
              description: "Each place in the user's tactic: who plays there, their role stars, how they stand against the league, cover and notes. Needs FM's rules on this build.",
              parameters: [club],
              run: { $0.squadOverview }),
+        Tool(name: "selection", title: "Matchday squad",
+             description: "The user's starting eleven and bench for the next match, as saved in FM's tactics now (the user may still "
+                + "change them): each starter's position and role with and without the ball, the substitutes in FM's bench order, "
+                + "each player's condition, sharpness, suspensions and injury, and warnings for a picked player who is banned for the "
+                + "next match's competition or injured on its day. With the next match, and FM's scout's predicted line-up of the "
+                + "opponent (eleven with roles, and substitutes) when FM has an opposition report on them; none when it hasn't.",
+             parameters: [club],
+             run: { $0.selection }),
         Tool(name: "staff_overview", title: "Staff overview",
              description: "Each backroom job and training area at the user's club: who's in post, how they stand against the league, and empty places.",
              parameters: [club],
@@ -202,7 +211,7 @@ extension Toolbox {
         Tool(name: "results", title: "Results",
              description: Toolbox.matchNames + "A club's played matches, newest first, with score, result, aggregate (with the teams' "
                 + "names), attendance and goals. With date, one match, with each of the club's players who played: minutes, rating, goals, assists, cards "
-                + "and xG. FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
+                + "and xG, and those who didn't with why (unused substitute, not in the matchday squad, suspended, injured). FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
              parameters: [matchClub,
                           Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),
                           Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out.")],

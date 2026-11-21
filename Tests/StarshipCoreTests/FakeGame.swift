@@ -7,7 +7,7 @@ import XCTest
 /// just enough RTTI for the reader to find the classes it sweeps for. Every name and number in it is made up.
 final class FakeGame {
     /// The classes whose records the reader finds by their vtables.
-    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER"]
+    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER", "SCOUT_TEAM_REPORT_NEWS"]
     /// `FixturesReader`'s, which RTTI spells in the sicomps namespace.
     static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE"]
     /// Classes of the reader's names in the sicomps namespace, which FM doesn't have, laid out ahead of the real ones: the

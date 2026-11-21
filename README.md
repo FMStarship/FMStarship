@@ -135,11 +135,12 @@ launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes th
 FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI agent you
 use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
-shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match,
-each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
-each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how
-your players have developed between the times FM Starship read your save, and FM Starship's club, squad and staff overviews,
-recommended signings, recommended staff and bargains.
+shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match
+and why the others didn't play, the starting eleven and bench you've picked for the next match with a warning for anyone banned
+or injured for it, FM's scout's predicted line-up of your next opponent, each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
+each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how your players have developed
+between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
+recommended staff and bargains.
 
 - **It only reads.** It has no way to change anything in FM or your save, and it writes no files.
 - **It stays on your Mac.** Your agent's app starts it and talks to it through stdin and stdout. It opens no network connection and
@@ -288,7 +289,7 @@ more about where it began.
 | Season stats, board staff limits, preferred job | FM's own functions |
 | Exact injury return days | FM's own function |
 | Formation names, in the game's language | FM's own function |
-| Your tactic: formation, roles with and without the ball, your XI | Read from memory |
+| Your tactic: formation, roles with and without the ball, your XI and bench | Read from memory |
 | Club dashboard: what needs a decision, who's coming through, what the health check wants done | Built on the answers above |
 | Squad and Staff overviews: each place, how it stands against the league, and the best person who'd join | Built on the answers above |
 | Best eleven: your tactic's places and roles with the best the club has in each, against your own picks | FM's own role ratings |
@@ -406,6 +407,18 @@ FM Starship's own parts, and how to check them after a patch:
   falls back to its ten position groups, and Help > Compatibility says so. To find them again, search memory for your
   XI's player indexes in order (`fmprobe cluster`), then see which class holds them (`fmprobe census`, `fmprobe fields`).
   `fmprobe tactic` prints what the app read. Stars are the check: FM's tactics screen shows the two phases' average, rounded up.
+  The array holds 26 player indexes: the XI, then the substitutes in bench order, with the gaps the tactics screen keeps. FM
+  names only as many substitutes as the competition allows, from the top (9 in Eliteserien and the Norwegian cup on 27.1.0).
+  The MCP server's `selection` reads the array again where the read found it, as the user can change the line-up without the
+  date moving, and checks that nobody is in it twice and everyone in it plays for the club.
+- **Why a player didn't play** is the reason byte of his form entry (`MacLayout.FormEntry.reason`): 12 named on the bench and
+  not brought on, 0 left out of the matchday squad, 5 suspended, 6 injured. On Molde's save every first-team player had an entry
+  for every match, and these matched three matchday squads FM still held in memory. 4, 13 and 0x4c (seen the match after an
+  injury) aren't known, so they go out unmarked.
+- **The next opponent's predicted line-up** is FM's opposition report, the news item `SCOUT_TEAM_REPORT_NEWS`, swept for when
+  `selection` is asked (`SelectionReader`). It holds a `GAME_TACTIC_INFO` whose array reads as ours does, and its date at +0x88.
+  Nothing found in it names the team, so the server takes the newest report whose eleven mostly plays for the next opponent,
+  dated after the last match with them and by the day of this one. It's the scout's prediction, not the AI's pick.
 - **Squad overview and Staff overview** are `OverviewReport`s: each place, how it stands against the league, and the best
   person who'd join. Staff jobs come from FM's own board table, `StaffLimits.Club`. Its entries were matched to jobs by comparing
   them with who holds each job at 600 clubs, which `fmprobe staffmap 7 600` repeats if a patch reorders them.

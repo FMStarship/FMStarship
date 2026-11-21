@@ -27,7 +27,8 @@ chosen in FM Starship.
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
 | `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
-| `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG |
+| `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't |
+| `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
@@ -72,7 +73,9 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   international matches too: date, team, competition, opponent, minutes, rating, goals, assists and cards. Use them to say
   where a goal or a rating came from. `team` is the club's name, so a reserve team's match shows its club with the reserve
   league as the competition; it's empty for a national team. An empty competition is one FM Starship couldn't name.
-  Empty minutes and rating mean he didn't play: on the bench, left out or suspended.
+  When he didn't play, minutes and rating are empty and `didnt_play` says why, from FM's own entry: "unused substitute" (named
+  on the bench, not brought on), "not in the matchday squad", "suspended" or "injured". "reason not known" is a reason FM keeps
+  that FM Starship can't read yet, so don't guess which.
 - **Players FM keeps no match record for**: FM keeps a record of each match only for some players. At AI clubs many have
   none, even in the user's own league (on the save it was checked on, Strømsgodset's Ardraa had 21 league matches and no
   record, and FM's own form had nothing for him either), and in a league FM runs in the background it may be every player.
@@ -110,17 +113,32 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with
   play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
   Kick-off, attendance and aggregate are only there on builds of FM that FM Starship has been checked on.
-- **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked "(suspended)"
-  from FM's own entry and "(injured)" when one of his injuries covered the day. The rest were on the bench or left out; which
-  isn't known. Scorers marked "(own goal)" play for the side that conceded.
+- **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked from FM's own
+  entry: "(unused substitute)", "(not in the matchday squad)", "(suspended)" or "(injured)", and "(injured)" too when FM's reason
+  isn't one FM Starship knows but one of his injuries covered the day. A name with no mark is a reason FM Starship can't read, so
+  don't guess it. The matchday squad is the players who played and the unused substitutes. FM keeps these entries for
+  first-team players; a reserve or youth player who wasn't involved may have none. Scorers marked "(own goal)" play for the side
+  that conceded.
+- **The matchday squad** (`selection`) is the line-up as saved in FM's tactics when you ask: the user may still change it, so
+  say it's what's picked now, not the team that will play. `starting_eleven` has each place's position and role with and without
+  the ball; `bench` is the substitutes in FM's order, `place` numbered from 1 with the user's gaps kept. FM names only as many
+  substitutes as the competition allows, from the top, and FM Starship doesn't know each competition's number, so don't say how
+  many will be named. `warnings` names each picked player who has a ban for the next match's competition, is injured on its day,
+  or has a ban FM Starship can't tie to a competition: raise those with the user first. A ban's competition is FM Starship's
+  reasoning from FM's records (see `person`'s Suspensions). `notes` says when the picked players are exactly the last match's
+  squad, which can mean the user hasn't picked for this match yet. A player FM Starship doesn't read, such as one who is also on
+  the staff, is named as that.
+- **The opponent's predicted line-up** (`selection`'s `opponent_prediction`) is FM's scout's prediction from FM's opposition
+  report, with its date: a prediction, not the team they'll pick, and it can be days old. It's only there when FM has a report
+  on that opponent made since the last match against them; with none, say FM has no scout report on them, don't make one up.
 - **Match load (14 days)** in `squad` and `person` is FM's match load: the matches he played in the 14 days up to today, his
   minutes in them, and 90 a match. "3 matches, 212 of 270 min" is FM's "3 kamper (212/270 minutter) siste 14 dager", and it
   matched FM's figure on the save it was checked on. FM's word for it ("Intensiv" and the like) and where the words start
   aren't known, so judge by the numbers. Every match FM keeps counts, friendlies and youth matches too; whether FM counts
   friendlies hasn't been checked yet.
 - **Last match** in `squad` is the player's latest match in FM's record, for any team, with its competition and opponent:
-  compare its date with the club's last result to see who was left out. A date with no minutes or rating means he didn't
-  play: on the bench, left out or suspended.
+  compare its date with the club's last result to see who was left out. When he didn't play, `Last match didn't play` says
+  why, as in Recent matches.
 - **Condition** and **Sharpness** (match sharpness) are FM's own numbers as percentages, 0 to 100 with one decimal. FM doesn't
   show them as numbers: condition is a heart with a word, sharpness a tick. Right after a match, FM lowers condition by the
   minutes played and raises sharpness. On the save they were checked on, the evening after a match, 80% condition showed "Bra"
@@ -201,6 +219,7 @@ FM Starship doesn't read these yet, so don't state them, and don't work them out
   match yet to check them against.
 - Condition, sharpness, morale, playing time, suspensions, bookings toward a ban or home-grown status when `game_status` says one is off.
 - FM's words for condition and morale, wear ("very little wear" and the like), match load and training load.
+- How many substitutes a competition lets a team name, and the line-up an AI club will actually pick.
 - A player's season totals for friendlies and internationals. Recent matches has those matches, but only the ones FM still
   keeps, so don't add them up and call it his season.
 - The squad screen's badges for a player on a language course or supporting an unhappy teammate.

@@ -421,19 +421,20 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(try world.reader().competitionRecords(), [World.leagueIndex: world.league])
     }
 
-    /// FM's entry for a player who didn't play says when it was because he was suspended.
-    func testAnEntryWithoutARecordSaysWhenHeWasSuspended() throws {
+    /// FM's entry for a player who didn't play says why: on the bench, left out, suspended or injured. A reason FM Starship
+    /// doesn't know is left unmarked.
+    func testAnEntryWithoutARecordSaysWhyHeDidntPlay() throws {
         let world = World()
-        let history = world.game.history([(world.rovers, [
-            FakeGame.HistoryEntry(opponent: world.town, day: 100, competition: World.leagueIndex, played: nil, reason: 5),
-            FakeGame.HistoryEntry(opponent: world.united, day: 107, competition: World.leagueIndex, played: nil, reason: 12),
-        ])])
+        let reasons: [UInt8] = [5, 12, 0, 6, 0x4c]
+        let history = world.game.history([(world.rovers, reasons.enumerated().map { step, reason in
+            FakeGame.HistoryEntry(opponent: world.town, day: UInt16(100 + 7 * step), competition: World.leagueIndex, played: nil, reason: reason)
+        })])
         var values = FakeGame.PlayerValues()
         values.history = history
         let player = world.game.player(values)
         let matches = FixturesReader.history(player: player.address, in: world.game.process()) { _ in "" }.matches
-        XCTAssertEqual(matches.map(\.played), [false, false])
-        XCTAssertEqual(matches.map(\.suspended), [false, true], "newest first: the bench, then the ban")
+        XCTAssertEqual(matches.map(\.played), [false, false, false, false, false])
+        XCTAssertEqual(matches.map(\.absence), [nil, .injured, .notInSquad, .unusedSubstitute, .suspended], "newest first")
     }
 
     /// A record of 0 minutes is an appearance: only no record at all means he didn't play.

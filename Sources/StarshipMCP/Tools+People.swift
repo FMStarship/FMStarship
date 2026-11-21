@@ -188,7 +188,7 @@ extension Toolbox {
     }
 
     /// Each player's latest match in FM's record of his form: when, which competition and opponent, his minutes and his
-    /// rating, both empty when he didn't play (on the bench, left out or suspended). `competitions` names the competitions by database index.
+    /// rating, both empty when he didn't play, and then why. `competitions` names the competitions by database index.
     /// None when FM's rules are off, since the record comes with them.
     static func lastMatch(_ histories: Histories?, competitions: [UInt32: String]) -> [Output.Field] {
         guard let histories else { return [] }
@@ -197,8 +197,15 @@ extension Toolbox {
                 Output.Field(name: "Last match competition") { match($0).flatMap { competitionName($0, competitions) } },
                 Output.Field(name: "Last match opponent") { match($0).flatMap { Output.text($0.opponentName) } },
                 Output.Field(name: "Last match minutes") { match($0).flatMap { $0.played ? .int($0.minutes) : nil } },
-                Output.Field(name: "Last match rating") { match($0)?.rating.map { .double($0) } }]
+                Output.Field(name: "Last match rating") { match($0)?.rating.map { .double($0) } },
+                Output.Field(name: "Last match didn't play") { person in
+                    guard let player = person as? Player, let last = match(player), !last.played else { return nil }
+                    return .string(didntPlay(last, player))
+                }]
     }
+
+    /// Why he didn't play, for a list's cell: FM's reason, or that it isn't known.
+    static func didntPlay(_ match: PlayerMatch, _ player: Player) -> String { absence(match, player) ?? "reason not known" }
 
     /// FM's order of positions, as its squad screen lists them.
     static func positionOrder(_ a: Player, _ b: Player) -> Bool {
@@ -286,7 +293,7 @@ extension Toolbox {
                 pairs.append(("Fitness and morale", state))
             }
             if let load = Self.matchLoad(history, today: context.db.gameDate) { pairs.append((Self.matchLoadName, load)) }
-            if let history, let matches = recentMatches(history, limit: recent, context) { pairs.append(("Recent matches", matches)) }
+            if let history, let matches = recentMatches(history, player: player, limit: recent, context) { pairs.append(("Recent matches", matches)) }
             let traits = player.traits.components(separatedBy: "; ").filter { !$0.isEmpty }
             if !traits.isEmpty { pairs.append(("Traits", .array(traits.map { .string($0) }))) }
         }
@@ -299,24 +306,27 @@ extension Toolbox {
         Output.text(names[match.competitionIndex] ?? match.competitionName)
     }
 
-    static let recentMatchColumns = ["date", "team", "competition", "opponent", "minutes", "rating", "goals", "assists", "yellow", "red"]
+    static let recentMatchColumns = ["date", "team", "competition", "opponent", "minutes", "rating", "goals", "assists", "yellow", "red",
+                                     "didnt_play"]
 
     /// His latest matches in FM's record of his form, for any team, newest first: which competition and opponent a goal or a
     /// rating came from.
-    private func recentMatches(_ history: MatchHistory, limit: Int, _ context: CallContext) -> JSON? {
+    private func recentMatches(_ history: MatchHistory, player: Player, limit: Int, _ context: CallContext) -> JSON? {
         guard limit > 0, !history.matches.isEmpty else { return nil }
         let names = competitionNames(context.read)
         let rows: [JSON] = history.matches.prefix(limit).map { match in
             let head: [JSON] = [.string(Output.iso(match.date)), Output.text(match.teamName) ?? .null,
                                 Self.competitionName(match, names) ?? .null, Output.text(match.opponentName) ?? .null]
-            guard match.played else { return .array(head + Array(repeating: JSON.null, count: 6)) }
+            guard match.played else {
+                return .array(head + Array(repeating: JSON.null, count: 6) + [.string(Self.didntPlay(match, player))])
+            }
             return .array(head + [.int(match.minutes), match.rating.map { .double($0) } ?? .null, .int(match.goals),
-                                  .int(match.assists), .int(match.yellow), .int(match.red)])
+                                  .int(match.assists), .int(match.yellow), .int(match.red), .null])
         }
         let note = "Newest first, for every team he played for, friendlies, youth and international matches too. team is the "
             + "club's name, so a reserve or youth team shows as its club, and it's empty for a national team. FM keeps his last "
-            + "\(MatchHistory.kept) matches for each team. Empty minutes and rating: he didn't play (on the bench, left out or suspended). "
-            + "An empty competition is one FM Starship couldn't name."
+            + "\(MatchHistory.kept) matches for each team. didnt_play is set when he didn't play, with FM's reason: unused substitute, "
+            + "not in the matchday squad, suspended or injured, or reason not known. An empty competition is one FM Starship couldn't name."
         return .object([("columns", .array(Self.recentMatchColumns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }
 

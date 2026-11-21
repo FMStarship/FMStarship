@@ -157,10 +157,14 @@ enum MacLayout {
         static let year = 0x12
         /// The competition's database index, as at `Comp.index`.
         static let competition = 0x14
-        /// Why he didn't play, when `record` is zero. 5 for a suspended player: the three suspended for a match on Molde's
-        /// save on 27.1.0 had it. 12 for most of the others, on the bench or left out; what 6 and 0x4c mean isn't known.
+        /// Why he didn't play, when `record` is zero, from Molde's save on 27.1.0, checked against three matches' squads as
+        /// FM stored them: 12 named on the bench and not brought on, 0 left out of the matchday squad, 5 suspended, 6 injured
+        /// (one proof). What 4, 13 and 0x4c mean isn't known.
         static let reason = 0x18
+        static let notInSquad: UInt8 = 0
         static let suspended: UInt8 = 5
+        static let injured: UInt8 = 6
+        static let unusedSubstitute: UInt8 = 12
     }
 
     /// The player's own match record, 0x28 bytes, which `FormEntry.record` points at.
@@ -353,14 +357,20 @@ enum MacLayout {
     static let competitionName = 72
     static let continentName = 24
 
-    /// A TACTIC_EDIT_SESSION holds three PREPARED_TACTICS_CREATOR_ARRAYs: the next opponent, then the
-    /// user's first and second elevens. Each lists its players and points at a TACTICS_CREATOR.
+    /// A TACTIC_EDIT_SESSION holds three PREPARED_TACTICS_CREATOR_ARRAYs: the user's first and second elevens are the
+    /// second and third. The first was meant to be the next opponent, but on Molde's save it was an empty 4-4-2 in every
+    /// session. Each lists its players and points at a TACTICS_CREATOR.
     enum Tactic {
         static let sessionOwner = 8
         static let sessionArrays: [Int64] = [0x1010, 0x21e8, 0x33a8]
         static let arrayCreators: Int64 = 8
+        /// 26 database indexes (`Identity.index`): the eleven in the creator's order, then the substitutes in bench order.
+        /// `empty` for a place with nobody. The tactics screen's copy keeps the user's gaps on the bench; FM's copy for a
+        /// match is closed up, and FM names only as many substitutes as the competition allows, in this order.
         static let arrayPlayers: Int64 = 0x28
         static let slots = 11
+        static let places = 26
+        static let empty: UInt32 = 0xffff_ffff
         static let withBall: Int64 = 0x120
         static let withoutBall: Int64 = 0x440
         static let slotSize: Int64 = 0x48
@@ -370,6 +380,17 @@ enum MacLayout {
         static let right: UInt64 = 0x20_0000
         /// The role word: one role bit. These three mean something else, and no role uses them.
         static let notRoles: UInt64 = 0xe0_0000
+    }
+
+    /// SCOUT_TEAM_REPORT_NEWS, FM's opposition report as a news item. It holds two GAME_TACTIC_INFOs, which were the same
+    /// on Molde's save: the scout's predicted line-up of the team it's about, as a PREPARED_TACTICS_CREATOR_ARRAY at
+    /// `tacticArray` in each, read as `Tactic` reads the user's. Nothing in it found so far names the team.
+    enum ScoutReport {
+        /// The report's date: the day of the year in the low 9 bits, then the year, both 16-bit.
+        static let day: Int64 = 0x88
+        static let year: Int64 = 0x8a
+        static let tactics: [Int64] = [0xa0, 0x2198]
+        static let tacticArray: Int64 = 0x1008
     }
 
     enum Currency {
