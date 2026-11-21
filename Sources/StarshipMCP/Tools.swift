@@ -259,7 +259,8 @@ extension Toolbox {
                 + "first), the result for the club, the aggregate of a two-legged tie with the teams' names (\"Apoel Nikosia 2-4 Molde "
                 + "FK\"), attendance, and the goals with their minutes and assists. Scores are checked against the league table; for a "
                 + "club whose competition has no table FM Starship can read, such as a league FM runs in the background, they're "
-                + "given with checked false and a note saying so. The first question about a club takes a few seconds.",
+                + "given with checked false and a note saying so; checked is true for a score that was checked. The first question about a "
+                + "club takes a few seconds.",
              parameters: [matchClub,
                           Parameter(name: "from", type: "string", description: "First date, YYYY-MM-DD. Today if neither from nor to is given."),
                           Parameter(name: "to", type: "string", description: "Last date, YYYY-MM-DD."),
@@ -273,7 +274,8 @@ extension Toolbox {
                 + "(possession, xG, shots, shots on target, fouls, goals) while FM still has the match's post-match news, about the last "
                 + "few weeks. FM keeps only each player's last 20 matches for a team, so an older match can miss players. Scores are "
                 + "checked against the league table; for a club whose competition has no table FM Starship can read, such as a league "
-                + "FM runs in the background, they're given with checked false and a note saying so.",
+                + "FM runs in the background, they're given with checked false and a note saying so; checked is true for a score "
+                + "that was checked.",
              parameters: [matchClub,
                           Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),
                           Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out.")],

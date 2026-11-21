@@ -28,6 +28,7 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(next["venue"], "H")
         XCTAssertEqual(next["opponent"], .string(World.otherTown))
         XCTAssertEqual(next["score"], .null)
+        XCTAssertEqual(next["checked"], .null, "a match still to come has no score to check")
         let later = try XCTUnwrap(rows(fixtures).last)
         XCTAssertEqual(later["kick_off"], .null, "no time set yet")
         XCTAssertEqual(later["stage"], "kvartfinale", "FM's own words, in the game's language")
@@ -208,11 +209,22 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(rows(rivals).first?["result"], "L")
         XCTAssertEqual(rows(rivals).first?["scorers"], .null)
         XCTAssertEqual(rows(rivals).first?["opponent_scorers"], ["23' First 9, assist First 10", "45+1' First 11"])
-        XCTAssertFalse(rivals.columnNames.contains("checked"), "a checked club's rows aren't marked")
+        XCTAssertEqual(rows(rivals).map { $0["checked"] }, rows(rivals).map { _ in true }, "a checked club's scores say so")
 
         let unknown = try harness.refusal("fixtures", ["club": "Other"])
         XCTAssertTrue(unknown.contains("Did you mean: \(World.otherTown)?"), unknown)
         XCTAssertTrue(unknown.contains("the clubs in its league and the clubs it plays"), unknown)
+    }
+
+    /// A score checked against the league table says so, so an agent can tell it from one that wasn't.
+    func testACheckedScoreIsMarkedChecked() throws {
+        let harness = Harness()
+        let results = try harness.answer("results")
+        XCTAssertFalse(rows(results).isEmpty)
+        XCTAssertEqual(rows(results).map { $0["checked"] }, rows(results).map { _ in true })
+        XCTAssertEqual(try harness.answer("results", ["date": "2026-09-20"])["checked"], true)
+        let fixtures = try harness.answer("fixtures", ["from": "2026-09-01"])
+        XCTAssertEqual(rows(fixtures).map { $0["checked"] }, rows(fixtures).map { $0["score"] == .null ? .null : true })
     }
 
     // MARK: When the matches can't be trusted
@@ -239,6 +251,7 @@ final class MatchToolTests: XCTestCase {
         let fixtures = try harness.answer("fixtures", ["from": "2026-09-01"])
         XCTAssertEqual(rows(fixtures).first?["score"], .null)
         XCTAssertEqual(rows(fixtures).first?["scorers"], .null)
+        XCTAssertEqual(rows(fixtures).first?["checked"], .null, "no score given, so nothing to say was checked")
         XCTAssertTrue(fixtures["note"]?.string?.contains("can't check its results") ?? false)
         XCTAssertNotNil(try harness.answer("game_status")["next_fixture"], "dates aren't scores")
         XCTAssertEqual(try harness.answer("league_table")["note"], .string("\(World.club) hasn't played a league match yet this season."))
@@ -256,7 +269,7 @@ final class MatchToolTests: XCTestCase {
 
         let results = try harness.answer("results", ["club": .string(World.minnows)])
         XCTAssertEqual(results["found"], 1)
-        XCTAssertEqual(results.columnNames, Toolbox.resultColumns + ["checked"])
+        XCTAssertEqual(results.columnNames, Toolbox.resultColumns)
         let tie = try XCTUnwrap(rows(results).first)
         XCTAssertEqual(tie["score"], "2-4")
         XCTAssertEqual(tie["result"], "L")
@@ -279,7 +292,7 @@ final class MatchToolTests: XCTestCase {
         XCTAssertTrue(bare["note"]?.string?.contains("couldn't check these scores") ?? false, "said without the players too")
 
         let fixtures = try harness.answer("fixtures", ["club": .string(World.minnows), "from": "2026-09-01"])
-        XCTAssertEqual(fixtures.columnNames, Toolbox.fixtureColumns + ["checked"])
+        XCTAssertEqual(fixtures.columnNames, Toolbox.fixtureColumns)
         XCTAssertEqual(rows(fixtures).map { $0["score"] }, ["2-4", .null])
         XCTAssertEqual(rows(fixtures).map { $0["checked"] }, [false, .null], "a match still to come has no score to check")
         XCTAssertTrue(fixtures["note"]?.string?.contains("checked: false") ?? false)

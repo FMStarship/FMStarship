@@ -122,7 +122,10 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
   Scores are checked against the club's league table. A club whose competition has no table FM Starship can read, such as
   one in a league FM runs in the background, gets its scores anyway with `checked` false and a note: they're read the same way
-  as checked ones, but tell the user they weren't checked when you use them, such as for an opponent's recent form.
+  as checked ones, but tell the user they weren't checked when you use them, such as for an opponent's recent form. `checked`
+  is true for a checked score, and null only where there's no score. A club in a league FM runs in the background may
+  have no league matches in its list (on the save this was checked on, Leverkusen's had only Champions League matches and
+  friendlies), so don't read a short list as its whole season.
   Kick-off, attendance and aggregate are only there on builds of FM that FM Starship has been checked on.
 - **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked from FM's own
   entry: "(unused substitute)", "(not in the matchday squad)", "(suspended)" or "(injured)", and "(injured)" too when FM's reason

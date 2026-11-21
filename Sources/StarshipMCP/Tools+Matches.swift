@@ -7,7 +7,7 @@ import StarshipCore
 /// row in the league table, or marked not checked when its competition has no table to check them against.
 extension Toolbox {
     static let fixtureColumns = ["date", "kick_off", "competition", "stage", "round", "venue", "opponent", "score", "result",
-                                 "aggregate", "attendance", "scorers", "opponent_scorers"]
+                                 "aggregate", "attendance", "scorers", "opponent_scorers", "checked"]
     static let resultColumns = fixtureColumns.filter { $0 != "kick_off" }
     static let tableColumns = ["position", "club", "played", "won", "drawn", "lost", "goals_for", "goals_against",
                                "goal_difference", "points", "home", "away"]
@@ -83,8 +83,10 @@ extension Toolbox {
         if let from, let to, to < from { throw ToolError("to is before from.") }
         let found = matches.fixtures.filter { match in (from.map { match.date >= $0 } ?? true) && (to.map { match.date <= $0 } ?? true) }
         let checked = matches.check == .passed, unchecked = Self.marksUnchecked(matches.check)
-        let columns = Self.fixtureColumns + (unchecked ? ["checked"] : [])
-        let rows = found.prefix(limit).map { row($0, team: matches.team, columns: columns, scores: checked || unchecked, context) }
+        let columns = Self.fixtureColumns
+        let rows = found.prefix(limit).map {
+            row($0, team: matches.team, columns: columns, scores: checked || unchecked, check: matches.check, context)
+        }
         var pairs: [(String, JSON?)] = [("club", .string(club)), ("from", from.map { .string(Output.iso($0)) }),
                                         ("to", to.map { .string(Output.iso($0)) }), ("found", .int(found.count))]
         if found.count > limit { pairs.append(("shown", .int(limit))) }
@@ -116,11 +118,11 @@ extension Toolbox {
         // Both sides' xG and shots, where FM still has the match's team stats: only for the user's club.
         let checked = checkedStats(club: club, matches: matches, context)
         let withStats = checked.off == nil
-        let base = Self.resultColumns + (unchecked ? ["checked"] : [])
+        let base = Self.resultColumns
         var columns = base
         if withStats { columns += ["xg", "shots", "opponent_xg", "opponent_shots"] }
         let rows: [JSON] = played.prefix(limit).map { match in
-            var cells = row(match, team: matches.team, columns: base, scores: true, context).array ?? []
+            var cells = row(match, team: matches.team, columns: base, scores: true, check: matches.check, context).array ?? []
             if withStats {
                 let stats = checked.stats[match.date]
                 cells += [stats.map { .double($0.ours.xG) } ?? .null, stats.map { .int($0.ours.shots) } ?? .null,
@@ -140,11 +142,10 @@ extension Toolbox {
 
     /// One result, with how each of the club's players did in it.
     private func oneResult(_ match: MatchFixture, club: String, matches: TeamMatches, _ context: CallContext) throws -> JSON {
-        let cells = row(match, team: matches.team, columns: Self.resultColumns, scores: true, context).array ?? []
+        let cells = row(match, team: matches.team, columns: Self.resultColumns, scores: true, check: matches.check, context).array ?? []
         var pairs: [(String, JSON)] = [("club", .string(club))]
         for (name, value) in zip(Self.resultColumns, cells) where value != .null { pairs.append((name, value)) }
         let unchecked = Self.marksUnchecked(matches.check)
-        if unchecked { pairs.append(("checked", false)) }
         pairs.append(("team_stats", teamStats(match, club: club, checked: checkedStats(club: club, matches: matches, context),
                                               today: context.db.gameDate)))
         guard let engine = context.read.engine else {
@@ -228,8 +229,10 @@ extension Toolbox {
     // MARK: Rows
 
     /// One match as a row of `columns`, from the team's side. Scores only when the check has passed or there's no table to
-    /// check them against; a "checked" column is false for a played match, as its score wasn't checked.
-    private func row(_ match: MatchFixture, team: Int64, columns: [String], scores: Bool, _ context: CallContext) -> JSON {
+    /// check them against. The "checked" column is true for a played match whose score was checked against the league table,
+    /// false for one that had no table to check it against, and null when there's no score.
+    private func row(_ match: MatchFixture, team: Int64, columns: [String], scores: Bool, check: TeamMatches.Check,
+                     _ context: CallContext) -> JSON {
         let home = match.home == team
         let result = scores ? match : MatchFixture(date: match.date, home: match.home, away: match.away)
         func goals(ours: Bool) -> JSON? {
@@ -271,7 +274,13 @@ extension Toolbox {
             case "attendance": return result.attendance.map { .int($0) }
             case "scorers": return goals(ours: true)
             case "opponent_scorers": return goals(ours: false)
-            case "checked": return match.played ? false : nil
+            case "checked":
+                guard match.played else { return nil }
+                switch check {
+                case .passed: return true
+                case .noTable: return false
+                case .failed, .nothingPlayed: return nil
+                }
             default: return nil
             }
         }
