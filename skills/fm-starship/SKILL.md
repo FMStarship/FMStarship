@@ -122,7 +122,7 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   FM's No has matched refusals in talks, so don't put them forward for that job. When `interest` says FM couldn't be
   asked about the job, `Takes job` is empty and people in a bigger job may refuse a smaller one in talks. `Takes job` is asked
   at the team the job is at, as FM weighs it when you offer the job there: Molde 2 for Molde's reserves. Where FM's staff search
-  has no level for that team, `recommend_staff` lists by `Takes job` among people FM says would join the club at some level, and
+  has no level for that team, `recommend_staff` lists by `Takes job` among people FM says would join the first team, and
   `interest` says which team Would join is about. With `only_join` false, `Takes job` is empty for people FM says wouldn't join.
 - **Wants job** is FM's 1-20 for how keen they are on a job, from FM's 15 job preferences. FM keeps none for recruitment
   analyst, head performance analyst or head of sports science, so there it's their preference for performance analyst or

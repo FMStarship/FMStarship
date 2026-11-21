@@ -30,9 +30,6 @@ public struct StaffJoinAnswer: Equatable {
     public func wouldJoin(level: Int) -> Bool {
         level == 0 ? firstTeam : level == 1 ? reserves : youth
     }
-
-    /// Yes at any level: FM's own job pick, which every level starts with, didn't turn them down.
-    public var anyLevel: Bool { firstTeam || reserves || youth }
 }
 
 /// The questions only the game can answer, asked through `GameRules.engine` and remembered, as
@@ -53,7 +50,7 @@ public final class GameChecks {
     /// Per person, by `jobKey`: whether FM says they'd take that job.
     private var staffJobs: [UInt32: [Int: StaffJobAnswer]] = [:]
     private var preferences: [UInt32: [UInt8]] = [:]
-    /// `jobTeam` and `levelTeams`, once each: they depend only on the club.
+    /// `jobTeam` and `levelTeams`, once each has been answered in full: they depend only on the club.
     private var jobTeams: [Int64?]?
     private var levelTeamsMemo: [TeamAtLevel?]?
     private var injuries: [UInt32: Int] = [:]
@@ -78,25 +75,33 @@ public final class GameChecks {
     public func canCheckStaffJob(level: Int) -> Bool { canCheckStaffJob && jobTeam(level: level) != nil }
 
     /// The team a job at `level` is at, as FM Starship names the levels: the club's team, then the reserve and youth teams of
-    /// the board's staff limits. This is the team FM's approach scores the job at. Nil without the limits, or with no such team.
+    /// the board's staff limits. This is the team FM's approach scores the job at. Without the limits it's the team FM's own
+    /// staff rule asks about at that level, as Would join is then used as it is. Nil when neither is known, or with no such team.
     public func jobTeam(level: Int) -> Int64? {
-        if let known = locked({ jobTeams }) { return level < known.count ? known[level] : nil }
+        guard (0..<3).contains(level) else { return nil }
+        if let known = locked({ jobTeams }) { return known[level] }
         let limits = StaffLimits.read(team: club.team)
+        // Without the limits nothing is kept, so they're read again next time.
+        guard let limits else {
+            if level == 0 { return club.team }
+            guard let team = levelTeams[level], team.object != 0 else { return nil }
+            return team.object
+        }
         let teams: [Int64?] = (0..<3).map { level in
             if level == 0 { return club.team }
-            guard let limits else { return nil }
             let index = limits.teamFor(level)
             return index >= 0 && index < limits.teams.count && limits.teams[index].object != 0 ? limits.teams[index].object : nil
         }
         locked { jobTeams = teams }
-        return level < teams.count ? teams[level] : nil
+        return teams[level]
     }
 
-    /// The team FM's staff rule asks Would join about at each level, first team, reserves and youth. Nil where it can't be told.
+    /// The team FM's staff rule asks Would join about at each level, first team, reserves and youth. Nil where it can't be told,
+    /// which is asked again next time.
     public var levelTeams: [TeamAtLevel?] {
         if let known = locked({ levelTeamsMemo }) { return known }
         let teams = GameChecks.staffLevels.map { level in engine.flatMap { $0.staffLevelTeam(team: club.team, level: level) } }
-        locked { levelTeamsMemo = teams }
+        if !teams.contains(nil) { locked { levelTeamsMemo = teams } }
         return teams
     }
 
@@ -109,7 +114,7 @@ public final class GameChecks {
 
     /// The name of the team FM's staff rule asks about at `level`, such as "U19". Nil where it can't be told or there's none.
     public func levelTeamName(level: Int) -> String? {
-        guard level < 3, let team = levelTeams[level], team.object != 0 else { return nil }
+        guard (0..<3).contains(level), let team = levelTeams[level], team.object != 0 else { return nil }
         return level == 0 ? "First team" : Names.squadName(team.type)
     }
 
@@ -242,6 +247,12 @@ public final class GameChecks {
         parallelFor(count: todo.count, workers: workers) { i in
             if !isCancelled() { _ = self.staffJobCheck(todo[i], job: job, level: level) }
         }
+    }
+
+    /// Whether FM has answered about `job` at `level` without weighing the job up, which it does for a whole club at once.
+    public func staffJobNotWeighed(job: Int, level: Int) -> Bool {
+        let key = GameChecks.jobKey(job: job, level: level)
+        return locked { staffJobs.values.contains { $0[key] == .notAsked } }
     }
 
     /// "Yes" or "No" when FM has answered about the job, otherwise empty.

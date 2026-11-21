@@ -81,6 +81,8 @@ final class RecommendStaffTests: XCTestCase {
                       "the team's own name, as the screen writes it, and without the board's limits no team to ask about the job "
                       + "at: \(reserves["interest"]?.text ?? "")")
         XCTAssertTrue(reserves["status"]?.string?.contains("only_join false") ?? false, reserves["status"]?.text ?? "")
+        XCTAssertEqual(reserves["not_available"], "Not available on this version: the board's staff limits, whether they'd take this job.",
+                       "Takes job at reserves needs a team to ask at, and says it's gone")
         let open = try harness.answer("recommend_staff", ["role": "Coach", "level": "reserves", "only_join": false])
         XCTAssertFalse(uids(open).isEmpty)
         // A club-wide job takes the level for who'd join.
@@ -315,7 +317,7 @@ final class RecommendStaffTests: XCTestCase {
     // MARK: FM's levels and the teams they're about
 
     /// Molde: FM's reserves level is its U19, so Would join there isn't about the second team. The list goes by Takes job,
-    /// asked at the second team itself, among people FM says would join the club at some level.
+    /// asked at the second team itself, among people FM says would join the first team.
     func testAReservesJobFMHasNoLevelForGoesByTakesJobThere() throws {
         let engine = FakeEngine()
         engine.likeMolde()
@@ -329,7 +331,7 @@ final class RecommendStaffTests: XCTestCase {
         XCTAssertEqual(answer.rowsByName.first?["Would join"], "First team")
         let said = answer["interest"]?.string ?? ""
         XCTAssertTrue(said.hasPrefix("Everyone listed is someone FM says would take the job of coach at Testing FC's 2nd team, among those "
-                                     + "it says would join the club at some level."), said)
+                                     + "it says would join the first team."), said)
         XCTAssertTrue(said.contains("FM's staff search has no level for your 2nd team: its reserves answer is for your U19, so Would join "
                                     + "names the U19. Takes job is FM's rule asked about the job where it is"), said)
         XCTAssertTrue(answer["status"]?.string?.contains("2nd team coach who'd take the job") ?? false, answer["status"]?.text ?? "")
@@ -347,7 +349,7 @@ final class RecommendStaffTests: XCTestCase {
         let openSaid = listed["interest"]?.string ?? ""
         XCTAssertTrue(openSaid.contains("naming the teams it was asked about: the first team and the U19, FM's reserves and youth levels "
                                         + "being the same team"), openSaid)
-        XCTAssertTrue(openSaid.contains("Takes job is only asked for those FM says would join you at some level"), openSaid)
+        XCTAssertTrue(openSaid.contains("Takes job is only asked for those FM says would join your first team"), openSaid)
     }
 
     func testWithoutTakesJobAReservesJobFMHasNoLevelForIsntNarrowed() throws {
@@ -380,6 +382,106 @@ final class RecommendStaffTests: XCTestCase {
         XCTAssertTrue(engine2.staffJobsAsked.allSatisfy { $0.at == FakeEngine.under19 })
         XCTAssertTrue(some["interest"]?.string?.hasPrefix("Everyone listed is someone FM says would join Testing FC's U19 and take the job "
                                                           + "of coach.") ?? false, some["interest"]?.text ?? "")
+    }
+
+    /// Molde, with FM answering without weighing the job up: Would join at reserves is about the U19, so the list can't be
+    /// narrowed at all, and nothing describes the empty Takes job as FM's answer.
+    func testWhenFMDoesntWeighTheJobAtATeamFMHasNoLevelForTheListIsntNarrowed() throws {
+        let engine = FakeEngine()
+        engine.likeMolde()
+        engine.staffJobNotAsked = true
+        let answer = try harness(engine).answer("recommend_staff", ["role": "Coach", "level": "reserves"])
+        XCTAssertTrue(uids(answer).contains(505), "not narrowed by FM's answer about the U19")
+        XCTAssertTrue(answer.rowsByName.allSatisfy { $0["Takes job"] == .null })
+        let said = answer["interest"]?.string ?? ""
+        XCTAssertTrue(said.hasPrefix("This list isn't narrowed to people who'd come, and Takes job is empty: FM's staff search has no "
+                                     + "level for Testing FC's 2nd team, and FM answers without weighing up the job there. Don't present "
+                                     + "it as people who'd come."), said)
+        XCTAssertTrue(said.contains("FM's staff search has no level for your 2nd team: its reserves answer is for your U19, so Would join "
+                                    + "names the U19. FM answers without weighing up the job for your club, so Takes job is empty and "
+                                    + "nothing here says who'd join your 2nd team."), said)
+        XCTAssertFalse(said.contains("Takes job is FM's rule asked about the job where it is"), said)
+        XCTAssertFalse(answer["not_available"]?.string?.contains("take this job") ?? false, "FM was asked; it answered without the job")
+
+        // Someone FM gave no answer for about joining: still the same case, and it says so without calling Would join empty.
+        let engine2 = FakeEngine()
+        engine2.likeMolde()
+        engine2.staffJobNotAsked = true
+        engine2.staffUnanswered = [505]
+        let some = try harness(engine2).answer("recommend_staff", ["role": "Coach", "level": "reserves"])
+        let someSaid = some["interest"]?.string ?? ""
+        XCTAssertTrue(someSaid.hasPrefix("This list isn't narrowed to people who'd come, and Takes job is empty: FM's staff search has no "
+                                         + "level for Testing FC's 2nd team, and FM answers without weighing up the job there."), someSaid)
+        XCTAssertTrue(someSaid.contains("FM didn't answer who'd join for 1 of the people it was asked about, whose Would join is empty."),
+                      someSaid)
+        XCTAssertFalse(someSaid.contains("FM gave no answer about who'd join"), someSaid)
+    }
+
+    /// Without the board's limits FM Starship doesn't know which team a reserves job is at, so Takes job is asked at the team
+    /// FM's own staff rule asks about at that level, the one Would join is about.
+    func testWithoutTheBoardsLimitsTakesJobIsAskedAtFMsOwnTeam() throws {
+        let engine = FakeEngine()
+        engine.likeMolde()
+        engine.limits = nil
+        engine.staffJoinLevels = [1, 3, 4]
+        let answer = try harness(engine).answer("recommend_staff", ["role": "Coach", "level": "reserves"])
+        XCTAssertEqual(answer["team"], "Reserves")
+        XCTAssertFalse(engine.staffJobsAsked.isEmpty)
+        XCTAssertTrue(engine.staffJobsAsked.allSatisfy { $0.at == FakeEngine.under19 && $0.job == 2 })
+        XCTAssertFalse(uids(answer).isEmpty)
+        XCTAssertTrue(answer.rowsByName.allSatisfy { $0["Takes job"] == "Yes" })
+        let missing = answer["not_available"]?.string ?? ""
+        XCTAssertTrue(missing.contains("the board's staff limits") && !missing.contains("take this job"), missing)
+        let said = answer["interest"]?.string ?? ""
+        XCTAssertTrue(said.hasPrefix("Everyone listed is someone FM says would join Testing FC's Reserves and take the job of coach."), said)
+        XCTAssertFalse(said.contains("has no level"), said)
+    }
+
+    /// A club-wide job isn't at a team: Would join at the level asked for is used as it is, with no note about FM's levels.
+    func testAClubWideJobAtMoldesReservesKeepsWouldJoin() throws {
+        let engine = FakeEngine()
+        engine.likeMolde()
+        engine.staffJoinLevels = [1, 3]
+        let answer = try harness(engine).answer("recommend_staff", ["role": "Recruitment Analyst", "level": "reserves"])
+        let said = answer["interest"]?.string ?? ""
+        XCTAssertFalse(said.contains("has no level"), said)
+        XCTAssertTrue(said.hasPrefix("Everyone listed is someone FM says would join Testing FC's 2nd team and take the job of recruitment "
+                                     + "analyst."), said)
+        XCTAssertTrue(engine.staffJobsAsked.allSatisfy { $0.at == World.team }, "a club's job, with the first team")
+    }
+
+    /// GameChecks keeps FM's level teams and the jobs' teams only once FM has answered for all of them, so one failed call
+    /// doesn't bring back Would join's old name for the rest of the session.
+    func testTheTeamsAreAskedAgainUntilFMAnswers() throws {
+        let engine = FakeEngine()
+        engine.likeMolde()
+        GameRules.engine = engine
+        defer { GameRules.engine = nil }
+        let checks = GameChecks(club: ChosenClub(team: World.team, name: World.club, manager: 500))
+        engine.failingLevelTeams = [3]
+        XCTAssertNil(checks.levelTeams[1])
+        XCTAssertTrue(checks.wouldJoinFits(level: 1), "can't be told while FM doesn't say")
+        engine.failingLevelTeams = []
+        XCTAssertEqual(checks.levelTeams[1]?.object, FakeEngine.under19)
+        XCTAssertFalse(checks.wouldJoinFits(level: 1))
+        XCTAssertEqual(checks.levelTeamName(level: 1), "U19")
+        let calls = engine.levelTeamCalls
+        _ = checks.levelTeams
+        XCTAssertEqual(engine.levelTeamCalls, calls, "kept once FM answered for every level")
+
+        let limits = engine.limits
+        engine.limits = nil
+        let fresh = GameChecks(club: ChosenClub(team: World.team, name: World.club, manager: 500))
+        XCTAssertEqual(fresh.jobTeam(level: 1), FakeEngine.under19, "without the limits, the team FM's own rule asks about")
+        XCTAssertEqual(fresh.jobTeam(level: 0), World.team)
+        engine.limits = limits
+        XCTAssertEqual(fresh.jobTeam(level: 1), FakeEngine.secondTeam, "read again once the limits can be")
+        XCTAssertEqual(fresh.jobTeam(level: 2), FakeEngine.under19)
+        for level in [-1, 3] {
+            XCTAssertNil(fresh.jobTeam(level: level))
+            XCTAssertNil(fresh.levelTeamName(level: level))
+            XCTAssertFalse(fresh.canCheckStaffJob(level: level))
+        }
     }
 
     func testNoAnswerAboutTheJobIsNeverAYes() throws {

@@ -227,24 +227,15 @@ public final class RulesEngine: GameRulesEngine {
     /// team, to weigh a person up for, then runs FM's own checks and its own score for that job at that team against its own
     /// bar. Here that one call, in the sandbox's private copy of FM's memory, answers `job` at `at` instead, so every check and
     /// the score are still FM's. It runs at the first-team level, whose only difference from the others is that they also
-    /// check the team FM finds for them; that check is made here at `at`, as the rule makes it, so asked at the team FM finds,
-    /// this is FM's rule at that level (4,848 of 4,848 live). FM's approach scores a job at the team in the offer's contract,
+    /// check the team FM finds for them; that check is made here at `at`, as the rule makes it, once the rule has asked about
+    /// the job (FM's whole-club answers come first), so asked at the team FM finds, this is FM's rule at that level (4,848 of
+    /// 4,848 live, with the check made before the rule). FM's approach scores a job at the team in the offer's contract,
     /// which is the team the job is at, such as Molde 2, which no level of the rule reaches.
     /// It only counts as an answer when the rule got as far as asking: FM's yes or no without asking says nothing about the
     /// job, and is `.notAsked`. The decisions here (no answer without asking, no place for the job, a failed call) need FM to
     /// run, so they have no test: they were checked live against FM 27.1.0 on a Molde save, 21 Nov 2026.
     public func staffJobInterest(staff: Staff, team: Int64, job: Int, at: Int64) -> StaffJobAnswer? {
         guard staffFunction != 0, jobPickEntry != 0, let manager = managers[team], manager != 0, (2...254).contains(job), at != 0 else { return nil }
-        if at != team {
-            // As the rule checks the team it finds for a level: the club's own, open (+0x2f clear), with a place for the job.
-            let club = Int64(MacLayout.Team.club)
-            guard let flag = game.read(at &+ 0x2f, count: 1)?.first else { return nil }
-            let ownClub = game.readPointer(at &+ club)
-            guard ownClub != 0, ownClub == game.readPointer(team &+ club) else { return nil }
-            guard let place: UInt64 = try? sandbox.call(game.pluginBase + Mac27.jobAtTeam, [UInt64(job), UInt64(bitPattern: at)],
-                                                         result: { a64_get_x($0, 0) & 255 }) else { return nil }
-            if flag != 0 || place == 0 { return .refuses }
-        }
         let level = RulesEngine.staffLevels[0]
         let rule = UInt64(A64_SCRATCH), person = rule + 0x100, context = rule + 0x200, pick = rule + 0x300
         do {
@@ -258,7 +249,17 @@ public final class RulesEngine: GameRulesEngine {
                 RulesEngine.writeJobPick(cpu, at: pick, job: job, team: at)
                 a64_write(cpu, UInt64(bitPattern: self.jobPickEntry), pick, 8)
             }, result: { cpu in (a64_get_x(cpu, 0) & 255 != 0, a64_read(cpu, pick + RulesEngine.jobPickAsked, 4) != 0) })
-            return asked ? answer ? .takes : .refuses : .notAsked
+            guard asked else { return .notAsked }
+            guard answer, at != team else { return answer ? .takes : .refuses }
+            // As the rule checks the team it finds for a level: the club's own, open (+0x2f clear), with a place for the job.
+            // After the rule, as FM's whole-club answers come before these and say nothing about the job.
+            let club = Int64(MacLayout.Team.club)
+            guard let flag = game.read(at &+ 0x2f, count: 1)?.first else { return nil }
+            let ownClub = game.readPointer(at &+ club)
+            guard ownClub != 0, ownClub == game.readPointer(team &+ club) else { return nil }
+            guard let place: UInt64 = try? sandbox.call(game.pluginBase + Mac27.jobAtTeam, [UInt64(job), UInt64(bitPattern: at)],
+                                                         result: { a64_get_x($0, 0) & 255 }) else { return nil }
+            return flag != 0 || place == 0 ? .refuses : .takes
         } catch {
             failureLock.lock()
             failure = "\(error)"

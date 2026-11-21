@@ -114,6 +114,8 @@ public protocol SearchFilter {
     static var ruleAttributes: [String] { get }
     static var hiddenRuleAttributes: Set<String> { get }
     static var interestEnabled: Bool { get }
+    /// What a field says in the window now, or nil to leave it out: a label can name the save's teams. By default its own.
+    static func label(for field: FilterField<Self>) -> String?
 
     var region: String { get set }
     var rules: [AttrRule] { get set }
@@ -124,6 +126,8 @@ public protocol SearchFilter {
 
 extension SearchFilter {
     public static func sections(inTab tab: String) -> [FilterSection<Self>] { sections.filter { $0.tab == tab } }
+
+    public static func label(for field: FilterField<Self>) -> String? { field.label }
 
     /// What Cancel in the filter window puts back: the copy taken when the window opened, but with Hidden attributes and
     /// Ability as they are now. Inside FM, FM Starship's tab can change them while the window is open, and switching Hidden

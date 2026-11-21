@@ -25,7 +25,7 @@ struct FilterWindow<Filter: SearchFilter>: View {
                     ForEach(filter.visibleSections(inTab: tab)) { section in
                         GroupBox(section.title) {
                             VStack(alignment: .leading, spacing: 6) {
-                                ForEach(section.fields, id: \.id) { field(section: section, $0) }
+                                ForEach(section.fields.filter { Filter.label(for: $0) != nil }, id: \.id) { field(section: section, $0) }
                                 if hasRules(section) {
                                     Button("Add a rule") { filter.addRule() }.disabled(!filter.canAddRule)
                                 }
@@ -94,7 +94,7 @@ struct FilterWindow<Filter: SearchFilter>: View {
             }
             .disabled(disabled)
         case .toggle(let path):
-            Toggle(field.label, isOn: $filter[dynamicMember: path]).disabled(disabled)
+            Toggle(Filter.label(for: field) ?? field.label, isOn: $filter[dynamicMember: path]).disabled(disabled)
         case .rule(let index):
             // The section lists every row up to the most there can be; only those the filter has are drawn.
             if index < filter.rules.count {
@@ -129,7 +129,8 @@ struct FilterWindow<Filter: SearchFilter>: View {
 
     private func row<Content: View>(_ field: FilterField<Filter>, @ViewBuilder content: () -> Content) -> some View {
         HStack {
-            Text(field.label.isEmpty ? "" : field.label + ":")
+            let label = Filter.label(for: field) ?? field.label
+            Text(label.isEmpty ? "" : label + ":")
                 .frame(width: 130, alignment: .trailing)
                 .foregroundStyle(.secondary)
             content()

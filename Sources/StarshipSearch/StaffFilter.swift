@@ -34,6 +34,15 @@ public struct StaffFilter: SearchFilter, Equatable {
     public var firstTeam = false
     public var reserves = false
     public var youthTeam = false
+    /// The reserves and youth toggles as one, for when FM's staff rule asks about the same team at both, as Molde's U19:
+    /// on when either is, and it sets both.
+    public var reservesOrYouth: Bool {
+        get { reserves || youthTeam }
+        set {
+            reserves = newValue
+            youthTeam = newValue
+        }
+    }
 
     /// No default, so every caller says what Hidden attributes is set to.
     public var showHidden: Bool {
@@ -89,9 +98,32 @@ public struct StaffFilter: SearchFilter, Equatable {
             FilterField("firstTeam", "First Team", .toggle(\.firstTeam), needsGame: true),
             FilterField("reserves", "Reserves", .toggle(\.reserves), needsGame: true),
             FilterField("youthTeam", "Youth Team", .toggle(\.youthTeam), needsGame: true),
+            // Shown in place of the two above when they're the same team. They keep the state, so this doesn't count on its own.
+            FilterField("reservesOrYouth", "", .toggle(\.reservesOrYouth), isFilter: false, needsGame: true),
             FilterField("interestNote", "", .note(.staffInterest)),
         ]),
     ]
+
+    /// The interest toggles' names: the teams FM's staff rule asks about at its levels for the chosen club, as the Interest
+    /// column names them ("First team", "U19"), once FM has said; until then, and for a level with no team, FM's own level
+    /// names. `reserves` is nil when FM's reserves and youth levels are the same team, which one toggle then stands for.
+    public static var interestNames: (firstTeam: String, reserves: String?, youth: String) {
+        guard let teams = RulesState.shared.knownStaffLevelTeams, teams.count == 3 else { return ("First Team", "Reserves", "Youth Team") }
+        func name(_ team: TeamAtLevel, _ fallback: String) -> String { team.object == 0 ? fallback : Names.squadName(team.type) }
+        let same = teams[1].object != 0 && teams[1].object == teams[2].object
+        return ("First team", same ? nil : name(teams[1], "Reserves"), name(teams[2], "Youth Team"))
+    }
+
+    public static func label(for field: FilterField<StaffFilter>) -> String? {
+        let names = interestNames
+        switch field.id {
+        case "firstTeam": return names.firstTeam
+        case "reserves": return names.reserves
+        case "youthTeam": return names.reserves == nil ? nil : names.youth
+        case "reservesOrYouth": return names.reserves == nil ? names.youth : nil
+        default: return field.label
+        }
+    }
 
     /// The coaching area to rank by, or -1 for none.
     public var rankArea: Int { Names.areasLong.firstIndex(of: rank) ?? -1 }
@@ -141,9 +173,14 @@ public struct StaffFilter: SearchFilter, Equatable {
 
     /// The summary line under the filters.
     public func describe() -> String {
-        let wanted = interestWanted
-        let squads = [wanted.firstTeam ? "first team" : nil, wanted.reserves ? "reserves" : nil,
-                      wanted.youth ? "youth team" : nil].compactMap { $0 }
+        let wanted = interestWanted, names = Self.interestNames
+        // A team's own name as it is, such as "U19"; FM's level names in lower case, as they read in a sentence.
+        func spoken(_ name: String) -> String { ["First team", "First Team", "Reserves", "Youth Team"].contains(name) ? name.lowercased() : name }
+        var squads: [String] = []
+        for name in [wanted.firstTeam ? names.firstTeam : nil, wanted.reserves ? names.reserves ?? names.youth : nil,
+                     wanted.youth ? names.youth : nil].compactMap({ $0 }).map(spoken) where !squads.contains(name) {
+            squads.append(name)
+        }
 
         var ranked: String?
         if rank != Self.noRanking {

@@ -192,7 +192,15 @@ public final class StaffOverview: OverviewReport {
         let options = recommender.startingOptions(role: role, level: search.level, area: search.area)
         guard let found = recommender.search(options, wanted: 1, atLeast: search.beat.map { $0 + margin }, excluding: taken,
                                              deepest: Self.deepest, isCancelled: isCancelled) else { return nil }
-        guard found.interestChecked else { return .nobody("The game couldn't say who'd join") }
+        guard found.interestChecked else {
+            // Where FM's staff search has no level for the team, the game did answer who'd join, about another team: it's the
+            // job there it couldn't be asked about.
+            let level = role.level >= 0 ? role.level : options.level
+            if !recommender.wouldJoinFits(role: role, level: level), recommender.levelNames.indices.contains(level) {
+                return .nobody("The game couldn't say who'd take the job at your \(recommender.levelNames[level])")
+            }
+            return .nobody("The game couldn't say who'd join")
+        }
         guard let person = found.people.first else {
             return .nobody(search.beat == nil ? "Nobody would join within your wage room" : "Nobody clearly better would join")
         }

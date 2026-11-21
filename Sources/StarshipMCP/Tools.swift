@@ -390,7 +390,7 @@ extension Toolbox {
                           choices: Toolbox.staffKeenness),
                 Parameter(name: "only_join", type: "boolean",
                           description: "Only staff FM says would join the club at that level and would take this job, or, where FM's "
-                            + "level is another team, would take this job there and join the club at some level. true if left out. "
+                            + "level is another team, would take this job there and join the first team. true if left out. "
                             + "With false, would join is still FM's answer for each one listed, and takes job for those who'd join."),
                 Parameter(name: "limit", type: "integer", description: "How many rows, 1-25. 10 if left out."),
                 club,

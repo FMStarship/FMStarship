@@ -229,7 +229,9 @@ extension Toolbox {
         let question = StaffRecommender.jobQuestion(role: role, level: options.level).flatMap { checks.canCheckStaffJob(level: $0.level) ? $0 : nil }
         let jobText = "the job of \(name.lowercased())"
         // Whether Would join at this level is about the team named here: for Molde, FM's reserves level is its U19, not Molde 2.
-        let fits = checks.wouldJoinFits(level: options.level)
+        let fits = recommender.wouldJoinFits(role: role, level: options.level)
+        // FM answering without weighing up the job, as it does for a whole club in some game modes.
+        let notWeighed = question.map { checks.staffJobNotWeighed(job: $0.job, level: $0.level) } ?? false
         // The teams FM's staff search asked about, which Would join names.
         let levelTeams = (0..<3).map { checks.levelTeamName(level: $0) }
         var levelsAsked = "the first team, reserves and youth"
@@ -252,9 +254,14 @@ extension Toolbox {
                 : "FM only answers that for a club the user manages, and FM Starship found no manager at \(club.name)"
             interest = "FM couldn't be asked who'd join: \(why). This list isn't narrowed to people who'd come, and Would join is empty."
         } else if options.onlyJoin {
-            if !fits && !table.jobChecked && failed == 0 {
+            if !fits && !table.jobChecked && (question == nil || notWeighed) {
                 interest = "This list isn't narrowed to people who'd come, and Takes job is empty: FM's staff search has no level for "
-                    + "\(club.name)'s \(teamText), and FM couldn't be asked about the job there. Don't present it as people who'd come."
+                    + "\(club.name)'s \(teamText), and FM " + (notWeighed ? "answers without weighing up the job there"
+                                                                     : "couldn't be asked about the job there")
+                    + ". Don't present it as people who'd come."
+                if failed > 0 {
+                    interest += " FM didn't answer who'd join for \(failed) of the people it was asked about, whose Would join is empty."
+                }
             } else if !table.interestChecked {
                 let asked = failed > 0 ? "any of the \(failed) people it was asked about" : "anyone it was asked about"
                 interest = "FM gave no answer about who'd join for \(asked), so this list isn't narrowed to people who'd come, and Would join "
@@ -262,7 +269,7 @@ extension Toolbox {
                     + "\(club.name) on this build of FM."
             } else {
                 let joins = fits ? "would join \(club.name)'s \(teamText)" + (table.jobChecked ? " and take \(jobText)" : "")
-                    : "would take \(jobText) at \(club.name)'s \(teamText), among those it says would join the club at some level"
+                    : "would take \(jobText) at \(club.name)'s \(teamText), among those it says would join the first team"
                 interest = table.rows.isEmpty
                     ? failed == 0 && !table.stoppedAtDeepest ? "Nobody FM says \(joins) passes these settings."
                         : "None of those FM answered for \(joins)."
@@ -283,10 +290,11 @@ extension Toolbox {
                     table.rows[index].cells[column] = checks.staffText(person)
                 }
             }
-            // Only those FM says would join at this level are asked about the job: the question skips FM's own job pick, which
-            // can turn someone down whatever the job, so a yes for anyone else wouldn't be FM's.
+            // Only those FM says would join at this level, or the first team where FM's level is another team, are asked about
+            // the job: the question skips FM's own job pick, which can turn someone down whatever the job, so a yes for anyone
+            // else wouldn't be FM's.
             let joining = shown.filter { person in
-                checks.staffKnown(person).map { fits ? $0.wouldJoin(level: options.level) : $0.anyLevel } == true
+                checks.staffKnown(person).map { $0.wouldJoin(level: fits ? options.level : 0) } == true
             }
             var jobAsked = question != nil
             if let question {
@@ -307,7 +315,7 @@ extension Toolbox {
                 + (unanswered == 0 ? "." : "; FM didn't answer for \(unanswered) of them, whose Would join is empty.")
             if let question, jobAsked {
                 let noJob = joining.filter { checks.staffJobKnown($0, job: question.job, level: question.level) == nil }.count
-                interest += asked + " Takes job is only asked for those FM says would join " + (fits ? "your \(teamText)" : "you at some level")
+                interest += asked + " Takes job is only asked for those FM says would join " + (fits ? "your \(teamText)" : "your first team")
                     + ", and left empty for the rest: "
                     + "the question skips the first step of FM's rule, which can turn someone down whatever the job, so a Yes for "
                     + "them wouldn't be FM's." + (noJob == 0 ? "" : " FM didn't answer about the job for \(noJob) of those it was "
@@ -336,7 +344,9 @@ extension Toolbox {
         // As the screen's note: what this build of FM couldn't tell.
         var missing: [String] = []
         if recommender.limits == nil { missing.append("the board's staff limits") }
-        if recommender.onlyJoinEnabled, !checks.canCheckStaffJob { missing.append("whether they'd take this job") }
+        if recommender.onlyJoinEnabled, !recommender.jobCheckEnabled(role: role, level: options.level) {
+            missing.append("whether they'd take this job")
+        }
         if StaffRoles.preferenceIndex(role.name) >= 0, !table.rows.isEmpty,
            let column = table.columns.firstIndex(where: { $0.title == "Wants job" }),
            table.rows.allSatisfy({ column >= $0.cells.count || $0.cells[column].isEmpty }) {

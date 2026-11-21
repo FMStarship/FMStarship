@@ -48,7 +48,14 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine, StaffLimitsEngine
     /// is known unless a test sets them, as when FM can't tell.
     var levelTeams: [Int: TeamAtLevel] = [:]
     var limits: StaffLimits?
-    func staffLevelTeam(team: Int64, level: Int) -> TeamAtLevel? { levelTeams[level] }
+    /// FM's levels whose team can't be told, as when the call fails, and how many times FM was asked for a level's team.
+    var failingLevelTeams: Set<Int> = []
+    private var levelTeamAsks = 0
+    var levelTeamCalls: Int { lock.withLock { levelTeamAsks } }
+    func staffLevelTeam(team: Int64, level: Int) -> TeamAtLevel? {
+        lock.withLock { levelTeamAsks += 1 }
+        return failingLevelTeams.contains(level) ? nil : levelTeams[level]
+    }
     func staffLimits(team: Int64) -> StaffLimits? { limits }
 
     /// Molde's teams as FM has them: a first team (the world's own), a second team that plays in a senior league, and a U19.
