@@ -14,15 +14,31 @@ public struct GameRead {
     /// Players' state as FM's memory holds it when a tool answers, and what their bans are for. Nil where it can't be read
     /// again, so a player's state is the read's and his bans aren't known.
     public let states: PlayerStateSource?
+    /// Players' yellow cards toward a ban, by FM's own count. Nil where they can't be read.
+    public let bookings: BookingSource?
 
-    public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil) {
+    public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil,
+                bookings: BookingSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
         self.matches = matches
         self.states = states
+        self.bookings = bookings
     }
 }
+
+/// A player's yellow cards toward a ban, as `BookingsReader` gives them.
+public protocol BookingSource: AnyObject {
+    /// On with what its check found, or off and why, for `game_status`. Asking runs the check.
+    var status: String { get }
+    /// Why it's off for this read, nil while it's on.
+    var off: String? { get }
+    /// Each rule set's count for him with FM's answer. Nil when it's off or his counts can't be read.
+    func bookings(of player: Player) -> [Booking]?
+}
+
+extension BookingsReader: BookingSource {}
 
 /// A player's state for an answer about him, as `PlayerStateReader` gives it.
 public protocol PlayerStateSource: AnyObject {
@@ -61,6 +77,12 @@ final class LiveMatches: MatchSource {
     func competitionNames() -> [UInt32: String] {
         if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
         return (reader ?? nil)?.competitionNames() ?? [:]
+    }
+
+    /// Each competition's record by database index, for naming the rule sets yellow cards count under.
+    func competitionRecords() -> [UInt32: Int64] {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.competitionRecords() ?? [:]
     }
 }
 
@@ -124,8 +146,11 @@ public final class LiveGame: GameSource {
             clubsAtRead = clubs(database, in: process)
             readAt = Date()
             reads += 1
-            return GameRead(database: database, engine: engine, number: reads, matches: LiveMatches(game: process),
-                            states: PlayerStateReader(game: process, database: database))
+            let matches = LiveMatches(game: process)
+            return GameRead(database: database, engine: engine, number: reads, matches: matches,
+                            states: PlayerStateReader(game: process, database: database),
+                            bookings: BookingsReader(game: process, database: database, engine: engine,
+                                                     competitionRecords: { matches.competitionRecords() }))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {

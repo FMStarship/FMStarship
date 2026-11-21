@@ -13,6 +13,9 @@ extension FakeGame {
         var kind: UInt8 = 0
         var matches: UInt8 = 1
         var served: UInt8 = 0
+        /// The rule set's rules index, and the yellow-card count a ban for bookings came at.
+        var rules: UInt16 = 0
+        var bookingsAt: UInt8 = 0
     }
 
     func ban(_ values: BanValues) -> Int64 {
@@ -26,6 +29,8 @@ extension FakeGame {
         record.set("kind", B.kind, values.kind)
         record.set("matches", B.matches, values.matches)
         record.set("served", B.served, values.served)
+        record.set("rules", B.rules, values.rules)
+        record.set("bookingsAt", B.bookingsAt, values.bookingsAt)
         return record.address
     }
 

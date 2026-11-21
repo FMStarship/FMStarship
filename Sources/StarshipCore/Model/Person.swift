@@ -133,6 +133,10 @@ public struct StoredBan: Sendable, Equatable {
     public var day = 0, year = 0
     public var kind: UInt8 = 0
     public var matches = 0, served = 0
+    /// The rule set's rules index, as a player's booking counts name it.
+    public var rules = 0
+    /// For a ban for bookings, the yellow-card count it came at.
+    public var bookingsAt = 0
     public var issued: Date? { GameDate.checked(year: year, dayOfYear: day) }
     public var isReal: Bool { issued != nil && matches > 0 && served <= matches }
     public var left: Int { matches - served }

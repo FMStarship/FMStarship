@@ -13,10 +13,10 @@ chosen in FM Starship.
 
 | Tool | Use it for |
 | --- | --- |
-| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions and home-grown status can be read (`player_state`), the money units. `refresh: true` reads the save again |
-| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has his season in the league, the cup and continental matches apart, his last match (competition, opponent, minutes, rating), and his condition, sharpness, morale, playing time, suspensions and home-grown status |
+| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status can be read (`player_state`), the money units. `refresh: true` reads the save again |
+| `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has his season in the league, the cup and continental matches apart, his last match (competition, opponent, minutes, rating), and his condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status |
 | `staff` | A club's staff, with jobs and their best coaching areas. For an AI club whose read has no coaching or medical staff, `note` says the rest isn't known |
-| `person` | One player or member of staff in full, by `uid`. For a player, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension in full |
+| `person` | One player or member of staff in full, by `uid`. For a player, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension and each rule set's bookings in full |
 | `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
 | `shortlists`, `shortlist` | The user's FM shortlists, and the people on one |
 | `club_overview` | FM Starship's dashboard: facts, budget, who needs action now, the best prospects |
@@ -144,12 +144,25 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   reserve competition, and one whose competition FM Starship can't tell. `person` has every ban, with the matches served so far,
   why (bookings or a red card, and the red card's opponent), the day it was given, and a note on any that Suspended leaves out.
   Don't say a player is banned for his club because of one of those.
+- **Bookings** is FM's own count of a player's yellow cards toward a ban, with FM's own answer for how many more bring one
+  and how long that ban would be, as "Eliteserien 2 (2 more: 1-match ban), Cupen 1 (1 more: 1-match ban)". FM counts under
+  disciplinary rule sets, not competitions, and one rule set can cover several, such as a league and the division below or
+  its youth league. Their cards count together, shown as "Eliteserien + U19 National League". The count is for the season,
+  at any club under the same rules (a player brings his count with him), isn't reset by a ban, and leaves out the two yellows
+  of a sending-off. On the Norwegian save it was checked on, the league's bans came at 4, 6, 8 and so on, and the cup's at
+  2, 3, 4, but don't work out thresholds yourself: go by "more", since some countries' rules depend on the date or the match.
+  `squad` gives the competitions his team plays in. `person` gives every rule set he has a card under, his national team's
+  or an old club's too, with a note on those, and `last_ban_at`, the count his last ban under it came at. A rule set FM
+  counts another way, by points or over a window of matches, has no numbers. FM resets the counts, a league's at the change
+  of season and UEFA's competitions' after the qualifying rounds, at points FM Starship hasn't found, so a count can go back
+  to 0 without warning: say so when the user plans across the end of a season or the start of a group stage. Each read is
+  checked against the save's recent bans for bookings, and `game_status`'s `player_state` says what that found.
 - **Home-grown** is FM's own answer for the player's club: `club` (trained at the club), `nation` (trained in the club's nation)
   or `no`. Yes or no was checked against FM's squad screen; which of club and nation hasn't been yet.
 - None of these is hidden in FM, so they're there whatever Hidden attributes is set to. A field whose self-check failed for this
   read isn't sent at all, and `game_status` says why.
-- Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars, injury days and
-  home-grown status. Condition and sharpness are too, for a player FM hasn't brought up to date today: FM's getters give them,
+- Some features come from FM's own rules: season stats, form, players' match stats, who'd join, role stars, injury days,
+  bookings toward a ban and home-grown status. Condition and sharpness are too, for a player FM hasn't brought up to date today: FM's getters give them,
   as of FM's last update for him, and other clubs' players can go days without one. On a build of FM that FM Starship hasn't been checked on, `game_status` says the rules are off, and those
   values aren't there. Don't fill them in, and don't use an older condition instead.
 
@@ -186,9 +199,8 @@ FM Starship doesn't read these yet, so don't state them, and don't work them out
 - Which goals were penalties, extra time and penalty shoot-outs, and the player of the match.
 - Fixtures and results when the tools switch them off: their check against the league table failed, or there's no league
   match yet to check them against.
-- Condition, sharpness, morale, playing time, suspensions or home-grown status when `game_status` says one is off.
+- Condition, sharpness, morale, playing time, suspensions, bookings toward a ban or home-grown status when `game_status` says one is off.
 - FM's words for condition and morale, wear ("very little wear" and the like), match load and training load.
-- How many more yellow cards a player can get before a ban.
 - A player's season totals for friendlies and internationals. Recent matches has those matches, but only the ones FM still
   keeps, so don't add them up and call it his season.
 - The squad screen's badges for a player on a language course or supporting an unhappy teammate.

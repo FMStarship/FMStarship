@@ -310,7 +310,7 @@ public final class Toolbox: ToolProvider {
             ("staff", .int(db.staff.count)),
             ("read_seconds_ago", age.map { .int($0) }),
             ("rules", .string(rules)),
-            ("player_state", Self.stateStatus(db, read.engine)),
+            ("player_state", Self.stateStatus(db, read.engine, read.bookings)),
             ("self_checks", db.checkProblems.map { .string("failed: \($0)") }),
         ] + settings(currencyKnown: true))
     }

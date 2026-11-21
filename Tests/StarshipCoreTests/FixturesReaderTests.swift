@@ -412,6 +412,15 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(try world.reader().competitionNames()[World.leagueIndex], "Mock League")
     }
 
+    /// Each competition's record, which names the rule sets yellow cards count under, is the one most fixtures name too.
+    func testEachCompetitionsRecordIsTheOneMostFixturesName() throws {
+        let world = World()
+        world.playLeague()
+        let old = world.game.competition("Old Name", index: World.leagueIndex)
+        world.game.match(FakeGame.MatchValues(home: world.town, away: world.united, name: world.game.fixtureName(competition: old), day: 90))
+        XCTAssertEqual(try world.reader().competitionRecords(), [World.leagueIndex: world.league])
+    }
+
     /// FM's entry for a player who didn't play says when it was because he was suspended.
     func testAnEntryWithoutARecordSaysWhenHeWasSuspended() throws {
         let world = World()

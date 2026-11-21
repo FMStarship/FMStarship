@@ -69,16 +69,20 @@ KINDS = {
     'sharpnessSlot': ('slot', 'ACTUAL_PLAYER', 0),
     'trainedAtClub': ('function',),
     'trainedInNation': ('function',),
+    'disciplineGlobal': ('global',),
+    'countUntilNextBan': ('function',),
 }
 
 # The classes GameReader finds by name (its vt(...) calls), then FixturesReader's, and the class of a player's form
-# history, which is a template and so is given as RTTI spells it. Their self-check is the league table.
-# ACTUAL_PLAYER_AND_NON_PLAYER's offsets to top are where MacLayout.PlayerCoach finds its staff part, person and identity:
-# 0, -0x278, -0x370, -0x480 on 27.1.0.
-READER_CLASSES = ['ACTUAL_PLAYER', 'ACTUAL_NON_PLAYER', 'ACTUAL_PLAYER_AND_NON_PLAYER', 'CLUB_HUMAN_MANAGER_DETAILS',
-                  'CURRENCY_RECORD', 'TEAM', 'TRANSFER_MANAGER', 'HUMAN_NON_PLAYER', 'TACTIC_EDIT_SESSION',
-                  'PREPARED_TACTICS_CREATOR_ARRAY', 'LOAN_CONTRACT', 'B_CLUB_CONTRACT',
-                  'FIXTURE', 'FIXTURE_RESULT', 'LEAGUE_STAGE', 'ACTUAL_COMP', 'N2db25PLAYER_TEAM_FORM_CONCRETEILm20EEE']
+# history, which is a template and so is given as RTTI spells it. Their self-check is the league table. Then
+# BookingsReader's: the rules engine finds GAME_DISCIPLINE through disciplineGlobal and checks its vtable, and a player's
+# yellow-card counts are PLAYER_BOOKING_COUNTs. Their self-check is BookingsReader's. ACTUAL_PLAYER_AND_NON_PLAYER's offsets
+# to top are where MacLayout.PlayerCoach finds its staff part, person and identity: 0, -0x278, -0x370, -0x480 on 27.1.0.
+READER_CLASSES = ['ACTUAL_PLAYER', 'ACTUAL_NON_PLAYER', 'ACTUAL_PLAYER_AND_NON_PLAYER', 'CLUB_HUMAN_MANAGER_DETAILS', 'CURRENCY_RECORD', 'TEAM',
+                  'TRANSFER_MANAGER', 'HUMAN_NON_PLAYER', 'TACTIC_EDIT_SESSION', 'PREPARED_TACTICS_CREATOR_ARRAY',
+                  'LOAN_CONTRACT', 'B_CLUB_CONTRACT',
+                  'FIXTURE', 'FIXTURE_RESULT', 'LEAGUE_STAGE', 'ACTUAL_COMP', 'N2db25PLAYER_TEAM_FORM_CONCRETEILm20EEE',
+                  'GAME_DISCIPLINE', 'PLAYER_BOOKING_COUNT']
 
 RULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Sources', 'StarshipCore', 'Emu', 'RulesEngine.swift')
 

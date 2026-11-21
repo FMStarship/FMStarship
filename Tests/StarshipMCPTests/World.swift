@@ -164,6 +164,19 @@ final class FakeStates: PlayerStateSource {
     func bans(of player: Player) -> [Ban]? { player.storedBans == nil ? nil : bans[player.uid] ?? [] }
 }
 
+/// Yellow cards toward a ban as `BookingSource` gives them: worked out by hand, or off with a reason.
+final class FakeBookings: BookingSource {
+    var bookings: [UInt32: [Booking]]
+    var off: String?
+
+    init(_ bookings: [UInt32: [Booking]]) {
+        self.bookings = bookings
+    }
+
+    var status: String { off.map { "off: \($0)" } ?? "on: FM's own count and answer, checked against 3 of 3 bans for bookings" }
+    func bookings(of player: Player) -> [Booking]? { off == nil ? bookings[player.uid] ?? [] : nil }
+}
+
 /// A save built by hand, as `GameSource` gives it. It counts its reads, and can say the save has moved on.
 final class FakeSource: GameSource {
     var database: Database
@@ -172,6 +185,7 @@ final class FakeSource: GameSource {
     var current = true
     var matches: FakeMatches? = World.matches()
     var states: FakeStates? = FakeStates(World.bans())
+    var bookings: FakeBookings? = FakeBookings(World.bookings())
     private(set) var reads = 0
 
     init(database: Database, engine: GameRulesEngine?) {
@@ -182,7 +196,7 @@ final class FakeSource: GameSource {
     func read() throws -> GameRead {
         if let problem { throw problem }
         reads += 1
-        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states)
+        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings)
     }
 
     func isCurrent(_ read: GameRead) -> Bool { current }
@@ -334,6 +348,25 @@ enum World {
         unnamed.domestic = true
         unnamed.reason = .bookings
         return [1: [bookings, red], 12: [abroad], 13: [unnamed]]
+    }
+
+    /// First 1 has cards in the league and the cup, and one for his nation. First 4's league counts with the reserve league,
+    /// and he has a card under a rule set FM Starship can't name, and a cup that counts points. Nobody else has any.
+    static func bookings() -> [UInt32: [Booking]] {
+        func next(_ count: Int, _ left: Int, last: Int = 0, length: Int = 1) -> NextBan {
+            NextBan(left: left, length: length, count: count, lastBanAt: last)
+        }
+        var nations = Booking(rules: 0, competitions: ["Made-up Nations Cup", "Made-up Shield", "Made-up Trophy"], teamPlays: false,
+                              next: next(1, 1))
+        nations.moreCompetitions = 2
+        return [
+            1: [Booking(rules: 3, competitions: ["Mock League"], teamPlays: true, next: next(2, 2)),
+                Booking(rules: 4, competitions: ["Mock Cup"], teamPlays: true, next: next(1, 1)),
+                nations],
+            4: [Booking(rules: 3, competitions: ["Mock League", "Mock Reserve League"], teamPlays: true, next: next(5, 1, last: 4, length: 2)),
+                Booking(rules: 8, competitions: ["Mock Points Cup"], teamPlays: true, plain: false, next: nil),
+                Booking(rules: 6, competitions: [], teamPlays: false, next: next(1, 1))],
+        ]
     }
 
     /// A 4-4-2 with the first eleven in it.

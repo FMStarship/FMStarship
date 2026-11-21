@@ -5,6 +5,8 @@ enum MacLayout {
     enum Player {
         static let size = 0x3a8
         static let attributes = 0x140   // Windows "block": positions, attributes, CA, PA, value
+        /// A vector of `BookingCount` pointers: his yellow cards under each rule set he has played under this season.
+        static let bookingCounts = 0x08
         static let person = 0x278
         static let identity = 0x388
         static let currentTeam = attributes - 24
@@ -113,6 +115,12 @@ enum MacLayout {
         /// The day of the year in the low 9 bits, then the year.
         static let day = 0x10
         static let year = 0x12
+        /// u16: the rules index of the rule set it was given under, as `DisciplineRules.index`. 200 on every Norwegian league
+        /// ban and 201 on every cup ban on Molde's save (FM 27.1.0).
+        static let rules = 0x14
+        /// The yellow-card count it came at: 4, 6 or 8 for a Norwegian league ban for bookings, 2 or 3 for a cup one, 1 for a
+        /// red card.
+        static let bookingsAt = 0x18
         /// 0 for bookings, 2 or 6 for the two kinds of red card, which aren't told apart.
         static let kind = 0x1a
         static let matches = 0x1c
@@ -235,6 +243,48 @@ enum MacLayout {
     enum ActualComp {
         /// A vector of stage pointers. A league's table is its `sicomps::LEAGUE_STAGE`.
         static let stages: Int64 = 0x1d8
+        /// i8: which entry of `CompRules.list` the competition plays under, -1 for none (friendlies, some youth and
+        /// regional cups). The path FM's own "one booking from a ban" check takes.
+        static let rulesSlot: Int64 = 0x48
+        /// An object FM Starship doesn't name, whose `CompRules.holder` holds the list of rule sets.
+        static let rulesOwner: Int64 = 0x388
+    }
+
+    /// From `ActualComp.rulesOwner` to the rule sets a competition can play under.
+    enum CompRules {
+        static let holder: Int64 = 0x1f0
+        /// A vector of `DisciplineRules` pointers, the same objects as `Discipline.rules` holds.
+        static let list: Int64 = 0x48
+    }
+
+    /// `GAME_DISCIPLINE`, FM's one holder of disciplinary rule sets, reached from `RulesEngine.Mac27.disciplineGlobal`.
+    enum Discipline {
+        /// The path from the global's object: [[global] + holder] + object.
+        static let holder: Int64 = 0x158
+        static let object: Int64 = 0x70
+        /// A vector of `DisciplineRules` pointers, by rules index.
+        static let rules: Int64 = 0x08
+    }
+
+    /// `sicomps::DISCIPLINE_RULES`, one rule set, 0xa0 bytes with no vtable. Which counts bring a ban isn't stored as numbers:
+    /// FM works them out from a sequence type, so FM Starship asks FM's own function.
+    enum DisciplineRules {
+        static let size = 0xa0
+        /// u16, its own rules index: 281 of 281 on Molde's save.
+        static let index: Int64 = 0x3c
+        /// 0 for a plain count of yellow cards. Others count points or a window of matches, which FM Starship hasn't checked.
+        static let countType: Int64 = 0x70
+        static let plainCount: UInt8 = 0
+    }
+
+    /// `sicomps::PLAYER_BOOKING_COUNT`, 16 bytes: a player's count under one rule set. For a plain count it's the season's
+    /// yellow cards under it, at any club, not reset by a ban, and without the two yellows of a sending-off.
+    enum BookingCount {
+        static let size = 16
+        /// i16.
+        static let rules = 8
+        /// u8.
+        static let count = 0x0a
     }
 
     enum LeagueStage {

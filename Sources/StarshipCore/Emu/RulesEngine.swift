@@ -35,6 +35,8 @@ public final class RulesEngine: GameRulesEngine {
         package static let sharpnessSlot = 0x458 / 8
         package static let trainedAtClub: Int64 = 0xd1e590
         package static let trainedInNation: Int64 = 0xd1c1c4
+        package static let disciplineGlobal: Int64 = 0x57b5998
+        package static let countUntilNextBan: Int64 = 0x3d07978
     }
 
     public static let transfer: UInt64 = 4
@@ -63,6 +65,8 @@ public final class RulesEngine: GameRulesEngine {
     private let statsContainerFunction: Int64
     private let conditionFunction: Int64
     private let sharpnessFunction: Int64
+    /// `GAME_DISCIPLINE`'s vtable, which the object at the end of `Mac27.disciplineGlobal`'s path must have. 0 when not found.
+    private let disciplineVtable: Int64
     /// Team to HUMAN_NON_PLAYER object, for the staff rule.
     public var managers: [Int64: Int64] = [:]
     /// Team to the staff member whose eye the role stars are seen through.
@@ -103,6 +107,7 @@ public final class RulesEngine: GameRulesEngine {
         }
         conditionFunction = getter(Mac27.conditionSlot)
         sharpnessFunction = getter(Mac27.sharpnessSlot)
+        disciplineVtable = rtti.vtables("GAME_DISCIPLINE").first { $0.offsetToTop == 0 }.map { game.pluginBase + Int64($0.addressPoint) } ?? 0
     }
 
     private func status(_ player: Player, team: Int64) throws -> UInt64 {
@@ -422,6 +427,41 @@ public final class RulesEngine: GameRulesEngine {
             if try ask(Mac27.trainedAtClub, club) { return .club }
             guard nation != 0 else { return nil }
             return try ask(Mac27.trainedInNation, nation) ? .nation : .no
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
+    }
+
+    /// FM's one `GAME_DISCIPLINE`, by the path FM's own code takes to it, and only when it has that class's vtable.
+    public var discipline: Int64? {
+        typealias D = MacLayout.Discipline
+        guard disciplineVtable != 0 else { return nil }
+        let holder = game.readPointer(game.readPointer(game.pluginBase &+ Mac27.disciplineGlobal) &+ D.holder)
+        let object = holder > 0 ? game.readPointer(holder &+ D.object) : 0
+        guard object > 0, game.readPointer(object) == disciplineVtable else { return nil }
+        return object
+    }
+
+    /// `DISCIPLINE::get_count_until_next_ban`, which FM's own "one booking from a ban" check calls. It's handed a copy of
+    /// the player's count as FM's memory holds it now, since the sandbox keeps the pages it has copied and FM may have
+    /// played a match since. Nil, with the failure kept, when the call doesn't finish.
+    public func nextBan(rules: Int, bookingCount: [UInt8]?) -> NextBan? {
+        guard let discipline, (0...Int(UInt16.max)).contains(rules) else { return nil }
+        if let bookingCount, bookingCount.count != MacLayout.BookingCount.size { return nil }
+        let count = UInt64(A64_SCRATCH), out = count + 0x40
+        do {
+            return try sandbox.call(game.pluginBase + Mac27.countUntilNextBan,
+                                    [UInt64(bitPattern: discipline), bookingCount == nil ? 0 : count, UInt64(rules), out, out + 8, 0, out + 16, out + 24],
+                                    stack: [UInt64.max, 0, 0, 0], prepare: { cpu in
+                if let bookingCount { a64_write_bytes(cpu, count, bookingCount, bookingCount.count) }
+                for slot in 0..<4 { a64_write(cpu, out + UInt64(slot * 8), 0, 8) }
+            }) { cpu in
+                NextBan(left: Int(a64_read(cpu, out, 2)), length: Int(a64_read(cpu, out + 8, 1)),
+                        count: Int(a64_read(cpu, out + 16, 2)), lastBanAt: Int(a64_read(cpu, out + 24, 2)))
+            }
         } catch {
             failureLock.lock()
             failure = "\(error)"

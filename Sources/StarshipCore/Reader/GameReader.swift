@@ -535,6 +535,8 @@ public final class GameReader {
             ban.day = u16(b, B.day) & 0x1ff
             ban.year = u16(b, B.year)
             ban.kind = b[B.kind]
+            ban.rules = u16(b, B.rules)
+            ban.bookingsAt = Int(b[B.bookingsAt])
             ban.matches = Int(b[B.matches])
             ban.served = Int(b[B.served])
             bans.append(ban)

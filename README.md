@@ -137,9 +137,9 @@ use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your sav
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
 shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match,
 each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
-each player's condition, sharpness, morale, playing time, suspensions and home-grown status, how your players have developed
-between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
-recommended staff and bargains.
+each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how
+your players have developed between the times FM Starship read your save, and FM Starship's club, squad and staff overviews,
+recommended signings, recommended staff and bargains.
 
 - **It only reads.** It has no way to change anything in FM or your save, and it writes no files.
 - **It stays on your Mac.** Your agent's app starts it and talks to it through stdin and stdout. It opens no network connection and
@@ -378,6 +378,8 @@ how each value was first found:
 | `shapeName` | Takes eleven sorted place numbers in `x0` and returns a string through `x8`. `fmprobe shapenames` shows when it's right |
 | `conditionSlot`, `sharpnessSlot` | `ACTUAL_PLAYER` vtable slots whose code is `ldrsh w0, [x19, #0x254]` (condition) and `#0x250` (sharpness) after a call through `GAME_ACTUAL_PLAYER` slot 0x278 |
 | `trainedAtClub`, `trainedInNation` | The two `bl` targets in slot 2 of `OWN_PLAYER_RULE_PLAYER_IS_HOMEGROWN_PLAYER_FOR_CLUB`, which answers 2 for the first and 1 for the second |
+| `disciplineGlobal` | The global FM's code reads `GAME_DISCIPLINE` through, as `[[global] + 0x158] + 0x70` (`MacLayout.Discipline`). The object at the end has `GAME_DISCIPLINE`'s vtable, the one a vtable scan finds |
+| `countUntilNextBan` | Called in a loop over a player's `PLAYER_BOOKING_COUNT`s by FM's "one booking from a ban" check (`+0xd6d7b0` on 27.1.0, which takes a `db::COMP` and flags an answer of 1; the strings `TSF_UPCOMING_SUSPENSION` and `PLAYER_HAS_HIGH_NUMBER_OF_BOOKINGS` are a lead to it, not checked). Takes (discipline, count, rules index, out left, out length, fixture, out count, out last ban) with `[-1, 0, 0, 0]` on the stack. `BookingsReader`'s check is the test: its count must be the one read, and the latest ban for bookings must have come at its last step |
 
 The optimizer reads FM's own tactic data from `game_plugin.bundle/Contents/Resources/shared/data/simatch.fmf`, so it follows
 patches: the `.tac` presets, `styles.xml` (favoured attributes, preferred roles, features of play) and the role complexity

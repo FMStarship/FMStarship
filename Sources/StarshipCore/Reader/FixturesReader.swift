@@ -284,6 +284,30 @@ public final class FixturesReader {
     /// records only hold the index. A competition with no fixture left in memory, such as an old season's, isn't named.
     /// Where two names come out for one index, as a copy in freed memory could give, the one most fixtures carry wins.
     public func competitionNames() -> [UInt32: String] {
+        var votes: [UInt32: [String: Int]] = [:]
+        for (comp, fixtures) in fixturesByComp() {
+            let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
+            guard !name.isEmpty else { continue }
+            votes[compIndex(comp), default: [:]][name, default: 0] += fixtures
+        }
+        return votes.compactMapValues { names in names.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key }
+    }
+
+    /// Each competition's `db::COMP` by database index, from the same kind of sweep: of two records with one index, the
+    /// one more fixtures name, as for its name. Only named ones.
+    public func competitionRecords() -> [UInt32: Int64] {
+        var best: [UInt32: (comp: Int64, fixtures: Int)] = [:]
+        for (comp, fixtures) in fixturesByComp() {
+            guard !game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName))).isEmpty else { continue }
+            let index = compIndex(comp)
+            if let known = best[index], (known.fixtures, comp) >= (fixtures, known.comp) { continue }
+            best[index] = (comp, fixtures)
+        }
+        return best.mapValues(\.comp)
+    }
+
+    /// How many fixtures and results name each competition record, from one sweep.
+    private func fixturesByComp() -> [Int64: Int] {
         typealias F = MacLayout.Fixture
         let lock = NSLock()
         var fixturesByName: [Int64: Int] = [:]
@@ -315,13 +339,7 @@ public final class FixturesReader {
             let comp = game.readPointer(name &+ MacLayout.FixtureName.comp)
             if comp != 0 { fixturesByComp[comp, default: 0] += fixtures }
         }
-        var votes: [UInt32: [String: Int]] = [:]
-        for (comp, fixtures) in fixturesByComp {
-            let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
-            guard !name.isEmpty else { continue }
-            votes[compIndex(comp), default: [:]][name, default: 0] += fixtures
-        }
-        return votes.compactMapValues { names in names.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key }
+        return fixturesByComp
     }
 
     /// FM keeps from one to eight copies of a match, some made for its screens. A result wins over a fixture, and when two

@@ -60,7 +60,7 @@ extension Toolbox {
         return .object(pairs + Output.rows(players, columns + Self.competitionFields(engine, histories)
                                            + Self.lastMatch(histories, competitions: engine == nil ? [:] : competitionNames(context.read))
                                            + Self.matchLoadField(histories, today: context.db.gameDate)
-                                           + Self.stateFields(context.db, engine, context.read.states)))
+                                           + Self.stateFields(context.db, engine, context.read.states, context.read.bookings)))
     }
 
     static let matchLoadName = "Match load (14 days)"
@@ -282,7 +282,7 @@ extension Toolbox {
                 pairs.insert(("Season stats by competition", split), at: at)
             }
             context.read.states?.refresh(player)
-            if let state = Self.stateGroup(player, context.db, context.read.engine, context.read.states) {
+            if let state = Self.stateGroup(player, context.db, context.read.engine, context.read.states, context.read.bookings) {
                 pairs.append(("Fitness and morale", state))
             }
             if let load = Self.matchLoad(history, today: context.db.gameDate) { pairs.append((Self.matchLoadName, load)) }

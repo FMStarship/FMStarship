@@ -72,7 +72,7 @@ extension Toolbox {
         Tool(name: "game_status", title: "Game status",
              description: "Whether FM is running with FM Starship, the game date, the clubs human managers run with their budgets, "
                 + "which club the other tools use and its next fixture, whether Hidden attributes and Ability are on, whether "
-                + "condition, sharpness, morale, playing time, suspensions and home-grown status can be read, the units money is "
+                + "condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status can be read, the units money is "
                 + "in, and how old the read is. Call first. refresh reads the save again.",
              parameters: [Parameter(name: "refresh", type: "boolean", description: "Read the save again now.")],
              run: { _ in { _, _ in [:] } }),
@@ -87,7 +87,8 @@ extension Toolbox {
                 + "(both empty if he didn't play: on the bench, left out or suspended), which shows rotation. Match load (14 days) is FM's: the matches he "
                 + "played in the last 14 days and his minutes, out of 90 a match. "
                 + "Condition and Sharpness are percentages, Morale 1-20, Playing time his happiness with it from -100 to 100, "
-                + "Suspended the matches he's banned for in each competition, and Home-grown club, nation or no.",
+                + "Suspended the matches he's banned for in each competition, Bookings FM's own count of his yellow cards toward a "
+                + "ban in each of his team's competitions with how many more bring one and its length, and Home-grown club, nation or no.",
              parameters: [ownOrAnyClub,
                           Parameter(name: "squad", type: "string",
                                     description: "\"First team\", \"Reserves\", \"U21\", \"U19\", \"On loan\", ... or \"all\". First team if left out.")],
@@ -100,7 +101,7 @@ extension Toolbox {
         Tool(name: "person", title: "Person",
              description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats in total and "
                 + "by competition (league, cup, continental), form, his recent matches with competition, opponent, minutes, rating, "
-                + "goals and assists, his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, home-grown status, contract, "
+                + "goals and assists, his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, his yellow cards toward a ban under each rule set, home-grown status, contract, "
                 + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
                           Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out.")],

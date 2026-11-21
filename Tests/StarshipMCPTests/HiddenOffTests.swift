@@ -15,7 +15,7 @@ final class HiddenOffTests: XCTestCase {
     /// Every tool, with arguments that bring out what it can show.
     private static let calls: [(String, JSON)] = [
         ("game_status", [:]), ("squad", [:]), ("squad", ["squad": "all"]), ("squad", ["club": "Rivals FC"]), ("staff", [:]),
-        ("person", ["uid": 13]), ("person", ["uid": 21]), ("person", ["uid": 12]), ("person", ["uid": 500]), ("person", ["uid": 502]),
+        ("person", ["uid": 13]), ("person", ["uid": 4]), ("person", ["uid": 21]), ("person", ["uid": 12]), ("person", ["uid": 500]), ("person", ["uid": 502]),
         ("search_players", [:]), ("search_players", ["club": "Testing", "sort": "Age"]), ("search_players", ["clause_max": 5_000_000]),
         ("search_staff", [:]), ("search_staff", ["rank_by": "Fitness"]),
         ("shortlists", [:]), ("shortlist", ["name": "Targets"]), ("shortlist", ["name": "Coaches"]),

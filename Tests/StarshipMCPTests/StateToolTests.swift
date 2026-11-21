@@ -9,7 +9,7 @@ final class StateToolTests: XCTestCase {
         super.tearDown()
     }
 
-    private static let names = ["Condition", "Sharpness", "Morale", "Playing time", "Suspended", "Home-grown"]
+    private static let names = ["Condition", "Sharpness", "Morale", "Playing time", "Suspended", "Bookings", "Home-grown"]
 
     /// An object's keys and values, in any order.
     private static func pairs(_ object: JSON) -> [String: JSON] {
@@ -29,7 +29,10 @@ final class StateToolTests: XCTestCase {
         XCTAssertEqual(tired["Morale"], 2)
         XCTAssertEqual(tired["Playing time"], -89)
         XCTAssertEqual(tired["Suspended"], "1 Mock League, 2 Mock Cup")
+        XCTAssertEqual(tired["Bookings"], "Mock League 2 (2 more: 1-match ban), Mock Cup 1 (1 more: 1-match ban)",
+                       "his team's competitions only: not his nation's")
         XCTAssertEqual(tired["Home-grown"], "club")
+        XCTAssertEqual(rows[4]?["Bookings"], "Mock League + Mock Reserve League 5 (1 more: 2-match ban), Mock Points Cup: counted another way, not given")
 
         // Brought up to date three days ago, so FM's getters answer.
         let stale = try XCTUnwrap(rows[2])
@@ -41,6 +44,7 @@ final class StateToolTests: XCTestCase {
         XCTAssertEqual(fit["Condition"], 100)
         XCTAssertEqual(fit["Sharpness"], 96.5)
         XCTAssertEqual(fit["Suspended"], .null)
+        XCTAssertEqual(fit["Bookings"], .null)
         XCTAssertEqual(fit["Home-grown"], "no")
 
         // FM's squad screen doesn't count a ban from another association, or one whose competition isn't known.
@@ -83,7 +87,44 @@ final class StateToolTests: XCTestCase {
     func testGameStatusSaysEachIsOn() throws {
         let status = try Harness().answer("game_status")
         XCTAssertEqual(Self.pairs(try XCTUnwrap(status["player_state"])),
-                       ["condition": "on", "sharpness": "on", "morale": "on", "playing_time": "on", "suspensions": "on", "home_grown": "on"])
+                       ["condition": "on", "sharpness": "on", "morale": "on", "playing_time": "on", "suspensions": "on",
+                        "bookings": "on: FM's own count and answer, checked against 3 of 3 bans for bookings", "home_grown": "on"])
+    }
+
+    /// Each rule set in full, his team's and the others, with a note on the ones `squad` leaves out or can't give numbers for.
+    func testPersonGivesEachRuleSetsBookingsInFull() throws {
+        let harness = Harness()
+        let first = try XCTUnwrap(try harness.answer("person", ["uid": 1])["Fitness and morale"]?["Bookings"]?.array)
+        XCTAssertEqual(first.map(Self.pairs), [
+            ["competitions": "Mock League", "yellow_cards": 2, "more_until_ban": 2, "next_ban_matches": 1],
+            ["competitions": "Mock Cup", "yellow_cards": 1, "more_until_ban": 1, "next_ban_matches": 1],
+            ["competitions": "Made-up Nations Cup, Made-up Shield, Made-up Trophy and 2 more", "yellow_cards": 1, "more_until_ban": 1,
+             "next_ban_matches": 1, "note": .string("not a competition his team plays in: most likely his national team's, a youth or "
+                                                    + "reserve side's, or a club's he was at before this season")],
+        ])
+        let fourth = try XCTUnwrap(try harness.answer("person", ["uid": 4])["Fitness and morale"]?["Bookings"]?.array)
+        XCTAssertEqual(Self.pairs(fourth[0]), ["competitions": "Mock League + Mock Reserve League", "yellow_cards": 5, "more_until_ban": 1,
+                                               "next_ban_matches": 2, "last_ban_at": 4])
+        XCTAssertEqual(Set(Self.pairs(fourth[1]).keys), ["competitions", "note"], "no numbers for a count of another kind")
+        XCTAssertTrue(fourth[1]["note"]?.string?.hasPrefix("FM counts these another way") ?? false)
+        XCTAssertNil(fourth[2]["competitions"])
+        XCTAssertTrue(fourth[2]["note"]?.string?.hasPrefix("a rule set FM Starship can't name (FM's rules index 6)") ?? false)
+        XCTAssertEqual(fourth[2]["more_until_ban"], 1)
+        XCTAssertEqual(try harness.answer("person", ["uid": 3])["Fitness and morale"]?["Bookings"], .array([]))
+    }
+
+    /// Off for the read, they're left out of `squad` and `person`, and `game_status` says why.
+    func testBookingsThatFailedTheirCheckAreLeftOutAndSaidWhy() throws {
+        let harness = Harness()
+        harness.source.bookings?.off = "its check failed: made up"
+        XCTAssertEqual(try harness.answer("game_status")["player_state"]?["bookings"], "off: its check failed: made up")
+        XCTAssertFalse(try harness.answer("squad").columnNames.contains("Bookings"))
+        XCTAssertNil(try harness.answer("person", ["uid": 1])["Fitness and morale"]?["Bookings"])
+
+        harness.source.bookings = nil
+        XCTAssertEqual(try harness.answer("game_status", ["refresh": true])["player_state"]?["bookings"],
+                       "off: it can't be read from this save")
+        XCTAssertFalse(try harness.answer("squad").columnNames.contains("Bookings"))
     }
 
     /// Without FM's rules, a condition FM hasn't brought up to date today is left out rather than shown as it was, and
@@ -140,6 +181,7 @@ final class StateToolTests: XCTestCase {
         let harness = Harness(hidden: false)
         XCTAssertEqual(Array(try harness.answer("squad").columnNames.suffix(Self.names.count)), Self.names)
         XCTAssertEqual(try harness.answer("person", ["uid": 1])["Fitness and morale"]?["Morale"], 2)
+        XCTAssertEqual(try harness.answer("person", ["uid": 1])["Fitness and morale"]?["Bookings"]?.array?.count, 3)
     }
 
     /// FM can play a match without the date moving, so the read stands, but each row and each person is read again.
