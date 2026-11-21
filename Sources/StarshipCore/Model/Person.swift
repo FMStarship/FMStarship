@@ -329,6 +329,9 @@ public final class Database {
     public var currencies: [Currency] = []
     public var humanClubs: [(team: Int64, name: String, manager: Int64)] = []
     public var budgets: [Int64: (transfer: Int64, wageRoom: Int)] = [:]
+    /// Each human club's teams, by the human's team as in `humanClubs`: each team's database index (`Team.index`) and its
+    /// type, as `Names.squadName` names it. FM's news items name the team they're addressed to by that index.
+    public var humanTeams: [Int64: [UInt32: Int]] = [:]
     /// The human clubs that are women's sides, by team.
     public var womensTeams: Set<Int64> = []
     /// False when the game's answer isn't here, so `Person.isWoman` and `womensTeams` say nothing.

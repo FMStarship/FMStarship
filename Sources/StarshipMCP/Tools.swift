@@ -198,6 +198,21 @@ extension Toolbox {
                 + "opponent (eleven with roles, and substitutes) when FM has an opposition report on them; none when it hasn't.",
              parameters: [club],
              run: { $0.selection }),
+        Tool(name: "inbox", title: "Inbox",
+             description: "What happened at the user's club, from FM's inbox as FM keeps it now, newest first: each item's date, "
+                + "kind (FM's own, in plain words, such as injury report, contract expires soon, transfer completed, board "
+                + "confidence update), who sent it with their job, and the team it's for (first team, reserves, a youth team, or "
+                + "world news FM copied in). For injury reports, the player, FM's name for the injury and its length in days; for "
+                + "contracts expiring soon, whose; for a transfer completed, the person and the other club; for a come-and-get-me "
+                + "plea, the player and the club he wants. Other kinds say nothing more, as FM keeps no text for an item. FM keeps "
+                + "only about the last month, and window says from when: anything older isn't there, which doesn't mean it didn't "
+                + "happen. Read and unread aren't known. The kinds there are counted in kinds.",
+             parameters: [club,
+                          Parameter(name: "since", type: "string", description: "Only items on this date or later, YYYY-MM-DD."),
+                          Parameter(name: "kind", type: "string",
+                                    description: "Only items whose kind contains this, ignoring case, such as \"injury\" or \"contract\"."),
+                          Parameter(name: "limit", type: "integer", description: "How many items, 1-200. 50 if left out.")],
+             run: { $0.inbox }),
         Tool(name: "staff_overview", title: "Staff overview",
              description: "Each backroom job and training area at the user's club: who's in post, how they stand against the league, and empty places.",
              parameters: [club],

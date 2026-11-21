@@ -137,7 +137,8 @@ use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your sav
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
 shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match
 and why the others didn't play, the starting eleven and bench you've picked for the next match with a warning for anyone banned
-or injured for it, FM's scout's predicted line-up of your next opponent, each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
+or injured for it, FM's scout's predicted line-up of your next opponent, what's come into your inbox in about the last month
+(injuries and how long, contracts running out, transfers, and each item's kind, date and sender), each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
 each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how your players have developed
 between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
 recommended staff and bargains.
@@ -419,6 +420,15 @@ FM Starship's own parts, and how to check them after a patch:
   `selection` is asked (`SelectionReader`). It holds a `GAME_TACTIC_INFO` whose array reads as ours does, and its date at +0x88.
   Nothing found in it names the team, so the server takes the newest report whose eleven mostly plays for the next opponent,
   dated after the last match with them and by the day of this one. It's the scout's prediction, not the AI's pick.
+- **The inbox** is a vector of news items off the user's manager record, `HUMAN_NON_PLAYER` + 0x350 (`MacLayout.Inbox`), read
+  by `InboxReader` each time `inbox` is asked, as items come in without the date moving. FM stores no text for an item: its class
+  says the kind, and a header common to every item has the sender (+0x78, with the job at +0x9a), the date (+0x88), the addressed
+  team's index (+0x8c) and FM's rising counter (+0x90). Past the header each class has its own fields, and FM Starship reads them
+  only for the classes in `MacLayout.Inbox` whose fields were the same on every item of them on Molde's save; the others go out by
+  kind, date and sender. The list is checked as a whole, and switched off with the reason when it fails: every item one of FM's
+  objects, the counter rising, dates never going back or past the game date, and every item for one of the club's teams or world
+  news; and an injury report's length must match the player's own record. On Molde's save FM kept 150 items, 26 days; whether 150
+  is a limit isn't known, so the answer always says when its window starts. No read or unread flag was found.
 - **Squad overview and Staff overview** are `OverviewReport`s: each place, how it stands against the league, and the best
   person who'd join. Staff jobs come from FM's own board table, `StaffLimits.Club`. Its entries were matched to jobs by comparing
   them with who holds each job at 600 clubs, which `fmprobe staffmap 7 600` repeats if a patch reorders them.

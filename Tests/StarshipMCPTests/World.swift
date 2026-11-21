@@ -193,6 +193,23 @@ final class FakeSelection: SelectionSource {
     }
 }
 
+/// The user's inbox as `InboxSource` gives it, which a test can change between calls. Counts its reads.
+final class FakeInbox: InboxSource {
+    var result: Inbox
+    private(set) var reads = 0
+    private(set) var asked: (manager: Int64, teams: [UInt32: Int], today: Date?)?
+
+    init(_ result: Inbox) {
+        self.result = result
+    }
+
+    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox {
+        reads += 1
+        asked = (manager, teams, today)
+        return result
+    }
+}
+
 /// A save built by hand, as `GameSource` gives it. It counts its reads, and can say the save has moved on.
 final class FakeSource: GameSource {
     var database: Database
@@ -203,6 +220,7 @@ final class FakeSource: GameSource {
     var states: FakeStates? = FakeStates(World.bans())
     var bookings: FakeBookings? = FakeBookings(World.bookings())
     var selection: FakeSelection? = FakeSelection()
+    var inbox: FakeInbox? = FakeInbox(.items(World.inbox()))
     private(set) var reads = 0
 
     init(database: Database, engine: GameRulesEngine?) {
@@ -213,7 +231,8 @@ final class FakeSource: GameSource {
     func read() throws -> GameRead {
         if let problem { throw problem }
         reads += 1
-        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings, selection: selection)
+        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings, selection: selection,
+                        inbox: inbox)
     }
 
     func isCurrent(_ read: GameRead) -> Bool { current }
@@ -319,6 +338,7 @@ enum World {
         db.checks = "PASS"
         db.stateOff = [:]
         db.humanClubs = [(team: 1, name: World.club, manager: 500)]
+        db.humanTeams = [1: [firstTeamIndex: 0, youthTeamIndex: 11]]
         db.budgets = [1: (transfer: 5_000_000, wageRoom: 20_000)]
         db.tactics = [1: tactic(players)]
         db.prepare()
@@ -400,6 +420,34 @@ enum World {
             4: [Booking(rules: 3, competitions: ["Mock League", "Mock Reserve League"], teamPlays: true, next: next(5, 1, last: 4, length: 2)),
                 Booking(rules: 8, competitions: ["Mock Points Cup"], teamPlays: true, plain: false, next: nil),
                 Booking(rules: 6, competitions: [], teamPlays: false, next: next(1, 1))],
+        ]
+    }
+
+    // MARK: Inbox
+
+    static let firstTeamIndex: UInt32 = 0x438
+    static let youthTeamIndex: UInt32 = 0x4401
+
+    /// Testing FC's inbox, oldest first, from 8 September: contracts running out, Hurt Player's injury report, a transfer for
+    /// the youth team, a plea from First 5 sent through an agent, and the board's confidence from a chairman FM Starship
+    /// doesn't read.
+    static func inbox() -> [InboxItem] {
+        func day(_ day: Int) -> Date { GameDate.checked(year: 2026, dayOfYear: day)! }
+        let coach = NewsPerson(uid: 501, index: 501, isPlayer: false, name: "Coach One")
+        let hurt = NewsPerson(uid: 13, index: 13, isPlayer: true, name: "Hurt Player")
+        return [
+            InboxItem(serial: 1000, date: day(251), className: "CONTRACT_EXPIRES_SOON_NEWS", team: firstTeamIndex, sender: coach,
+                      senderJob: "Director of Football", subject: .contractsExpiring(indexes: [12, 501, 9999])),
+            InboxItem(serial: 1001, date: day(256), className: "INJURY_REPORT_NEWS_ITEM", team: firstTeamIndex, sender: coach,
+                      senderJob: "Head Physio", subject: .injury(player: hurt, injury: "Hamstring strain", on: day(256), days: 21)),
+            InboxItem(serial: 1002, date: day(258), className: "TRANSFER_COMPLETED_NEWS", team: youthTeamIndex, sender: coach,
+                      senderJob: "Director of Football",
+                      subject: .transfer(person: NewsPerson(uid: 502, index: 502, isPlayer: false, name: "Rival Coach"), club: rivals)),
+            InboxItem(serial: 1003, date: day(265), className: "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", team: nil, sender: nil, fromAgent: true,
+                      senderJob: nil, subject: .comeAndGetMe(player: NewsPerson(uid: 5, index: 5, isPlayer: true, name: "First 5"),
+                                                             club: "Big Club FC")),
+            InboxItem(serial: 1004, date: day(268), className: "BOARD_CONFIDENCE_UPDATE_NEWS", team: firstTeamIndex,
+                      sender: NewsPerson(uid: 8888, index: 8888, isPlayer: false, name: "The Chairman"), senderJob: "Chairperson"),
         ]
     }
 

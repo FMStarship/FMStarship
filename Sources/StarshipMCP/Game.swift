@@ -18,9 +18,11 @@ public struct GameRead {
     public let bookings: BookingSource?
     /// The user's matchday squad as FM holds it when a tool answers, and FM's scout reports. Nil where they can't be read again.
     public let selection: SelectionSource?
+    /// The user's inbox as FM holds it when a tool answers. Nil where it can't be read.
+    public let inbox: InboxSource?
 
     public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil,
-                bookings: BookingSource? = nil, selection: SelectionSource? = nil) {
+                bookings: BookingSource? = nil, selection: SelectionSource? = nil, inbox: InboxSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
@@ -28,6 +30,29 @@ public struct GameRead {
         self.states = states
         self.bookings = bookings
         self.selection = selection
+        self.inbox = inbox
+    }
+}
+
+/// The user's inbox, as `InboxReader` gives it.
+public protocol InboxSource: AnyObject {
+    /// The inbox of the human manager at `manager` as FM holds it now: new items come in without the date moving.
+    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox
+}
+
+/// The running game's, through an `InboxReader` made on the first question.
+final class LiveInbox: InboxSource {
+    private let game: GameProcess
+    private var reader: InboxReader?
+
+    init(game: GameProcess) {
+        self.game = game
+    }
+
+    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox {
+        let found = reader ?? InboxReader(game: game, rtti: Rtti(game))
+        reader = found
+        return found.inbox(manager: manager, teams: teams, today: today)
     }
 }
 
@@ -185,7 +210,7 @@ public final class LiveGame: GameSource {
                             states: PlayerStateReader(game: process, database: database),
                             bookings: BookingsReader(game: process, database: database, engine: engine,
                                                      competitionRecords: { matches.competitionRecords() }),
-                            selection: LiveSelection(game: process))
+                            selection: LiveSelection(game: process), inbox: LiveInbox(game: process))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {

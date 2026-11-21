@@ -393,6 +393,57 @@ enum MacLayout {
         static let tacticArray: Int64 = 0x1008
     }
 
+    /// The user's inbox: FM's news items for one human manager, from Molde's save on 27.1.0 (150 items over 26 days, every
+    /// one checked). An item holds no text: FM writes it from the item's class and fields when it's shown.
+    enum Inbox {
+        /// HUMAN_NON_PLAYER: a pointer to a vector (begin, end, capacity) of pointers to the items, oldest first.
+        static let items: Int64 = 0x350
+        /// Common to every news item.
+        static let sender: Int64 = 0x78
+        /// The day of the year in the low 9 bits, then the year, both 16-bit.
+        static let day: Int64 = 0x88
+        static let year: Int64 = 0x8a
+        /// The addressed team's database index (`Team.index`), or `world` for news FM copied in from the world's.
+        static let team: Int64 = 0x8c
+        static let world: UInt32 = 0xffff_ffff
+        /// FM's counter, rising along the list, ties within a day included.
+        static let serial: Int64 = 0x90
+        /// The sender's job, as a contract's `job`: matched on eight senders.
+        static let senderJob: Int64 = 0x9a
+        static let header = 0xa0
+
+        /// Fields of one class, each seen on every item of it.
+        enum InjuryReport {
+            static let injuredOn: Int64 = 0xc0
+            /// 16-bit, in days, matching the player's own injury record.
+            static let days: Int64 = 0xc8
+            /// FM's injury, whose name is at `Injury.name`.
+            static let injury: Int64 = 0xf8
+            static let player: Int64 = 0x110
+        }
+        enum ContractsExpiring {
+            /// A vector (begin, end) of `size`-byte records, one for each person whose contract runs out.
+            static let people: Int64 = 0x3a0
+            static let size: Int64 = 0x40
+            static let club: Int64 = 0
+            /// The person's database index (`Identity.index`).
+            static let index: Int64 = 0x28
+        }
+        enum TransferCompleted {
+            static let person: Int64 = 0x140
+            static let team: Int64 = 0x148
+        }
+        enum ComeAndGetMe {
+            static let player: Int64 = 0x258
+            static let team: Int64 = 0x270
+        }
+    }
+
+    /// FM's injury, shared by everyone with one: its name, in the game's language, is a string this points at.
+    enum Injury {
+        static let name: Int64 = 0x20
+    }
+
     enum Currency {
         static let name = 24
         static let symbol = 48

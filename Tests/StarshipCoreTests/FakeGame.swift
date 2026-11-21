@@ -7,7 +7,9 @@ import XCTest
 /// just enough RTTI for the reader to find the classes it sweeps for. Every name and number in it is made up.
 final class FakeGame {
     /// The classes whose records the reader finds by their vtables.
-    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER", "SCOUT_TEAM_REPORT_NEWS"]
+    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER", "SCOUT_TEAM_REPORT_NEWS",
+                          "CLUB_HUMAN_MANAGER_DETAILS", "CLUB", "INJURY", "AGENT", "INJURY_REPORT_NEWS_ITEM", "CONTRACT_EXPIRES_SOON_NEWS",
+                          "TRANSFER_COMPLETED_NEWS", "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", "BOARD_CONFIDENCE_UPDATE_NEWS"]
     /// `FixturesReader`'s, which RTTI spells in the sicomps namespace.
     static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE"]
     /// Classes of the reader's names in the sicomps namespace, which FM doesn't have, laid out ahead of the real ones: the
@@ -15,7 +17,7 @@ final class FakeGame {
     static let decoys = ["TEAM", "ACTUAL_PLAYER"]
 
     private let image: UnsafeMutableRawPointer
-    private let imageSize = 0x1000
+    private let imageSize = 0x2000
     private let heap: UnsafeMutableRawPointer
     private let heapSize: Int
     private var used = 0
