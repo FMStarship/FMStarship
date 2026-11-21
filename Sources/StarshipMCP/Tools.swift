@@ -222,22 +222,22 @@ extension Toolbox {
                           Parameter(name: "limit", type: "integer", description: "How many items, 1-200. 50 if left out.")],
              run: { $0.inbox }),
         Tool(name: "squad_rules", title: "Squad rules",
-             description: Toolbox.matchNames + "Each competition's squad rules as FM holds them, counted against the user's squad "
-                + "by FM's own per-player values: for each rule, FM's number (\"not home-grown: 9 of at most 9\"), how the count "
-                + "stands (within, at the limit, over the maximum, under the minimum), and which players count toward it. "
-                + "at_or_past_a_limit lists the rules the squad is on or past. Without competition, the club's league and the "
-                + "competitions in its fixtures from the last 120 days on, with no_squad_rules naming those FM holds none for, "
-                + "such as a cup. FM keeps no registration list for the club, so this counts the squad asked for as it is "
-                + "now, by FM's rules, and isn't a registration list: it doesn't settle who FM lets play in a competition. "
-                + "Rules for a matchday squad, the team on the pitch, a season or wages are given with FM's number but not "
-                + "counted. The first question takes a few seconds.",
+             description: Toolbox.matchNames + "Each competition's squad rules as FM holds them, counted against the user's club "
+                + "by FM's own per-player values. FM keeps no registration list for the club, so which players FM counts isn't "
+                + "known: each rule is counted for the first team and for the whole club (everyone at the club now, not those "
+                + "out on loan), and has a standing (within, at the limit, under the minimum by N, over the maximum by N) only "
+                + "where the two agree, as in \"not home-grown: 9 of at most 9 (at the limit)\". Where they don't, it says "
+                + "\"depends on which players FM counts: first team N, whole club M\" and gives no standing. players lists who "
+                + "at the club counts toward each rule, with their squad. at_or_past_a_limit lists the rules the squad is on or "
+                + "past both ways, and depends_on_which_players_fm_counts the rest that aren't settled. Without competition, the "
+                + "club's league and the competitions in its fixtures from the last 120 days on, with no_squad_rules naming "
+                + "those FM holds none for, such as a cup. It isn't a registration list: it doesn't settle who FM lets play in "
+                + "a competition. Rules for a matchday squad, the team on the pitch, a season or wages are given with FM's "
+                + "number but not counted. The first question takes a few seconds.",
              parameters: [club,
                           Parameter(name: "competition", type: "string",
                                     description: "One competition, by its name as FM shows it, ignoring case, or part of it. Any "
-                                        + "competition FM holds fixtures of, such as one the club could qualify for."),
-                          Parameter(name: "squad", type: "string",
-                                    description: "Which of the club's players to count: \"First team\", \"Reserves\", \"U19\", ... "
-                                        + "or \"all\" for everyone at the club now (not those out on loan). First team if left out.")],
+                                        + "competition FM holds fixtures of, such as one the club could qualify for.")],
              run: { $0.squadRules }),
         Tool(name: "staff_overview", title: "Staff overview",
              description: "Each backroom job and training area at the user's club: who's in post, how they stand against the league, and empty places.",

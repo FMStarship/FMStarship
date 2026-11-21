@@ -445,8 +445,9 @@ FM Starship's own parts, and how to check them after a patch:
   professional or part-time contracts and 5 on youth or amateur contracts, at least 16 trained in Norway up to 21, at most 9 not
   home-grown and at least 2 trained at the club; the Champions League, Europa League and Conference League shared at most 25,
   at least 8 trained in the nation between 15 and 21, at least 4 of them at the club, and at least 2 goalkeepers; the cup had
-  none. FM kept no registration list for Molde, so the MCP server's `squad_rules` counts the squad asked for and never says who
-  is registered. The read is switched off with the reason when a rule set doesn't carry its own entry (+0x120) and owner
+  none. FM kept no registration list for Molde, so which players FM counts isn't known: the MCP server's `squad_rules` counts
+  each rule for the first team and for the whole club, gives a standing only where the two agree, and never says who is
+  registered. The read is switched off with the reason when a rule set doesn't carry its own entry (+0x120) and owner
   (+0x88), when FM's tables don't read back as FM's, or, for the counts alone, when FM's values disagree with squad size or FM's
   own home-grown tests for the human clubs' players. The direction is read as at most, exactly and at least: Molde's squad sat
   exactly on three limits, which a strict "less than" would make breaches.

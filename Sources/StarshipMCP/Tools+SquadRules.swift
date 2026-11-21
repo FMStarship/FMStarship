@@ -2,9 +2,10 @@ import Foundation
 import StarshipAnalysis
 import StarshipCore
 
-/// Each competition's squad rules as FM holds them, counted against the user's squad by FM's own per-player values. FM
-/// keeps no registration list for a club like Molde, so this is the squad as it is now, counted by FM's rules, never a
-/// registration list, and its words never say a player is "registered" or a squad "legal". Nothing in it
+/// Each competition's squad rules as FM holds them, counted against the user's club by FM's own per-player values. FM
+/// keeps no registration list for a club like Molde, so which players FM counts isn't known: each rule is counted for the
+/// first team and the whole club, and stands only where the two agree. Only its first note names registration, to say the
+/// answer never settles it. Nothing in it
 /// is hidden in FM: home-grown status and contracts are on its squad and registration screens, and no rating is read.
 extension Toolbox {
     /// How far back the club's fixtures show the competitions it plays in, as for bookings.
@@ -45,9 +46,17 @@ extension Toolbox {
         }
     }
 
-    static func standingText(_ count: SquadRuleCount) -> String? {
-        guard let standing = count.standing, let number = count.count else { return nil }
-        let off = abs(number - count.rule.limit)
+    /// The squad FM Starship counts besides the whole club.
+    static let firstTeam = "First team"
+
+    /// How the first team's and the whole club's counts stand against FM's number, where they agree. Nil where either isn't
+    /// counted, or they stand differently, so the answer depends on which players FM counts.
+    static func standingText(first: SquadRuleCount, whole: SquadRuleCount) -> String? {
+        guard let standing = whole.standing, first.standing == standing, let inFirst = first.count, let inWhole = whole.count else {
+            return nil
+        }
+        let limit = whole.rule.limit
+        let off = inFirst == inWhole ? "\(abs(inWhole - limit))" : "\(abs(inFirst - limit)) (first team) or \(abs(inWhole - limit)) (whole club)"
         switch standing {
         case .within: return "within"
         case .atLimit: return "at the limit"
@@ -69,20 +78,19 @@ extension Toolbox {
         }
         let db = context.db
 
-        // Everyone at the club now: its own players not out on loan, and those on loan here.
-        let atClub = db.players.filter { ($0.clubFull == club.name && $0.loanClubFull.isEmpty) || $0.loanClubFull == club.name }
-        let squads = Names.squadOrder.filter { name in atClub.contains { $0.squad == name } }
-        let wanted = try args.string("squad") ?? (squads.contains("First team") ? "First team" : "all")
-        var shown: String?
-        if wanted.caseInsensitiveCompare("all") != .orderedSame {
-            guard let match = squads.first(where: { $0.caseInsensitiveCompare(wanted) == .orderedSame }) else {
-                throw ToolError("\(club.name) has no squad called \(wanted). Its squads: \(squads.joined(separator: ", ")), or all.")
-            }
-            shown = match
-        }
-        let players = atClub.filter { shown == nil || $0.squad == shown }.stableSorted(by: Self.positionOrder)
+        // Everyone at the club now: its own players not out on loan, and those on loan here. Which of them FM counts toward a
+        // competition isn't known, so each rule is counted for the first team and for all of them, and stands only where the
+        // two agree.
+        let players = db.players.filter { ($0.clubFull == club.name && $0.loanClubFull.isEmpty) || $0.loanClubFull == club.name }
+            .stableSorted(by: Self.positionOrder)
+        let squads = Names.squadOrder.filter { name in players.contains { $0.squad == name } }
+        let firstTeam = players.filter { $0.squad == Self.firstTeam }
 
-        var notes: [String] = []
+        var notes = ["FM keeps no registration list for this club, so these are the squad as it is, counted by FM's own rules. "
+                     + "Which players FM counts toward a competition isn't known, so each rule is counted for the first team and "
+                     + "for the whole club (everyone at the club now, not those out on loan), and has a standing only where the "
+                     + "two agree; elsewhere it depends on which players FM counts. Never tell the user the squad is registered, "
+                     + "legal or breaking a rule unless the standing says so. FM's own registration screen settles who FM lets play."]
         let indexes = try ruleCompetitions(named, club: club, source: source, context: context, notes: &notes)
         let countsOff = source.countsOff
         if let countsOff {
@@ -90,6 +98,7 @@ extension Toolbox {
         }
 
         var limits: [String] = []
+        var depends: [String] = []
         var none: [String] = []
         var competitions: [JSON] = []
         for index in indexes {
@@ -105,48 +114,58 @@ extension Toolbox {
                 continue
             }
             let rules: [JSON] = set.rules.map { rule in
-                let counted = source.count(rule, in: set, players: players, team: club.team)
+                // FM's value is the player's own, so the first team's count is the whole club's, narrowed to the first team.
+                let whole = source.count(rule, in: set, players: players, team: club.team)
+                let first = whole.players.map { found in
+                    SquadRuleCount(rule: rule, players: found.filter { $0.squad == Self.firstTeam })
+                }
                 let words = Self.ruleWords(rule)
                 var text = "\(words): \(Self.limitText(rule))"
-                if let number = counted.count {
-                    text = "\(words): \(number) of \(Self.limitText(rule))"
-                    if let standing = Self.standingText(counted) { text += " (\(standing))" }
-                    if counted.standing != .within { limits.append("\(name), \(text)") }
+                let standing = first.flatMap { Self.standingText(first: $0, whole: whole) }
+                if let first, let inFirst = first.count, let inWhole = whole.count {
+                    if let standing {
+                        text = inFirst == inWhole ? "\(words): \(inWhole) of \(Self.limitText(rule))"
+                            : "\(words): first team \(inFirst), whole club \(inWhole), of \(Self.limitText(rule))"
+                        text += " (\(standing))"
+                        if whole.standing != .within { limits.append("\(name), \(text)") }
+                    } else {
+                        text += ": depends on which players FM counts: first team \(inFirst), whole club \(inWhole)"
+                        depends.append("\(name), \(text)")
+                    }
                 }
-                let everyone = !players.isEmpty && counted.count == players.count
+                let everyone = !players.isEmpty && whole.count == players.count
                 return .object(dropping: [
                     ("rule", .string(words)),
                     ("fm_name", .string(rule.name)),
                     ("fm_limit", .string(Self.limitText(rule))),
-                    ("count", counted.count.map { .int($0) }),
-                    ("standing", Self.standingText(counted).map { .string($0) }),
+                    ("first_team", first?.count.map { .int($0) }),
+                    ("whole_club", whole.count.map { .int($0) }),
+                    ("standing", standing.map { .string($0) }),
                     ("text", .string(text)),
-                    ("players", everyone || countsOff != nil ? nil : counted.players.map { found in
-                        .array(found.map { .object([("uid", .int(Int($0.uid))), ("name", .string($0.name))]) })
+                    ("players", everyone || countsOff != nil ? nil : whole.players.map { found in
+                        .array(found.map { .object([("uid", .int(Int($0.uid))), ("name", .string($0.name)),
+                                                    ("squad", .string($0.squad))]) })
                     }),
                     ("everyone_counts", everyone && !rule.isSize ? .bool(true) : nil),
-                    ("not_counted", countsOff == nil ? counted.notCounted.map { .string($0) } : nil),
+                    ("not_counted", countsOff == nil ? whole.notCounted.map { .string($0) } : nil),
                 ])
             }
             competitions.append(.object([("competition", .string(name)), ("rules", .array(rules))]))
         }
 
-        notes.append("FM keeps no registration list for this club, so this is the squad as it is now, counted by FM's own rules, "
-                     + "not a registration list: it doesn't settle who FM lets play in a competition. FM's own registration "
-                     + "screen does.")
-        if shown != nil {
-            notes.append("Only the \(shown ?? "") is counted. Which of the club's players FM counts toward each competition isn't "
-                         + "known: a league's limits on youth or amateur contracts suggest it counts players outside the first team "
-                         + "too. squad all counts everyone at the club.")
+        if countsOff == nil {
+            notes.append("Each rule's players are those at the whole club who count toward it, with their squad: the ones in the "
+                         + "\(Self.firstTeam) make the first team's count.")
         }
         return .object(dropping: [
             ("club", .string(club.name)),
-            ("counted", .string(shown ?? "all: everyone at the club now, not those out on loan")),
+            ("first_team", .int(firstTeam.count)),
+            ("whole_club", .int(players.count)),
             ("squads", .array(squads.map { .string($0) })),
-            ("players", .int(players.count)),
             ("competitions", .array(competitions)),
             ("no_squad_rules", none.isEmpty ? nil : .array(none.map { .string($0) })),
             ("at_or_past_a_limit", countsOff != nil ? nil : .array(limits.map { .string($0) })),
+            ("depends_on_which_players_fm_counts", countsOff != nil || depends.isEmpty ? nil : .array(depends.map { .string($0) })),
             ("notes", .array(notes.map { .string($0) })),
         ])
     }

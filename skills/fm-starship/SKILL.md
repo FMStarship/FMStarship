@@ -30,7 +30,7 @@ chosen in FM Starship.
 | `results` | A club's played matches, newest first, with both sides' xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
 | `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club; for fines, unhappiness with training and coach feedback, the player. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
-| `squad_rules` | Each competition's squad rules as FM holds them, counted against the first team (or the `squad` you name, `all` for everyone at the club) by FM's own per-player values: FM's number and the count for each rule, who counts toward it, and where the squad is at or past a limit. Without `competition`, the club's league and the competitions in its recent and coming fixtures |
+| `squad_rules` | Each competition's squad rules as FM holds them, counted for the first team and for the whole club by FM's own per-player values: FM's number and both counts for each rule, a standing only where the two agree, who counts toward it with their squad, and where the squad is at or past a limit either way. Without `competition`, the club's league and the competitions in its recent and coming fixtures |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
@@ -160,17 +160,19 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   the answer; use `kind` with part of one, such as "injury", "contract" or "transfer", to narrow to it. `team` is "not
   addressed to one team" for FM's own news item copied in; on the save this was checked on, each was still about the club,
   such as a ban or a call-up for one of its players.
-- **Squad rules** (`squad_rules`) are each competition's squad rules as FM holds them, counted against the squad asked for by
-  FM's own per-player values. `text` has FM's number and the count, such as "not home-grown: 9 of at most 9 (at the limit)",
-  `players` who counts toward it, and `at_or_past_a_limit` the rules the squad is on or past. FM keeps no registration list for
-  the user's club, so this is the squad as it is now, never a registration list: don't say a player is registered or not, or
-  that a squad is legal or illegal. Which of the club's players FM counts toward a competition isn't known either. The first
-  team is counted unless `squad` says otherwise, and a league's limits on youth or amateur contracts suggest FM counts players
-  beyond it, so before telling the user they're over or under a limit, look at `squad: "all"` too and say which group you
-  counted. In the competitions checked, the limits on foreign players are home-grown status (trained at the club or in the
-  nation), not nationality. A rule FM names for a matchday squad, the team on the pitch, a season or wages comes with FM's
-  number and no count. `no_squad_rules` names competitions FM holds none for, such as a cup. If `game_status` says squad rules
-  are on without counts, give FM's numbers and say the counts aren't available.
+- **Squad rules** (`squad_rules`) are each competition's squad rules as FM holds them, counted by FM's own per-player values.
+  FM keeps no registration list for the user's club, so which players FM counts toward a competition isn't known: each rule
+  is counted for the first team (`first_team`) and for the whole club (`whole_club`, everyone at the club now, not those out on
+  loan), and has a `standing` only where the two agree, such as "not home-grown: 9 of at most 9 (at the limit)". Where they
+  don't, `text` says "depends on which players FM counts: first team 22, whole club 45" and there's no standing: tell the user
+  it depends on who FM counts, give both numbers, and don't call it a breach or say it's fine. Never tell the user a player is
+  registered or not, or that the squad is legal or breaks a rule, unless the standing says so. `players` is who at the club
+  counts toward a rule, each with their squad, so those in the First team make the first team's count.
+  `at_or_past_a_limit` lists the rules the squad is on or past both ways, and `depends_on_which_players_fm_counts` the rest
+  that aren't settled. In the competitions checked, the limits on foreign players are home-grown status (trained at the club or
+  in the nation), not nationality. A rule FM names for a matchday squad, the team on the pitch, a season or wages comes with
+  FM's number and no count. `no_squad_rules` names competitions FM holds none for, such as a cup. If `game_status` says squad
+  rules are on without counts, give FM's numbers and say the counts aren't available.
 - **Match load (14 days)** in `squad` and `person` is FM's match load: the matches he played in the 14 days up to today, his
   minutes in them, and 90 a match. "3 matches, 212 of 270 min" is FM's "3 kamper (212/270 minutter) siste 14 dager", and it
   matched FM's figure on the save it was checked on. FM's word for it ("Intensiv" and the like) and where the words start
