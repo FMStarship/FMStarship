@@ -89,7 +89,8 @@ extension Toolbox {
                 + "played in the last 14 days and his minutes, out of 90 a match. "
                 + "Condition and Sharpness are percentages, Morale 1-20, Playing time his happiness with it from -100 to 100, "
                 + "Suspended the matches he's banned for in each competition, Bookings FM's own count of his yellow cards toward a "
-                + "ban in each of his team's competitions with how many more bring one and its length, and Home-grown club, nation or no.",
+                + "ban in each of his team's competitions with how many more bring one and its length (yellow cards only: a red-card ban "
+                + "is in Suspended), and Home-grown club, nation or no.",
              parameters: [ownOrAnyClub,
                           Parameter(name: "squad", type: "string",
                                     description: "\"First team\", \"Reserves\", \"U21\", \"U19\", \"On loan\", ... or \"all\". First team if left out.")],

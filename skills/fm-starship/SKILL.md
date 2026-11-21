@@ -167,7 +167,8 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   disciplinary rule sets, not competitions, and one rule set can cover several, such as a league and the division below or
   its youth league. Their cards count together, shown as "Eliteserien + U19 National League". The count is for the season,
   at any club under the same rules (a player brings his count with him), isn't reset by a ban, and leaves out the two yellows
-  of a sending-off. On the Norwegian save it was checked on, the league's bans came at 4, 6, 8 and so on, and the cup's at
+  of a sending-off. It's yellow cards only: a ban for a red card is in Suspended (and `person` says why), so "Cupen 0 (2 more)"
+  beside "Suspended: 1 Cupen" means a red-card ban, not a contradiction. On the Norwegian save it was checked on, the league's bans came at 4, 6, 8 and so on, and the cup's at
   2, 3, 4, but don't work out thresholds yourself: go by "more", since some countries' rules depend on the date or the match.
   `squad` gives the competitions his team plays in. `person` gives every rule set he has a card under, his national team's
   or an old club's too, with a note on those, and `last_ban_at`, the count his last ban under it came at. A rule set FM
