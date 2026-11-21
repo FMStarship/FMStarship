@@ -216,10 +216,13 @@ final class FakeSelection: SelectionSource {
     }
 }
 
-/// The user's inbox as `InboxSource` gives it, which a test can change between calls. Counts its reads.
+/// The user's inbox as `InboxSource` gives it, which a test can change between calls. Counts its reads, and its sweeps for
+/// FM's transfer timeline, which holds `events`.
 final class FakeInbox: InboxSource {
     var result: Inbox
+    var events: [TransferEvent]? = []
     private(set) var reads = 0
+    private(set) var sweeps = 0
     private(set) var asked: (manager: Int64, teams: [UInt32: Int], today: Date?)?
 
     init(_ result: Inbox) {
@@ -230,6 +233,11 @@ final class FakeInbox: InboxSource {
         reads += 1
         asked = (manager, teams, today)
         return result
+    }
+
+    func transferEvents() -> [TransferEvent]? {
+        sweeps += 1
+        return events
     }
 }
 

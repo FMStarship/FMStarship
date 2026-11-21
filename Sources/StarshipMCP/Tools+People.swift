@@ -290,6 +290,14 @@ extension Toolbox {
             }
             if !values.isEmpty { pairs.append((group, .object(values))) }
         }
+        if let player = person as? Player, let clauses = Self.clauses(player, context.read.engine) {
+            // In his contract, with the release clauses.
+            if let at = pairs.firstIndex(where: { $0.0 == "Contract" }), case .object(let values) = pairs[at].1 {
+                pairs[at].1 = .object(values + clauses)
+            } else {
+                pairs.append(("Contract", .object(clauses)))
+            }
+        }
         if let player = person as? Player {
             let history = context.read.engine?.matchHistory(player: player)
             if let split = Self.seasonByCompetition(player, context.read.engine, history: history) {
@@ -307,6 +315,40 @@ extension Toolbox {
         }
         if let session, let join = wouldJoin(person, session) { pairs.append(("Would join your club", join)) }
         return .object(pairs)
+    }
+
+    /// His contract's clauses for goals in the season, each with his league goals this season and whether they've reached
+    /// it, and how many others it holds that FM Starship doesn't know. Nothing when it holds neither. Contract clauses aren't
+    /// hidden in FM.
+    static func clauses(_ player: Player, _ engine: GameRulesEngine?) -> [(String, JSON)]? {
+        var pairs: [(String, JSON)] = []
+        if !player.seasonGoalClauses.isEmpty {
+            // His loan club's league goals are what FM's stats give while he's on loan, and whether those count isn't known.
+            let onLoan = !player.loanClubFull.isEmpty
+            let goals = onLoan ? nil : engine?.seasonStats(player: player, season: RulesEngine.league)?.goals
+            let rows: [JSON] = player.seasonGoalClauses.sorted { $0.goals < $1.goals }.map { clause in
+                .object(dropping: [("goals", .int(clause.goals)), ("sum", Output.text(Units.moneyText(Double(clause.amount)))),
+                                   ("league_goals", goals.map { .int($0) } ?? .string(notAvailable)),
+                                   ("reached", goals.map { .bool($0 >= clause.goals) })])
+            }
+            var note = "Each pays its sum once he has scored that many goals in the season. FM's item for one came the day after "
+                + "the player's 10th league goal of the season, and his goals in Europe didn't count; whether cup goals count isn't "
+                + "known. league_goals is his league goals this season at his club, from FM's stats, as League stats gives them, "
+                + "and reached is whether they're at the clause's goals. The clause stays in his contract after it has paid, so "
+                + "reached doesn't say when it paid; whether it pays again next season isn't known."
+            if onLoan {
+                note += " He's on loan, and whether his goals at \(player.loanClubFull) count isn't known, so league_goals isn't given."
+            } else if goals == nil {
+                note += " FM's stats didn't answer, so league_goals isn't given."
+            }
+            pairs += [("Clauses for goals in the season", .array(rows)), ("Clauses note", .string(note))]
+        }
+        if player.unknownClauses > 0 {
+            let count = player.unknownClauses
+            pairs.append(("Other clauses", .string("\(count) clause\(count == 1 ? "" : "s") FM Starship doesn't know the code of, "
+                                                    + "so \(count == 1 ? "it isn't" : "they aren't") given")))
+        }
+        return pairs.isEmpty ? nil : pairs
     }
 
     /// A match's competition by FM's name: from the fixtures in memory, else his team's own league.

@@ -66,7 +66,11 @@ extension Toolbox {
         let names = Self.indexNames(chosen, db)
         var counts: [String: Int] = [:]
         for item in chosen { counts[item.kind, default: 0] += 1 }
-        let rows: [JSON] = chosen.prefix(limit).map { item in
+        let shown = chosen.prefix(limit)
+        // FM's transfer timeline is swept for only when a transfer item is shown, as that takes a few seconds.
+        let timeline = shown.contains { Self.isTransfer($0.subject) }
+            ? Timeline(events: source.transferEvents(), teams: Set((db.humanTeams[club.team] ?? [:]).keys)) : nil
+        let rows: [JSON] = shown.map { item in
             let squad: String = item.team.map { team in
                 Names.squadName(db.humanTeams[club.team]?[team] ?? 0)
             } ?? Self.noTeam
@@ -75,7 +79,7 @@ extension Toolbox {
                 ("kind", .string(item.kind)),
                 ("from", Self.sender(item, people)),
                 ("team", .string(squad)),
-                ("about", Self.about(item.subject, people, names, club: club.name)),
+                ("about", Self.about(item.subject, people, names, club: club.name, date: item.date, timeline: timeline)),
             ])
         }
         if chosen.count > limit { notes.append("Showing the newest \(limit) of \(chosen.count).") }
@@ -83,7 +87,8 @@ extension Toolbox {
                      + "checked: injury reports, contracts expiring soon, transfers completed, come-and-get-me pleas, players "
                      + "unhappy with training, fines (who, not how much), coach feedback on a player (whom, not what), contract "
                      + "add-ons activated (whose, and the clause and its sum when it's the one for goals in the season) and "
-                     + "transfer offers confirmed (the person, the other club and the fee).")
+                     + "transfer offers confirmed (the person, the other club and the fee). For a transfer, direction is which "
+                     + "way it went, from FM's transfer timeline, when that has it.")
         if important == true {
             notes.append("Important means these kinds: injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, "
                          + "fines, contracts and the board. Everything else, such as staff meeting advice, press, odds, coach "
@@ -149,8 +154,49 @@ extension Toolbox {
         ])
     }
 
+    /// FM's transfer timeline as read for an answer, and the user's club's teams by database index. Nil events when it
+    /// couldn't be read.
+    struct Timeline {
+        let events: [TransferEvent]?
+        let teams: Set<UInt32>
+    }
+
+    static func isTransfer(_ subject: NewsSubject?) -> Bool {
+        switch subject {
+        case .transfer?, .offerConfirmed?: return true
+        default: return false
+        }
+    }
+
+    static let timelineNote = "FM's transfer timeline keeps only the manager's notable moves, not every one"
+
+    /// Which way a transfer went, as "to Molde FK from Pisa Sporting Club", from FM's transfer timeline: only when exactly
+    /// one move in it is this person's on the item's day, between one of the user's club's teams and another club's, that
+    /// club is the item's other club, and the fees agree when both have one. Nil otherwise, with why.
+    static func direction(_ person: NewsPerson, on date: Date, otherClub: String?, fee: Int64?, club: String,
+                          _ timeline: Timeline?) -> (direction: String?, why: String?) {
+        guard let timeline, let events = timeline.events else {
+            return (nil, "Which way it went isn't given: FM's transfer timeline couldn't be read.")
+        }
+        let teams = timeline.teams
+        let matching = events.filter { event in
+            let ours = (from: teams.contains(event.fromTeam), to: teams.contains(event.toTeam))
+            guard event.person.uid == person.uid, event.person.isPlayer == person.isPlayer, event.date == date,
+                  ours.from != ours.to else { return false }
+            if let otherClub, otherClub != (ours.from ? event.to : event.from) { return false }
+            if let fee, let theirs = event.fee, fee != theirs { return false }
+            return true
+        }
+        guard matching.count == 1, let move = matching.first else {
+            return (nil, "Which way it went isn't given: FM's transfer timeline has "
+                    + (matching.isEmpty ? "no move" : "more than one move") + " of this person's on this day between \(club) and "
+                    + "another club that agrees with the item. \(timelineNote), so most transfers aren't in it.")
+        }
+        return (teams.contains(move.toTeam) ? "to \(club) from \(move.from)" : "from \(club) to \(move.to)", nil)
+    }
+
     private static func about(_ subject: NewsSubject?, _ people: (players: [UInt32: Player], staff: [UInt32: Staff]),
-                              _ names: [UInt32: Person], club: String) -> JSON? {
+                              _ names: [UInt32: Person], club: String, date: Date, timeline: Timeline?) -> JSON? {
         switch subject {
         case nil:
             return nil
@@ -176,9 +222,10 @@ extension Toolbox {
         case .coachFeedback(let player)?:
             return .object([("player", person(player, people)),
                             ("note", "Whom the feedback is on; what it says isn't read.")])
-        case .transfer(let who, let club)?:
-            return .object([("person", person(who, people)), ("other_club", .string(club)),
-                            ("note", "Which way the transfer went isn't read: the item names the person and the other club.")])
+        case .transfer(let who, let other)?:
+            let way = direction(who, on: date, otherClub: other, fee: nil, club: club, timeline)
+            return .object(dropping: [("person", person(who, people)), ("other_club", .string(other)),
+                                      ("direction", way.direction.map { .string($0) }), ("note", way.why.map { .string($0) })])
         case .comeAndGetMe(let player, let club)?:
             return .object([("player", person(player, people)), ("wants_to_join", .string(club))])
         case .addOnsActivated(let addOns)?:
@@ -197,13 +244,15 @@ extension Toolbox {
                                    ("clause", addOn.seasonGoals.map { .string("\($0) goals in the season") }),
                                    ("amount", addOn.amount.flatMap { Output.text(Units.moneyText(Double($0))) })])
             })), ("note", .string(notes.joined(separator: " ")))])
-        case .offerConfirmed(let who, let club, let fee)?:
-            var notes = ["Which way the transfer goes isn't read: the item names the person and the other club."]
-            if club == nil { notes.append("The other club isn't given: the item doesn't name it plainly.") }
+        case .offerConfirmed(let who, let other, let fee)?:
+            let way = direction(who, on: date, otherClub: other, fee: fee, club: club, timeline)
+            var notes = way.why.map { [$0] } ?? []
+            if other == nil { notes.append("The other club isn't given: the item doesn't name it plainly.") }
             if fee == nil { notes.append("No fee is given: the item's copies of it don't agree, or it holds none.") }
-            return .object(dropping: [("person", person(who, people)), ("other_club", club.map { .string($0) }),
+            return .object(dropping: [("person", person(who, people)), ("other_club", other.map { .string($0) }),
                                       ("fee", fee.flatMap { Output.text(Units.moneyText(Double($0))) }),
-                                      ("note", .string(notes.joined(separator: " ")))])
+                                      ("direction", way.direction.map { .string($0) }),
+                                      ("note", notes.isEmpty ? nil : .string(notes.joined(separator: " ")))])
         }
     }
 }

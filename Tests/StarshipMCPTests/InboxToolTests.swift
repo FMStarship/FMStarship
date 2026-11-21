@@ -195,7 +195,9 @@ final class InboxToolTests: XCTestCase {
         XCTAssertEqual(offer["person"]?["name"], "Rival Coach")
         XCTAssertEqual(offer["other_club"], .string(World.rivals))
         XCTAssertEqual(offer["fee"], "£122.9K")
-        XCTAssertEqual(offer["note"], "Which way the transfer goes isn't read: the item names the person and the other club.")
+        XCTAssertNil(offer["direction"], "the timeline has nothing")
+        XCTAssertTrue(offer["note"]?.string?.hasPrefix("Which way it went isn't given: FM's transfer timeline has no move") ?? false,
+                      "\(String(describing: offer["note"]))")
 
         let bare = try XCTUnwrap(items[0]["about"])
         XCTAssertNil(bare["other_club"])
@@ -203,6 +205,75 @@ final class InboxToolTests: XCTestCase {
         let bareNote = bare["note"]?.string ?? ""
         XCTAssertTrue(bareNote.contains("other club isn't given") && bareNote.contains("No fee is given"), bareNote)
         XCTAssertEqual(Self.items(try harness.answer("inbox", ["important": true, "since": "2026-09-27"])).count, 4)
+    }
+
+    /// Which way a transfer went comes from FM's transfer timeline only when exactly one move in it is the person's on the
+    /// item's day, between the user's club and the other club, with the item's fee when both have one. Swept for only when a
+    /// transfer item is shown.
+    func testTheDirectionOfATransferFromFMsTimeline() throws {
+        let harness = Harness()
+        func day(_ day: Int) -> Date { GameDate.checked(year: 2026, dayOfYear: day)! }
+        let director = NewsPerson(uid: 501, index: 501, isPlayer: false, name: "Coach One")
+        let rival = NewsPerson(uid: 502, index: 502, isPlayer: false, name: "Rival Coach")
+        let player = NewsPerson(uid: 5, index: 5, isPlayer: true, name: "First 5")
+        let rivalsTeam: UInt32 = 0x900
+        func offer(_ serial: UInt32, _ on: Int, _ who: NewsPerson, fee: Int64?) -> InboxItem {
+            InboxItem(serial: serial, date: day(on), className: "TRANSFER_OFFER_CONFIRMATION_NEWS", team: World.firstTeamIndex,
+                      sender: director, senderJob: "Director of Football", subject: .offerConfirmed(person: who, club: World.rivals, fee: fee))
+        }
+        func move(_ who: NewsPerson, _ on: Int, in ours: Bool, fee: Int64?, other: String = World.rivals, otherTeam: UInt32 = 0x900,
+                  ourTeam: UInt32 = World.firstTeamIndex) -> TransferEvent {
+            ours ? TransferEvent(person: who, date: day(on), fromTeam: otherTeam, from: other, toTeam: ourTeam, to: World.club, fee: fee)
+                : TransferEvent(person: who, date: day(on), fromTeam: ourTeam, from: World.club, toTeam: otherTeam, to: other, fee: fee)
+        }
+        let inbox = try XCTUnwrap(harness.source.inbox)
+        inbox.result = .items(World.inbox() + [
+            offer(1005, 270, rival, fee: 122_960),
+            offer(1006, 271, player, fee: 24_669_585),
+            offer(1007, 272, rival, fee: 50_000),
+            offer(1008, 273, player, fee: nil),
+            offer(1009, 274, rival, fee: nil),
+            offer(1010, 275, player, fee: nil),
+        ])
+        inbox.events = [
+            // The coach joined from Rivals FC on the day, for the item's fee: to the club. The youth team counts as the club.
+            move(rival, 270, in: true, fee: 122_960),
+            // The player left for Rivals FC on the day, and a copy in another kind of entry with the same move counts once.
+            move(player, 271, in: false, fee: 24_669_585),
+            // The fees don't agree.
+            move(rival, 272, in: true, fee: 60_000),
+            // Two different moves on the day.
+            move(player, 273, in: false, fee: 1_000), move(player, 273, in: true, fee: nil),
+            // Not the item's day, and between two other clubs.
+            move(rival, 275, in: true, fee: nil),
+            TransferEvent(person: player, date: day(275), fromTeam: 0x901, from: "Other Town", toTeam: rivalsTeam, to: World.rivals, fee: nil),
+            // The transfer completed of World.inbox, to the youth team.
+            move(rival, 258, in: true, fee: nil, ourTeam: World.youthTeamIndex),
+        ]
+        let items = Self.items(try harness.answer("inbox"))
+        XCTAssertEqual(inbox.sweeps, 1, "one sweep for the answer")
+        func about(_ date: String) -> JSON? { items.first { $0["date"] == .string(date) }?["about"] }
+        XCTAssertEqual(about("2026-09-27")?["direction"], .string("to \(World.club) from \(World.rivals)"))
+        XCTAssertNil(about("2026-09-27")?["note"], "nothing to say")
+        XCTAssertEqual(about("2026-09-28")?["direction"], .string("from \(World.club) to \(World.rivals)"))
+        for date in ["2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"] {
+            XCTAssertNil(about(date)?["direction"], date)
+            XCTAssertTrue(about(date)?["note"]?.string?.contains("notable moves") ?? false, date)
+        }
+        XCTAssertTrue(about("2026-09-30")?["note"]?.string?.contains("more than one move") ?? false)
+        XCTAssertEqual(about("2026-09-15")?["direction"], .string("to \(World.club) from \(World.rivals)"), "a transfer completed")
+
+        inbox.events = nil
+        let unread = Self.items(try harness.answer("inbox"))
+        XCTAssertNil(unread.first?["about"]?["direction"])
+        XCTAssertTrue(unread.first?["about"]?["note"]?.string?.hasPrefix("Which way it went isn't given: FM's transfer timeline couldn't be read.") ?? false)
+
+        // No transfer item shown: no sweep.
+        _ = try harness.answer("inbox", ["kind": "injury"])
+        _ = try harness.answer("inbox", ["limit": 1, "since": "2026-10-02"])
+        XCTAssertEqual(inbox.sweeps, 3, "the injury answer doesn't sweep; the last one shows a transfer item")
+        _ = try harness.answer("inbox", ["kind": "board"])
+        XCTAssertEqual(inbox.sweeps, 3)
     }
 
     /// important keeps the kinds a manager acts on, false the rest, and left out all of them.

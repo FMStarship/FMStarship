@@ -43,6 +43,10 @@ public class Person {
     public var releaseClause: Int64 = 0
     public var releaseForeign: Int64 = 0
     public var releaseDomestic: Int64 = 0
+    /// His contract's clauses for goals in the season, as it holds them. Not kept in snapshots.
+    public var seasonGoalClauses: [SeasonGoalsClause] = []
+    /// How many other clauses his contract holds, release clauses apart: ones FM Starship doesn't know the code of.
+    public var unknownClauses = 0
 
     public init() {}
 
@@ -115,6 +119,18 @@ public struct Fitness: Equatable, Sendable {
         self.sharpness = sharpness
     }
     public static let range = 0...10_000
+}
+
+/// A clause in a player's contract paying a sum once he has scored so many goals in the season: FM's code 10.
+public struct SeasonGoalsClause: Equatable, Sendable {
+    /// The goals it needs.
+    public var goals: Int
+    /// In pounds, as his contract holds it.
+    public var amount: Int64
+    public init(goals: Int, amount: Int64) {
+        self.goals = goals
+        self.amount = amount
+    }
 }
 
 /// Whether a player is home-grown for his club, by FM's own two tests: trained at the club, or trained in its nation.

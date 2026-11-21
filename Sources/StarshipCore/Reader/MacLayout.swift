@@ -91,6 +91,12 @@ enum MacLayout {
         static let statusFlags = 87
         static let clausesBegin = 104
         static let clausesEnd = 112
+        /// The clauses are 8 bytes each: the amount, u32, in pounds (0xffffffff for none); the count it needs, u16; the
+        /// code, u16. Code 10 is goals in the season: Kristian Lonebu's at 10 came into force the day after his 10th league
+        /// goal of 2029, his 9 in Europe by then not counting, and it was still in his contract, unchanged, four weeks on.
+        static let seasonGoalsClause = 10
+        /// The release clauses: any club, foreign clubs, clubs in his own nation.
+        static let releaseClauses: Set<Int> = [0, 16, 18]
         /// How happy a player is with his playing time, −100 to 100. A signed byte.
         static let playingTime = 0x5c
         static let secondJob = 194
@@ -559,6 +565,25 @@ enum MacLayout {
             /// move (TRANSFER_TIMELINE_EVENT +0x54) and the offer itself (FULL_TRANSFER_OFFER +0x58). Given only when the four agree.
             static let fees: [Int64] = [0x3a4, 0x3a8, 0x3bc, 0x3e0]
         }
+    }
+
+    /// One entry of FM's transfer timeline, TRANSFER_TIMELINE_EVENT: the human manager's notable moves, as FM's profile of
+    /// the manager shows them. Read on Molde's save for ten moves both ways (Urwantschky from Pisa, Young from Sparta
+    /// Rotterdam, Atcheson to Monaco, Løvik to Villarreal and others): the person's identity is the live one, each player
+    /// sold is at the club he went to, and the fees are FM's (Urwantschky 122,960, as his offer confirmation gives it).
+    enum TransferTimeline {
+        static let className = "TRANSFER_TIMELINE_EVENT"
+        /// As far as the fee.
+        static let size = 0x58
+        /// The day of the year in the low 9 bits, then the year, both 16-bit, as a news item's date.
+        static let day = 0x28
+        static let year = 0x2a
+        /// The team the person left and the one they joined, and the person's identity subobject.
+        static let fromTeam = 0x38
+        static let toTeam = 0x40
+        static let person = 0x48
+        /// u32, in pounds.
+        static let fee = 0x54
     }
 
     /// FM's injury, shared by everyone with one: its name, in the game's language, is a string this points at.

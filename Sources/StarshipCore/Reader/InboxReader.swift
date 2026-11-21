@@ -1,7 +1,7 @@
 import Foundation
 
 /// Someone a news item points at: a player or member of staff, by the identity FM names people by.
-public struct NewsPerson: Equatable {
+public struct NewsPerson: Hashable {
     public let uid: UInt32
     public let index: UInt32
     public let isPlayer: Bool
@@ -51,6 +51,29 @@ public struct ActivatedAddOn: Equatable {
         self.player = player
         self.seasonGoals = seasonGoals
         self.amount = amount
+    }
+}
+
+/// A move in FM's transfer timeline: the person, the day, the team they left and the one they joined, and the fee.
+public struct TransferEvent: Hashable {
+    public let person: NewsPerson
+    public let date: Date
+    /// Each team's database index (`Team.index`) and its club's name.
+    public let fromTeam: UInt32
+    public let from: String
+    public let toTeam: UInt32
+    public let to: String
+    /// In pounds. Nil when the entry holds none.
+    public let fee: Int64?
+
+    public init(person: NewsPerson, date: Date, fromTeam: UInt32, from: String, toTeam: UInt32, to: String, fee: Int64?) {
+        self.person = person
+        self.date = date
+        self.fromTeam = fromTeam
+        self.from = from
+        self.toTeam = toTeam
+        self.to = to
+        self.fee = fee
     }
 }
 
@@ -247,6 +270,48 @@ public final class InboxReader {
             }
         }
         return .addOnsActivated(found)
+    }
+
+    /// Every entry of FM's transfer timeline in memory, each once: the timeline of the human manager's notable moves, which
+    /// FM shows on the manager's profile. It's a sweep for the class, as nothing found holds the list: on Molde's save it held
+    /// 10 of the club's moves, not its free and smaller ones. A copy FM has let go of reads the same as the entry, so copies
+    /// count once; one that doesn't read as an entry is left out. Nil when this build of FM has no such class.
+    public func transferEvents() -> [TransferEvent]? {
+        typealias T = MacLayout.TransferTimeline
+        guard let table = rtti.vtables(T.className).first(where: { $0.offsetToTop == 0 }) else { return nil }
+        let vtable = game.pluginBase &+ Int64(table.addressPoint)
+        let lock = NSLock()
+        var found: [Int64] = []
+        let pieces = game.pieces(size: 1 << 23, overlap: 0, writableOnly: true)
+        DispatchQueue.concurrentPerform(iterations: pieces.count) { i in
+            let (address, count) = pieces[i]
+            let hits: [Int64] = game.withBytes(address, count: count) { raw in
+                var hits: [Int64] = []
+                var o = Int((8 - address % 8) % 8)
+                while o + 8 <= count {
+                    if raw.loadUnaligned(fromByteOffset: o, as: Int64.self) == vtable { hits.append(address &+ Int64(o)) }
+                    o += 8
+                }
+                return hits
+            } ?? []
+            guard !hits.isEmpty else { return }
+            lock.lock()
+            found += hits
+            lock.unlock()
+        }
+        var events = Set<TransferEvent>()
+        for at in found {
+            guard let b = game.read(at, count: T.size),
+                  let date = GameDate.checked(year: Self.u16(b, T.year), dayOfYear: Self.u16(b, T.day) & 0x1ff),
+                  let person = person(Self.i64(b, T.person)) else { continue }
+            let from = Self.i64(b, T.fromTeam), to = Self.i64(b, T.toTeam)
+            guard let fromTeam = teamIndex(from), let toTeam = teamIndex(to), fromTeam != toTeam,
+                  let fromClub = club(from), let toClub = club(to) else { continue }
+            let fee = Self.u32(b, T.fee)
+            events.insert(TransferEvent(person: person, date: date, fromTeam: fromTeam, from: fromClub, toTeam: toTeam, to: toClub,
+                                        fee: fee == 0 || fee == UInt32.max ? nil : Int64(fee)))
+        }
+        return events.sorted { ($0.date, $0.person.uid, $0.fromTeam) < ($1.date, $1.person.uid, $1.fromTeam) }
     }
 
     /// A team's database index, when `team` is one of FM's teams.

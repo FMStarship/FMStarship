@@ -589,9 +589,23 @@ public final class GameReader {
         let begin = GameReader.i64(b, C.clausesBegin), end = GameReader.i64(b, C.clausesEnd)
         if begin != 0, end > begin, UInt64(bitPattern: end &- begin) <= 0x400, let clauses = game.read(begin, count: Int(end &- begin)) {
             for o in stride(from: 0, to: clauses.count - 7, by: 8) {
-                let amount = Int64(GameReader.u32(clauses, o))
+                let amount = Int64(GameReader.u32(clauses, o)), code = GameReader.u16(clauses, o + 6)
+                if code == C.seasonGoalsClause {
+                    // One without an amount or a sensible count isn't read as this clause.
+                    let goals = GameReader.u16(clauses, o + 4)
+                    if amount != 0xffff_ffff, (1...100).contains(goals) {
+                        person.seasonGoalClauses.append(SeasonGoalsClause(goals: goals, amount: amount))
+                    } else {
+                        person.unknownClauses += 1
+                    }
+                    continue
+                }
+                guard C.releaseClauses.contains(code) else {
+                    person.unknownClauses += 1
+                    continue
+                }
                 guard amount != 0xffff_ffff else { continue }
-                switch GameReader.u16(clauses, o + 6) {
+                switch code {
                 case 0: person.releaseClause = amount
                 case 16: person.releaseForeign = amount
                 case 18: person.releaseDomestic = amount

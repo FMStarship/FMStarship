@@ -107,7 +107,8 @@ extension Toolbox {
              description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats in total and "
                 + "by competition (league, cup, continental), form, his recent matches (friendlies too, unless competitive is set) with competition, opponent, minutes, rating, "
                 + "goals and assists, or why he didn't play (unused substitute, not in the matchday squad, suspended, injured), his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, his yellow cards toward a ban under each rule set, home-grown status, contract, "
-                + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
+                + "wage, value, release clauses, his clauses for goals in the season with his league goals this season and whether "
+                + "they've reached each, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
                           Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out."),
                           Parameter(name: "competitive", type: "boolean",
@@ -209,11 +210,12 @@ extension Toolbox {
                 + "confidence update), who sent it with their job, and the team it's for (first team, reserves, a youth team, or "
                 + "not addressed to one team: FM's own news item copied in, such as a ban or a call-up for one of the club's "
                 + "players). For injury reports, the player, FM's name for the injury and its length in days; for contracts "
-                + "expiring soon, whose, with the contract FM has for them now; for a transfer completed, the person and the other "
-                + "club; for a come-and-get-me plea, the player and the club he wants; for a player unhappy with training, the "
+                + "expiring soon, whose, with the contract FM has for them now; for a transfer completed, the person, the other "
+                + "club and which way it went when FM's transfer timeline has it; for a come-and-get-me plea, the player and the club he wants; for a player unhappy with training, the "
                 + "player; for a fine, the player (not the amount); for coach feedback on a player, the player (not what it says); "
                 + "for a contract add-on activated, the player, and for the clause for goals in the season, how many and its sum; "
-                + "for a transfer offer confirmed, the person, the other club and the fee. "
+                + "for a transfer offer confirmed, the person, the other club, the fee and which way it goes when FM's transfer "
+                + "timeline has it. FM's timeline keeps only the manager's notable moves, so most transfers have no direction. "
                 + "Other kinds say nothing more, as FM keeps no text for an item. important keeps the kinds a manager acts on: "
                 + "injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, fines, contracts and the board. FM "
                 + "keeps only about the last month, and window says from when: anything older isn't there, which doesn't mean it "

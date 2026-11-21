@@ -16,7 +16,7 @@ chosen in FM Starship.
 | `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status can be read (`player_state`), whether squad rules can (`squad_rules`), the money units. `refresh: true` reads the save again |
 | `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has his season in the league, the cup and continental matches apart, his last match (competition, opponent, minutes, rating), and his condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status |
 | `staff` | A club's staff, with jobs and their best coaching areas. For an AI club whose read has no coaching or medical staff, `note` says the rest isn't known |
-| `person` | One player or member of staff in full, by `uid`. For a player, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension and each rule set's bookings in full |
+| `person` | One player or member of staff in full, by `uid`. For a player, `Contract` has his clauses for goals in the season with his league goals so far, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension and each rule set's bookings in full |
 | `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
 | `shortlists`, `shortlist` | The user's FM shortlists, and the people on one |
 | `club_overview` | FM Starship's dashboard: facts, budget, who needs action now, the best prospects |
@@ -29,7 +29,7 @@ chosen in FM Starship.
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
 | `results` | A club's played matches, newest first, with both sides' xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
-| `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club; for fines, unhappiness with training and coach feedback, the player; for a contract add-on activated, the player and, for the clause for goals in the season, how many and its sum; for a transfer offer confirmed, the person, the other club and the fee. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
+| `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who, the other club and which way it went when FM's transfer timeline has it; for fines, unhappiness with training and coach feedback, the player; for a contract add-on activated, the player and, for the clause for goals in the season, how many and its sum; for a transfer offer confirmed, the person, the other club, the fee and which way it goes when the timeline has it. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
 | `squad_rules` | Each competition's squad rules as FM holds them, counted for the first team and for the whole club by FM's own per-player values: FM's number and both counts for each rule, a standing only where the two agree, who counts toward it with their squad, and where the squad is at or past a limit either way. Without `competition`, the club's league and the competitions in its recent and coming fixtures. With `add` or `remove` (players' uids), `if_changed` counts each rule again as if they joined the first team or left |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
 
@@ -82,6 +82,14 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   on the bench, not brought on), "not in the matchday squad", "suspended" or "injured"; the first two matched FM's own bench
   for a match on the save they were checked on. "reason not known" is a reason FM keeps
   that FM Starship can't read yet, so don't guess which.
+- **Clauses for goals in the season** in `person`'s `Contract` are the clauses in his contract that pay a sum once he has
+  scored so many goals in the season: `goals`, the `sum`, his `league_goals` this season at his club (as League stats gives
+  them) and whether they've `reached` it. That they count league goals was checked on one player: FM's item for his came the
+  day after his 10th league goal, his 9 in Europe not counting; whether cup goals count isn't known, so for a player near one
+  with cup goals, say so. A clause stays in his contract after it has paid, so `reached` doesn't say when it paid, and whether
+  it pays again next season isn't known. `league_goals` is "not available" for a player on loan (whether goals on loan count
+  isn't known) or when FM's stats didn't answer. `Other clauses` counts clauses FM Starship doesn't know the code of: say
+  there are others, never guess what they are.
 - **Players FM keeps no match record for**: FM keeps a record of each match only for some players. At AI clubs many have
   none, even in the user's own league (on the save it was checked on, Strømsgodset's Ardraa had 21 league matches and no
   record, and FM's own form had nothing for him either), and in a league FM runs in the background it may be every player.
@@ -164,11 +172,17 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **The inbox** (`inbox`) is FM's own list of the user's news items, as FM keeps it now. FM stores no text for an item, only
   its kind and fields, so FM Starship can't quote a message and gives `about` only for injury reports (the player, FM's name for
   the injury and its length in days), contracts expiring soon (whose, and the contract FM has for them now, which may be a new
-  one: the item keeps no date), transfers completed (the person and the other club, not which way it went), come-and-get-me
+  one: the item keeps no date), transfers completed (the person, the other club, and `direction` when FM's transfer timeline
+  has it), come-and-get-me
   pleas (the player and the club), a player unhappy with training (the player), fines (the player, not the amount), coach
   feedback on a player (the player, not what it says), contract add-ons activated (the player; the clause only when it's the
   one for goals in the season, with how many goals and the sum it holds, otherwise say which clause isn't known) and transfer
-  offers confirmed (the person, the other club and the fee, not which way it went). For any other kind, the board's confidence included, you have its kind,
+  offers confirmed (the person, the other club, the fee, and `direction` when the timeline has it). `direction`, such as "to
+  Molde FK from Pisa Sporting Club", comes from FM's transfer timeline only when exactly one move in it is that person's on the
+  item's day between the user's club and another, with the same fee when both have one. That timeline keeps only the manager's
+  notable moves (on the save checked, 10 of the club's moves over three seasons, not its free or smaller signings), so most
+  transfer items have no `direction`: then say which way it went isn't known from the inbox; don't work it out from where the
+  person is now, which can be a later move. For any other kind, the board's confidence included, you have its kind,
   date, sender and team: say that's all you know, don't fill in what it probably said. `important: true` keeps the kinds a
   manager acts on: injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, fines, contracts and board items;
   `false` gives the rest (staff meeting advice, press, odds, previews, coach feedback, bans and the like). `window` says from when FM keeps items, about a month:

@@ -62,6 +62,8 @@ extension SquadRulesReader: SquadRulesSource {}
 public protocol InboxSource: AnyObject {
     /// The inbox of the human manager at `manager` as FM holds it now: new items come in without the date moving.
     func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox
+    /// FM's transfer timeline as it holds it now, each entry once. Nil when it can't be read.
+    func transferEvents() -> [TransferEvent]?
 }
 
 /// The running game's, through an `InboxReader` made on the first question.
@@ -73,11 +75,18 @@ final class LiveInbox: InboxSource {
         self.game = game
     }
 
-    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox {
-        let found = reader ?? InboxReader(game: game, rtti: Rtti(game))
-        reader = found
-        return found.inbox(manager: manager, teams: teams, today: today)
+    private var found: InboxReader {
+        if let reader { return reader }
+        let made = InboxReader(game: game, rtti: Rtti(game))
+        reader = made
+        return made
     }
+
+    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox {
+        found.inbox(manager: manager, teams: teams, today: today)
+    }
+
+    func transferEvents() -> [TransferEvent]? { found.transferEvents() }
 }
 
 /// The matchday squad and the scout's reports, as `SelectionReader` gives them.

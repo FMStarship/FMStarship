@@ -297,6 +297,47 @@ final class InboxReaderTests: XCTestCase {
         XCTAssertNil(items[6].subject, "no person, nothing")
     }
 
+    /// FM's transfer timeline is found by its class wherever it is: each move with the person, the day, both teams' clubs and
+    /// the fee, a copy counted once, and anything that doesn't read as a move left out.
+    func testTransferTimelineGivesEachMoveOnce() throws {
+        let world = Club()
+        typealias T = MacLayout.TransferTimeline
+        @discardableResult
+        func move(_ person: Int64, from: Int64, to: Int64, day: UInt16, fee: UInt32) -> FakeRecord {
+            // As FM keeps one: the manager and his team before the day, which the reader doesn't take.
+            let event = world.game.record("timeline event", size: 0x60, vtable: T.className)
+            event.set("manager", 0x18, world.identity(world.director))
+            event.set("manager's team", 0x20, world.first)
+            event.set("day", T.day, day | 0x1600)
+            event.set("year", T.year, UInt16(2029))
+            event.set("from", T.fromTeam, from)
+            event.set("to", T.toTeam, to)
+            event.set("person", T.person, person)
+            event.set("no date", 0x50, UInt32(0x076c_0001))
+            event.set("fee", T.fee, fee)
+            return event
+        }
+        let player = world.identity(world.player), physio = world.identity(world.physio)
+        move(player, from: world.first, to: world.rivalsFirst, day: 229, fee: 24_669_585)
+        move(player, from: world.first, to: world.rivalsFirst, day: 229, fee: 24_669_585)   // a copy FM let go of
+        move(physio, from: world.rivalsFirst, to: world.first, day: 268, fee: 0)
+        move(player, from: world.first, to: world.club, day: 230, fee: 1)                  // a club where a team should be
+        move(world.club, from: world.first, to: world.rivalsFirst, day: 231, fee: 1)       // no person
+        move(player, from: world.first, to: world.rivalsFirst, day: 0, fee: 1)             // no date
+        move(player, from: world.first, to: world.first, day: 232, fee: 1)                 // nowhere
+        let notAMove = world.game.record("something else", size: 0x60, vtable: "TRANSFER_COMPLETED_NEWS")
+        notAMove.set("person", T.person, player)
+
+        let events = try XCTUnwrap(InboxReader(game: world.game.process(), rtti: Rtti(world.game.process())).transferEvents())
+        let day = { (day: Int) in GameDate.checked(year: 2029, dayOfYear: day)! }
+        XCTAssertEqual(events, [
+            TransferEvent(person: NewsPerson(uid: 7003, index: 73, isPlayer: true, name: "Sam Striker"), date: day(229),
+                          fromTeam: 0x438, from: "Mockport Rovers FC", toTeam: 0x900, to: "Fixture Town AFC", fee: 24_669_585),
+            TransferEvent(person: NewsPerson(uid: 7001, index: 71, isPlayer: false, name: "Pat Physio"), date: day(268),
+                          fromTeam: 0x900, from: "Fixture Town AFC", toTeam: 0x438, to: "Mockport Rovers FC", fee: nil),
+        ])
+    }
+
     /// A field that isn't what it should be leaves the item's subject out, never a guess, and the item stays.
     func testAFieldThatIsntWhatItShouldBeLeavesTheSubjectOut() throws {
         let world = Club()

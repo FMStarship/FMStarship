@@ -11,7 +11,7 @@ final class FakeGame {
                           "CLUB_HUMAN_MANAGER_DETAILS", "CLUB", "INJURY", "AGENT", "INJURY_REPORT_NEWS_ITEM", "CONTRACT_EXPIRES_SOON_NEWS",
                           "TRANSFER_COMPLETED_NEWS", "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", "BOARD_CONFIDENCE_UPDATE_NEWS",
                           "PLAYER_UNHAPPINESS_TRAINING_NEWS", "FINE_NEWS", "COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM",
-                          "CONTRACT_ADD_ON_ACTIVATED_NEWS", "TRANSFER_OFFER_CONFIRMATION_NEWS"]
+                          "CONTRACT_ADD_ON_ACTIVATED_NEWS", "TRANSFER_OFFER_CONFIRMATION_NEWS", "TRANSFER_TIMELINE_EVENT"]
     /// `FixturesReader`'s, which RTTI spells in the sicomps namespace.
     static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE"]
     /// Classes of the reader's names in the sicomps namespace, which FM doesn't have, laid out ahead of the real ones: the
@@ -215,8 +215,8 @@ final class FakeGame {
         var listed: (day: UInt16, year: UInt16) = (0, 0)
         var statusFlags: UInt8 = 0
         var playingTime: Int8 = 0
-        /// Each clause's amount, and FM's number for its kind.
-        var clauses: [(amount: UInt32, kind: UInt16)] = []
+        /// Each clause's amount, the count it needs, and FM's number for its kind.
+        var clauses: [(amount: UInt32, count: UInt16, kind: UInt16)] = []
         /// Where the clauses start and end, in place of `clauses`, for a test of what a leftover record can hold.
         var clausesAt: (begin: Int64, end: Int64)?
     }
@@ -370,11 +370,12 @@ final class FakeGame {
         record.set("secondJob", C.secondJob, values.secondJob)
         var begin: Int64 = 0, end: Int64 = 0
         if !values.clauses.isEmpty {
-            // Eight bytes each: the amount first, and the kind in the last two.
+            // Eight bytes each: the amount first, then the count, and the kind in the last two.
             begin = allocate(values.clauses.count * 8)
             end = begin + Int64(values.clauses.count * 8)
             for (i, clause) in values.clauses.enumerated() {
                 store(clause.amount, begin + Int64(i * 8))
+                store(clause.count, begin + Int64(i * 8 + 4))
                 store(clause.kind, begin + Int64(i * 8 + 6))
             }
         }
