@@ -129,6 +129,10 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   its league and the clubs it plays, by their full names. FM keeps each player's last 20 matches for a team, so a player's stats
   for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with
   play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
+  A match FM has moved, such as one postponed, is listed once, on the date FM has for it now. Where FM Starship can't tell
+  which of a moved match's dates is current, the match has no `date` or `kick_off` and the note gives the dates FM holds for
+  it: don't pick one. While such a match could come first, `game_status`'s `next_fixture` and `selection`'s next match say
+  so instead of naming a match.
   `fixtures`, `results` and `person`'s Recent matches include friendlies unless you ask with `competitive` true. Use it for
   form: a pre-season win over an amateur side isn't form. It goes by FM's own type of competition, never the name, and
   leaves out club friendlies (pre-season, testimonials, FM's tournament for free agents) and international friendlies at

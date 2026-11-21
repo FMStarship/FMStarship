@@ -354,6 +354,79 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertNotEqual(FixturesReader.check([match(2029, 0, 4), match(2029, 1, 0)], team: 1, table: table), .passed)
     }
 
+    /// Rovers v United in round 3, moved twice: FM's screens keep copies from day 90 and day 130, and FM's own copy is on
+    /// day 140, beside another copy on that day that isn't FM's own. The Rovers played on day 107, after day 90.
+    private func movedMatch(_ world: World, own: Bool = true) {
+        var match = world.values(home: world.rovers, away: world.united, day: 90)
+        match.round = 2
+        match.flags = 0x01
+        world.game.match(match)
+        match.day = 130
+        world.game.match(match)
+        match.day = 140
+        world.game.match(match)
+        if own { match.flags = 0x41 }
+        world.game.match(match)
+    }
+
+    func testAMovedMatchIsListedOnceOnTheDayOfFMsOwnCopy() throws {
+        let world = World()
+        world.playLeague()
+        movedMatch(world)
+        let found = try world.reader().teamMatches(team: world.rovers)
+        XCTAssertEqual(found.check, .passed)
+        let waiting = found.fixtures.filter { !$0.played }
+        XCTAssertEqual(waiting.count, 1, "\(waiting.map(\.date))")
+        XCTAssertEqual(waiting.first?.date, GameDate.date(year: 2029, dayOfYear: 140))
+        XCTAssertEqual(waiting.first?.round, 3)
+        XCTAssertEqual(waiting.first?.dateUnknown, false)
+        XCTAssertEqual(waiting.first?.kickOff, 15 * 60)
+    }
+
+    /// With no copy FM's own, or on a build where that isn't read, the day the Rovers have played since is past, and the
+    /// two days still to come can't be told apart: the match is listed once, with both.
+    func testAMovedMatchWhoseDayCantBeToldIsListedOnceWithItsDays() throws {
+        let world = World()
+        world.playLeague()
+        movedMatch(world, own: false)
+        let unchecked = try XCTUnwrap(FixturesReader(game: world.game.process(), rtti: Rtti(world.game.process()), checkedBuild: false))
+        for reader in [try world.reader(), unchecked] {
+            let waiting = reader.teamMatches(team: world.rovers).fixtures.filter { !$0.played }
+            XCTAssertEqual(waiting.count, 1)
+            let match = try XCTUnwrap(waiting.first)
+            XCTAssertTrue(match.dateUnknown)
+            XCTAssertEqual(match.possibleDates, [130, 140].compactMap { GameDate.date(year: 2029, dayOfYear: $0) })
+            XCTAssertEqual(match.date, GameDate.date(year: 2029, dayOfYear: 140), "the latest, for its place in the list")
+        }
+        // FM's own copy isn't read on a build it wasn't found on.
+        let other = World()
+        other.playLeague()
+        movedMatch(other)
+        let match = try XCTUnwrap(try XCTUnwrap(FixturesReader(game: other.game.process(), rtti: Rtti(other.game.process()), checkedBuild: false))
+            .teamMatches(team: other.rovers).fixtures.last)
+        XCTAssertEqual(match.possibleDates.count, 2)
+    }
+
+    /// Played matches are as before; a copy not played from before a played one's day is gone, and friendlies, whose season
+    /// FM leaves at 0, aren't taken for one match moved.
+    func testPlayedMatchesAndFriendliesAreKept() throws {
+        let world = World()
+        world.playLeague()
+        var stale = world.values(home: world.united, away: world.rovers, day: 103)
+        stale.round = 1
+        world.game.match(stale)
+        let cupName = world.cupName
+        for day: UInt16 in [150, 160] {
+            world.game.match(FakeGame.MatchValues(home: world.rovers, away: world.town, name: cupName, season: 0, round: 0xff, day: day))
+        }
+        let fixtures = try world.reader().teamMatches(team: world.rovers).fixtures
+        XCTAssertEqual(fixtures.map(\.played), [true, true, false, false])
+        XCTAssertEqual(fixtures[1].date, GameDate.date(year: 2029, dayOfYear: 107))
+        XCTAssertEqual([fixtures[1].homeGoals, fixtures[1].awayGoals], [1, 1])
+        XCTAssertEqual(fixtures.suffix(2).map(\.date), [150, 160].compactMap { GameDate.date(year: 2029, dayOfYear: $0) })
+        XCTAssertFalse(fixtures.contains(where: \.dateUnknown))
+    }
+
     func testKickOffTimes() {
         XCTAssertEqual(MatchFixture.kickOff(code: 37), 15 * 60)
         XCTAssertEqual(MatchFixture.kickOff(code: 55), 19 * 60 + 30)

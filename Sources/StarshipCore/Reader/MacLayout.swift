@@ -202,6 +202,13 @@ enum MacLayout {
         static let name = 0x20
         /// The season it belongs to, by the year it starts in.
         static let season = 0x30
+        /// u8. 0x40 marks FM's own copy of a match, as against the copies its screens keep, which can be from before the match
+        /// was moved. Read on FM 27.1.0's Molde save on 21 Nov 2026: of the 13,962 matches of the 2029 season FM held that
+        /// weren't played yet, each had one copy with it, apart from 22 with two copies on the same day and one past youth
+        /// international with two days; and of each of the three Eliteserien matches moved from 29 September, the one copy
+        /// on its new day that FM's match-day list for that day holds.
+        static let flags = 0x37
+        static let ownCopy: UInt8 = 0x40
         /// 0-based, for league fixtures.
         static let round = 0x3b
         /// The day of the year in the low 9 bits and the kick-off code above them, then the year.

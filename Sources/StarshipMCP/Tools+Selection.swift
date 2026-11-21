@@ -34,14 +34,13 @@ extension Toolbox {
                             + "game_status with refresh reads the save again.")
         }
 
-        var next: MatchFixture?, fixtures: [MatchFixture] = [], fixturesOff: String?
+        var next: MatchFixture?, unsure: MatchFixture?, fixtures: [MatchFixture] = [], fixturesOff: String?
         if let source = context.read.matches, let matches = cachedMatches(context.read, team: club.team, source: source) {
             if case .failed(let why) = matches.check {
                 fixturesOff = Self.failedSentence(club.name, why)
             } else {
                 fixtures = matches.fixtures
-                let today = context.db.gameDate
-                next = fixtures.first { match in !match.played && (today.map { match.date >= $0 } ?? true) }
+                (next, unsure) = Self.nextMatch(fixtures, today: context.db.gameDate)
             }
         }
 
@@ -112,6 +111,7 @@ extension Toolbox {
                      + "as the competition allows, from the top, and FM Starship doesn't know each competition's number.")
         if let next { notes.append("Bans and injuries are checked for the next match, \(Output.iso(next.date)) in \(next.competition).") }
         else { notes.append("FM Starship doesn't know the next match, so it can't say which bans count for it.") }
+        if let unsure { notes.append(Self.dateUnknownSentence(unsure)) }
         if !bansOn { notes.append("Suspensions can't be read on this build of FM, so bans weren't checked (game_status says why).") }
         if unreadable {
             notes.append("FM Starship doesn't read everyone FM has, such as players who are also staff, so it can't check those.")

@@ -89,8 +89,11 @@ extension Toolbox {
         let limit = try args.int("limit", in: 1...100) ?? 25
         if let from, let to, to < from { throw ToolError("to is before from.") }
         let competitive = try args.bool("competitive") ?? false
+        // A match whose day couldn't be told is in when any day it could be on is.
         let found = matches.fixtures.filter { match in
-            (from.map { match.date >= $0 } ?? true) && (to.map { match.date <= $0 } ?? true) && !(competitive && match.friendly == true)
+            (match.dateUnknown ? match.possibleDates : [match.date]).contains { day in
+                (from.map { day >= $0 } ?? true) && (to.map { day <= $0 } ?? true)
+            } && !(competitive && match.friendly == true)
         }
         let checked = matches.check == .passed, unchecked = Self.marksUnchecked(matches.check)
         let columns = Self.fixtureColumns
@@ -104,8 +107,29 @@ extension Toolbox {
         var notes: [String] = []
         if !checked, found.contains(where: \.played) { notes.append(Self.uncheckedSentence(club, matches.check)) }
         if competitive, let unknown = Self.competitiveSentence(unknown: found.filter { $0.friendly == nil }.count) { notes.append(unknown) }
+        notes += found.prefix(limit).filter(\.dateUnknown).map(Self.dateUnknownSentence)
         if !notes.isEmpty { pairs.append(("note", .string(notes.joined(separator: " ")))) }
         return .object(dropping: pairs)
+    }
+
+    /// Why a match's date is left out.
+    static func dateUnknownSentence(_ match: MatchFixture) -> String {
+        let days = match.possibleDates.map { Output.iso($0) }
+        return "FM holds more than one date for \(match.homeName) v \(match.awayName)"
+            + (match.competition.isEmpty ? "" : " in \(match.competition)") + ", "
+            + (days.dropLast().joined(separator: ", ") + " and " + (days.last ?? "")) + ", and FM Starship couldn't tell which "
+            + "is current, so its date is left out rather than guessed."
+    }
+
+    /// The club's next match: the first not played yet from today on. Nil, with the match that stops it, when FM holds more
+    /// than one date for a match that could come first.
+    static func nextMatch(_ fixtures: [MatchFixture], today: Date?) -> (match: MatchFixture?, unsure: MatchFixture?) {
+        func ahead(_ day: Date) -> Bool { today.map { day >= $0 } ?? true }
+        let next = fixtures.first { !$0.played && !$0.dateUnknown && ahead($0.date) }
+        let unsure = fixtures.first { match in
+            !match.played && match.possibleDates.contains { day in ahead(day) && next.map { day <= $0.date } ?? true }
+        }
+        return unsure == nil ? (next, nil) : (nil, unsure)
     }
 
     // MARK: Results
@@ -315,7 +339,9 @@ extension Toolbox {
     func nextFixture(_ read: GameRead, club: ChosenClub, today: Date?) -> (String, JSON)? {
         guard let source = read.matches, let matches = cachedMatches(read, team: club.team, source: source) else { return nil }
         if case .failed(let why) = matches.check { return ("fixtures", .string("off: " + Self.failedSentence(club.name, why))) }
-        guard let next = matches.fixtures.first(where: { match in !match.played && (today.map { match.date >= $0 } ?? true) }) else { return nil }
+        let found = Self.nextMatch(matches.fixtures, today: today)
+        if let unsure = found.unsure { return ("next_fixture", .string("unknown: " + Self.dateUnknownSentence(unsure))) }
+        guard let next = found.match else { return nil }
         let home = next.home == club.team
         return ("next_fixture", .object(dropping: [
             ("date", .string(Output.iso(next.date))), ("kick_off", next.kickOff.map { .string(Self.time($0)) }),
@@ -350,8 +376,8 @@ extension Toolbox {
         }
         func cell(_ name: String) -> JSON? {
             switch name {
-            case "date": return .string(Output.iso(match.date))
-            case "kick_off": return match.kickOff.map { .string(Self.time($0)) }
+            case "date": return match.dateUnknown ? nil : .string(Output.iso(match.date))
+            case "kick_off": return match.dateUnknown ? nil : match.kickOff.map { .string(Self.time($0)) }
             case "competition": return Output.text(match.competition)
             case "stage": return Output.text(match.stage)
             case "round": return match.round.map { .int($0) }

@@ -53,8 +53,16 @@ public struct MatchFixture: Sendable {
     public var goals: [MatchGoal] = []
     /// FM holds the match as played, but its copies disagree on the score, so the score is left out.
     public var scoreUnknown = false
+    /// For a match not played yet that FM holds on more than one day, where which is current couldn't be told: each of
+    /// those days, oldest first. `date` is then the latest of them, so the match is listed once, but it isn't the match's
+    /// date. Empty otherwise.
+    public var possibleDates: [Date] = []
+    /// One of the copies is FM's own, as against a copy its screens keep. Only read on the checked build.
+    var ownCopy = false
 
     public var played: Bool { homeGoals != nil || scoreUnknown }
+    /// FM holds more than one day for it, and which is current couldn't be told.
+    public var dateUnknown: Bool { !possibleDates.isEmpty }
 
     public init(date: Date, home: Int64, away: Int64) {
         self.date = date
@@ -307,7 +315,8 @@ public final class FixturesReader {
         return TeamMatches(team: team, fixtures: fixtures, table: table, check: Self.check(fixtures, team: team, table: table))
     }
 
-    /// Every fixture and result of one team that FM holds in memory, one per match, oldest first.
+    /// Every fixture and result of one team that FM holds in memory, one per match, oldest first. A match that was moved
+    /// is listed once, as `oneDay` says.
     public func fixtures(team: Int64) -> [MatchFixture] {
         typealias F = MacLayout.Fixture
         let lock = NSLock()
@@ -344,7 +353,42 @@ public final class FixturesReader {
             guard let fixture = decode(address, result: result, names: &names, fixtureNames: &fixtureNames) else { continue }
             copies[Key(home: fixture.home, away: fixture.away, date: fixture.date), default: []].append(fixture)
         }
-        return copies.values.compactMap(Self.choose).sorted { ($0.date, $0.kickOff ?? 0) < ($1.date, $1.kickOff ?? 0) }
+        return Self.oneDay(copies.values.compactMap(Self.choose)).sorted { ($0.date, $0.kickOff ?? 0) < ($1.date, $1.kickOff ?? 0) }
+    }
+
+    /// FM keeps copies its screens made of a match before it was moved, on the days it had then, so a match not played
+    /// yet can turn up on more than one day. It's listed once: on the day of FM's own copy, where one day has it; else on
+    /// its one day not known to be past; else with each day it could be on in `possibleDates`. A day is known to be past
+    /// when the team has played a match after it. A copy not played that's older than a played copy of the match is
+    /// dropped. A match is known by its competition, season, round and teams; friendlies, whose season FM leaves at 0, so
+    /// that one year's can't be told from the next's, and matches whose competition isn't known, are left as they are.
+    static func oneDay(_ matches: [MatchFixture]) -> [MatchFixture] {
+        struct Match: Hashable { let competition: UInt32, season: Int, round: Int?, home: Int64, away: Int64 }
+        let lastPlayed = matches.filter(\.played).map(\.date).max()
+        var kept: [MatchFixture] = []
+        var days: [Match: [MatchFixture]] = [:]
+        for match in matches {
+            guard match.season != 0, match.competitionIndex != 0 else { kept.append(match); continue }
+            days[Match(competition: match.competitionIndex, season: match.season, round: match.round, home: match.home, away: match.away),
+                 default: []].append(match)
+        }
+        for list in days.values {
+            let played = list.filter(\.played)
+            kept += played
+            var waiting = list.filter { !$0.played }
+            if let latest = played.map(\.date).max() { waiting.removeAll { $0.date < latest } }
+            guard waiting.count > 1 else { kept += waiting; continue }
+            waiting.sort { $0.date < $1.date }
+            let own = waiting.filter(\.ownCopy)
+            if own.count == 1 { kept += own; continue }
+            if own.count > 1 { waiting = own }
+            // A day that's past isn't the match's day when there's a later one.
+            if let lastPlayed, let last = waiting.last { waiting.removeAll { $0.date < lastPlayed && $0.date < last.date } }
+            guard var latest = waiting.last else { continue }
+            if waiting.count > 1 { latest.possibleDates = waiting.map(\.date) }
+            kept.append(latest)
+        }
+        return kept
     }
 
     /// The name of every competition FM holds a fixture or result of, by database index, from one sweep: a player's match
@@ -435,6 +479,7 @@ public final class FixturesReader {
         guard let first = copies.first else { return nil }
         let results = copies.filter { $0.homeGoals != nil && $0.awayGoals != nil }
         var chosen = results.first ?? first
+        chosen.ownCopy = copies.contains(where: \.ownCopy)
         let scores = Set(results.map { [$0.homeGoals ?? -1, $0.awayGoals ?? -1, $0.homeAggregate ?? -1, $0.awayAggregate ?? -1] })
         if scores.count > 1 {
             chosen.homeGoals = nil
@@ -462,6 +507,7 @@ public final class FixturesReader {
         if checkedBuild { fixture.kickOff = MatchFixture.kickOff(code: dateWord >> 9) }
         fixture.season = le16(b, F.season)
         fixture.round = Int(b[F.round]) + 1
+        if checkedBuild { fixture.ownCopy = b[F.flags] & F.ownCopy != 0 }
         for team in [fixture.home, fixture.away] where names[team] == nil { names[team] = GameReader.clubName(team: team, in: game) }
         fixture.homeName = names[fixture.home] ?? ""
         fixture.awayName = names[fixture.away] ?? ""

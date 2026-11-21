@@ -271,8 +271,9 @@ extension Toolbox {
                 + "first), the result for the club, the aggregate of a two-legged tie with the teams' names (\"Apoel Nikosia 2-4 Molde "
                 + "FK\"), attendance, and the goals with their minutes and assists. Scores are checked against the league table; for a "
                 + "club whose competition has no table FM Starship can read, such as a league FM runs in the background, they're "
-                + "given with checked false and a note saying so; checked is true for a score that was checked. The first question about a "
-                + "club takes a few seconds.",
+                + "given with checked false and a note saying so; checked is true for a score that was checked. A match FM has moved "
+                + "is listed once, on its date now; one whose current date FM Starship can't tell has no date, and the note gives the "
+                + "dates FM holds for it. The first question about a club takes a few seconds.",
              parameters: [matchClub,
                           Parameter(name: "from", type: "string", description: "First date, YYYY-MM-DD. Today if neither from nor to is given."),
                           Parameter(name: "to", type: "string", description: "Last date, YYYY-MM-DD."),

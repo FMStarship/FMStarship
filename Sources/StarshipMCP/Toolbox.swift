@@ -325,7 +325,8 @@ public final class Toolbox: ToolProvider {
     /// A sweep stands as long as the read, unless it holds a match that's due and not played: the game date doesn't move
     /// while FM plays it, so the user may have played it since. Then it stands for `matchDayWait`.
     static func stillStands(_ matches: TeamMatches?, today: Date?, age: TimeInterval) -> Bool {
-        guard let matches, let today, matches.fixtures.contains(where: { !$0.played && $0.date <= today }) else { return true }
+        guard let matches, let today,
+              matches.fixtures.contains(where: { !$0.played && ($0.possibleDates.first ?? $0.date) <= today }) else { return true }
         return age < matchDayWait
     }
 

@@ -106,6 +106,8 @@ extension FakeGame {
         var year: UInt16 = 2029
         /// The kick-off code, in quarter hours after 05:45: 37 is 15:00.
         var kickOff: UInt16 = 37
+        /// `MacLayout.Fixture.ownCopy` marks FM's own copy.
+        var flags: UInt8 = 0
         /// Nil for a fixture not played yet.
         var score: (home: UInt8, away: UInt8)?
         var aggregate: (home: UInt8, away: UInt8)?
@@ -130,6 +132,7 @@ extension FakeGame {
         record.set("round", F.round, values.round)
         record.set("date", F.date, values.day | values.kickOff << 9)
         record.set("year", F.year, values.year)
+        record.set("flags", F.flags, bytes: [values.flags])
         guard let score = values.score else { return record }
         record.set("matchNumber", R.matchNumber, values.matchNumber)
         record.set("attendance", R.attendance, values.attendance)

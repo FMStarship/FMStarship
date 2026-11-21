@@ -531,6 +531,39 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(next["opponent"], .string(World.otherTown))
     }
 
+    /// A match FM holds on two dates, where which is current couldn't be told, is listed once with no date and a note.
+    /// While it could come first, game_status and selection don't name a next match; once both dates are after the next
+    /// one, they do.
+    func testAMatchWhoseDateCantBeToldHasNone() throws {
+        func harness(_ days: [Int]) -> Harness {
+            let harness = Harness()
+            var moved = World.fixture(days.last ?? 0, home: World.team, away: World.rivalsTeam)
+            moved.round = 4
+            moved.possibleDates = days.compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+            harness.source.matches?.teams[World.team]?.fixtures.append(moved)
+            return harness
+        }
+        let unsure = harness([275, 290])
+        let fixtures = try unsure.answer("fixtures")
+        XCTAssertEqual(fixtures["found"], 3)
+        let row = try XCTUnwrap(rows(fixtures).last)
+        XCTAssertEqual(row["opponent"], .string(World.rivals))
+        XCTAssertEqual(row["date"], .null)
+        XCTAssertEqual(row["kick_off"], .null)
+        let sentence = "FM holds more than one date for \(World.club) v \(World.rivals) in Mock League, 2026-10-02 and 2026-10-17, and "
+            + "FM Starship couldn't tell which is current, so its date is left out rather than guessed."
+        XCTAssertEqual(fixtures["note"], .string(sentence))
+        XCTAssertEqual(try unsure.answer("fixtures", ["from": "2026-10-12", "to": "2026-10-20"])["found"], 1, "in on either date")
+        XCTAssertEqual(try unsure.answer("game_status")["next_fixture"], .string("unknown: " + sentence))
+        let selection = try unsure.answer("selection")
+        XCTAssertNil(selection["next_match"])
+        XCTAssertTrue(selection["notes"]?.array?.contains(.string(sentence)) == true)
+
+        let later = harness([280, 290])
+        XCTAssertEqual(try later.answer("game_status")["next_fixture"]?["date"], "2026-10-04")
+        XCTAssertEqual(try later.answer("selection")["next_match"]?["date"], "2026-10-04")
+    }
+
     func testOneSweepForEachTeamAndRead() throws {
         let harness = Harness()
         _ = try harness.answer("game_status")
