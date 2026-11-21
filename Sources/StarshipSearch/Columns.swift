@@ -245,8 +245,9 @@ public enum Columns {
             Col("Unique ID", "General", { .int(Int($0.uid)) }, isDefault: false, numeric: true, width: 80),
             Col("CA", "Ability", { .int(player($0).ca) }, isDefault: true, numeric: true, width: 38, ability: true),
             Col("PA", "Ability", { .int(player($0).pa) }, isDefault: true, numeric: true, width: 38, ability: true),
-            Col("Growth room", "Ability", { .int(player($0).pa - player($0).ca) }, isDefault: false, numeric: true,
-                width: 50, ability: true),
+            // Empty, not a dash, once the player is too old to grow.
+            Col("Growth room", "Ability", { player($0).growthRoom.map { .int($0) } ?? .empty }, isDefault: false,
+                numeric: true, width: 50, ability: true, format: { $0.plainText }),
         ]
 
         cols += contract(players: true)

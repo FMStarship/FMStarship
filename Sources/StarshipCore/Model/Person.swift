@@ -140,6 +140,17 @@ public final class Player: Person {
     /// A rating of 18 or more. From 15 to 17 FM calls a player Accomplished: able to play there, but it isn't their position.
     public func isNatural(at position: Int) -> Bool { pos[position] >= 18 }
 
+    /// The user's rule: growth stops around 23 for an outfield player and 27 for a goalkeeper.
+    public static let lastGrowingAge = 23
+    public static let lastGrowingAgeGoalkeeper = 27
+
+    /// PA minus CA while the player is young enough to grow, and nil once they're older or their age isn't known.
+    public var growthRoom: Int? {
+        let last = isNatural(at: 0) ? Player.lastGrowingAgeGoalkeeper : Player.lastGrowingAge
+        guard age >= 0, age <= last else { return nil }
+        return pa - ca
+    }
+
     public var bestPositions: String {
         if let cachedBestPositions { return cachedBestPositions }
         let best = Int(pos.max() ?? 0)
