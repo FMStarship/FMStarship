@@ -27,7 +27,7 @@ chosen in FM Starship.
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
 | `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
-| `results` | A club's played matches, newest first, with the user's club's xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
+| `results` | A club's played matches, newest first, with both sides' xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
 | `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club. `since`, `kind` and `limit` narrow it. FM keeps only about the last month |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
@@ -131,7 +131,8 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   there are none, `team_stats` says why and how far back FM has them now; don't fill the gap from the players' figures. Before
   they're given, the club's shots, on target, fouls, goals and xG must be what its players' match records add up to, both
   goals the score, and the opponent's xG what the club's goalkeepers faced; a match that fails is left out with the reason. The
-  results list's `xg` and `shots` are the club's own, from the same stats.
+  results list's `xg` and `shots` are the club's own and `opponent_xg` and `opponent_shots` the opponent's, from the same
+  stats: xG for and against per match, for 'were we lucky or good' over a run.
 - **The matchday squad** (`selection`) is the line-up as saved in FM's tactics when you ask: the user may still change it, so
   say it's what's picked now, not the team that will play. `starting_eleven` has each place's position and role with and without
   the ball; `bench` is the substitutes in FM's order, `place` numbered from 1 with the user's gaps kept. FM names only as many

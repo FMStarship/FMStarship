@@ -106,23 +106,25 @@ extension Toolbox {
             return try oneResult(match, club: club, matches: matches, context)
         }
         let limit = try args.int("limit", in: 1...50) ?? 10
-        // The club's xG and shots, where FM still has the match's team stats: only for the user's club.
+        // Both sides' xG and shots, where FM still has the match's team stats: only for the user's club.
         let checked = checkedStats(club: club, matches: matches, context)
         let withStats = checked.off == nil
         var columns = Self.resultColumns
-        if withStats { columns += ["xg", "shots"] }
+        if withStats { columns += ["xg", "shots", "opponent_xg", "opponent_shots"] }
         let rows: [JSON] = played.prefix(limit).map { match in
             var cells = row(match, team: matches.team, columns: Self.resultColumns, scores: true, context).array ?? []
             if withStats {
                 let stats = checked.stats[match.date]
-                cells += [stats.map { .double($0.ours.xG) } ?? .null, stats.map { .int($0.ours.shots) } ?? .null]
+                cells += [stats.map { .double($0.ours.xG) } ?? .null, stats.map { .int($0.ours.shots) } ?? .null,
+                          stats.map { .double($0.theirs.xG) } ?? .null, stats.map { .int($0.theirs.shots) } ?? .null]
             }
             return .array(cells)
         }
         var pairs: [(String, JSON)] = [("club", .string(club)), ("found", .int(played.count))]
         if played.count > limit { pairs.append(("shown", .int(limit))) }
         var note = "Newest first. Ask with date for one match's players"
-        note += withStats ? " and both sides' team stats. xg and shots are the club's, where FM still has the match's team stats "
+        note += withStats ? " and both sides' team stats. xg and shots are the club's and opponent_xg and opponent_shots the opponent's, where FM still "
+            + "has the match's team stats "
             + "and FM Starship's check of them passed: " + Self.statsKept(club, checked, today: context.db.gameDate) : "."
         return .object(pairs + [("columns", .array(columns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }

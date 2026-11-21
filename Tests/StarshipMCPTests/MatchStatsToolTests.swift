@@ -43,12 +43,14 @@ final class MatchStatsToolTests: XCTestCase {
     func testTheListGivesTheClubsXGAndShots() throws {
         let harness = Harness()
         let results = try harness.answer("results")
-        XCTAssertEqual(results.columnNames, Toolbox.resultColumns + ["xg", "shots"])
+        XCTAssertEqual(results.columnNames, Toolbox.resultColumns + ["xg", "shots", "opponent_xg", "opponent_shots"])
         let rows = results.rowsByName
         XCTAssertEqual(rows.map { $0["xg"] }, [.null, 3.25, .null], "the cup tie has none, and the 2-0 failed its check")
         XCTAssertEqual(rows.map { $0["shots"] }, [.null, 15, .null])
+        XCTAssertEqual(rows.map { $0["opponent_xg"] }, [.null, 0.85, .null], "the opponent's, though the club was away")
+        XCTAssertEqual(rows.map { $0["opponent_shots"] }, [.null, 9, .null])
         let note = try XCTUnwrap(results["note"]?.string)
-        XCTAssertTrue(note.contains("xg and shots are the club's"), note)
+        XCTAssertTrue(note.contains("xg and shots are the club's and opponent_xg and opponent_shots the opponent's"), note)
         XCTAssertTrue(note.contains("back to 2026-09-13"), note)
     }
 
