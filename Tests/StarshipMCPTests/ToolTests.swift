@@ -212,6 +212,20 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(coach["Attributes"]?["Adaptability"], 12)
         XCTAssertEqual(coach["Would join your club"]?["first_team"], true)
         XCTAssertEqual(coach["Would join your club"]?["reserves"], false)
+        XCTAssertNil(coach["Would join your club"]?["teams_asked"], "nothing said about teams FM couldn't name")
+    }
+
+    /// Molde: FM's reserves and youth levels both ask about the U19, and Molde 2 isn't asked about at all.
+    func testAMemberOfStaffsWouldJoinNamesTheTeamsFMAskedAbout() throws {
+        let engine = FakeEngine()
+        engine.likeMolde()
+        let join = try XCTUnwrap(try Harness(engine: engine).answer("person", ["uid": 502])["Would join your club"])
+        XCTAssertEqual(join["teams_asked"]?["first_team"], "First team")
+        XCTAssertEqual(join["teams_asked"]?["reserves"], "U19")
+        XCTAssertEqual(join["teams_asked"]?["youth"], "U19")
+        let note = join["teams_note"]?.string ?? ""
+        XCTAssertTrue(note.contains("FM's reserves and youth levels are the same team, the U19, so they're one answer"), note)
+        XCTAssertTrue(note.contains("FM's staff search has no level for the club's 2nd team; its reserves answer is for the U19"), note)
     }
 
     func testStartsAndSubAppearancesAreTwoNumbersEverywhere() throws {

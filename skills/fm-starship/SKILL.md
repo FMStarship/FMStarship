@@ -105,8 +105,11 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   `recommend_signings` and `find_bargains` give it as `Transfer interest` and `Loan interest`. Null there means FM wasn't asked
   about that player for this list, not that he wouldn't come: ask `person` for his answer. "Not available for loan" means his club
   won't loan him, so FM isn't asked.
-- **Would join your club** for a member of staff, in `person`, is FM's own answer for the first team, the reserves and the youth
-  team (`first_team`, `reserves`, `youth`: true or false). `recommend_staff` gives it as `Would join`: "First team", "Reserves", "Youth", those together, or "No". Its
+- **Would join your club** for a member of staff, in `person`, is FM's own answer at its three staff-search levels (`first_team`,
+  `reserves`, `youth`: true or false), and `teams_asked` names the team FM asked about at each. FM's reserves level is a reserve
+  team that doesn't play in a senior league, and otherwise a youth team, so for a club such as Molde, with a second team in a
+  real league, `reserves` is FM's answer for its U19, the same team as `youth`; `teams_note` says so. `recommend_staff` gives
+  it as `Would join`, naming those teams: "First team, U19", or "No". Its
   `interest` says whether FM was asked: when FM couldn't be, or gave no answer, the list isn't narrowed to people who'd come, so
   don't present it as one. When FM couldn't be asked at all, `person` can't ask it either; when it didn't answer for some people,
   they're left out, and asking again or `person` may get their answers. FM is asked about the best 600 for the job at most, and
@@ -117,7 +120,10 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   searched for (Yes or No), and with `only_join` it lists only people FM says would join and take that job. FM turns down a
   bigger job's holder for a smaller one there: a director of football as recruitment analyst, a head physio as physio. People
   FM's No has matched refusals in talks, so don't put them forward for that job. When `interest` says FM couldn't be
-  asked about the job, `Takes job` is empty and people in a bigger job may refuse a smaller one in talks.
+  asked about the job, `Takes job` is empty and people in a bigger job may refuse a smaller one in talks. `Takes job` is asked
+  at the team the job is at, as FM weighs it when you offer the job there: Molde 2 for Molde's reserves. Where FM's staff search
+  has no level for that team, `recommend_staff` lists by `Takes job` among people FM says would join the club at some level, and
+  `interest` says which team Would join is about. With `only_join` false, `Takes job` is empty for people FM says wouldn't join.
 - **Wants job** is FM's 1-20 for how keen they are on a job, from FM's 15 job preferences. FM keeps none for recruitment
   analyst, head performance analyst or head of sports science, so there it's their preference for performance analyst or
   sports scientist, and `wants_job_note` says so; head physio and chief scout share physio's and scout's. Keenness isn't the

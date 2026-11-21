@@ -15,8 +15,11 @@ public final class RulesEngine: GameRulesEngine {
         /// `GAME_PERSON`, whose slot `jobPickSlot` the staff rule asks which job, and at which team, it weighs up a person for.
         package static let personGlobal: Int64 = 0x57b2e68
         package static let jobPickSlot = 0x150 / 8
-        /// The club's team at a staff-rule level (3 reserves, 4 youth), as the rule finds it.
+        /// The club's team at a staff-rule level (3 reserves, 4 youth), as the rule finds it. Level 3 is a reserve team that
+        /// doesn't play in a senior league, else a youth team, so it's never a second team like Molde 2.
         package static let teamAtLevel: Int64 = 0x12402f4
+        /// Whether a team has a place for a job, (job, team): what the staff rule checks at the team it finds for a level.
+        package static let jobAtTeam: Int64 = 0x13748d0
         package static let statFunction: Int64 = 0xf973c8
         package static let statsContainerSlot = 65
         package static let personStatsSlot = 0x668 / 8
@@ -204,23 +207,45 @@ public final class RulesEngine: GameRulesEngine {
         return found
     }
 
-    /// The staff rule asked about one job. The rule asks `GAME_PERSON` which job, and at which team, to weigh a person up for,
-    /// then runs FM's own checks and its own score for that job against its own bar. Here that one call, in the sandbox's
-    /// private copy of FM's memory, answers `job` at the club's team at `level` instead, so every check and the score are
-    /// still FM's. It only counts as an answer when the rule got as far as asking: FM's yes or no without asking says nothing
-    /// about the job, and is `.notAsked`. The decisions here (no answer without asking, no team at the level, a failed call)
-    /// need FM to run, so they have no test: they were checked live against FM 27.1.0 on a Molde save, 21 Nov 2026.
-    public func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> StaffJobAnswer? {
-        guard staffFunction != 0, jobPickEntry != 0, let manager = managers[team], manager != 0, (2...254).contains(job) else { return nil }
-        // The team the job is at, as FM's own pick gives it: the rule looks for a manager there before offering a manager's job.
-        let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
-        var at = team
-        if level != RulesEngine.staffLevels[0] {
+    /// The team FM's staff rule asks about at `level` (`staffLevels`) for the club of `team`, with its type. The first-team
+    /// level is `team` itself. Nil when the call fails; a team of 0 when the club has none at that level, where the rule says no.
+    public func staffLevelTeam(team: Int64, level: Int) -> TeamAtLevel? {
+        let object: Int64
+        if level == RulesEngine.staffLevels[0] {
+            object = team
+        } else {
+            let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
             guard club != 0, let found = teamAtLevel(club: club, level: level) else { return nil }
-            // No such team at the club: the rule says no without asking.
-            if found == 0 { return .refuses }
-            at = found
+            object = found
         }
+        guard object != 0 else { return TeamAtLevel(object: 0, type: -1) }
+        guard let type = game.read(object &+ Int64(MacLayout.Team.type), count: 1)?.first else { return nil }
+        return TeamAtLevel(object: object, type: Int(type))
+    }
+
+    /// The staff rule asked about one job at one of the club's teams, `at`. The rule asks `GAME_PERSON` which job, and at which
+    /// team, to weigh a person up for, then runs FM's own checks and its own score for that job at that team against its own
+    /// bar. Here that one call, in the sandbox's private copy of FM's memory, answers `job` at `at` instead, so every check and
+    /// the score are still FM's. It runs at the first-team level, whose only difference from the others is that they also
+    /// check the team FM finds for them; that check is made here at `at`, as the rule makes it, so asked at the team FM finds,
+    /// this is FM's rule at that level (4,848 of 4,848 live). FM's approach scores a job at the team in the offer's contract,
+    /// which is the team the job is at, such as Molde 2, which no level of the rule reaches.
+    /// It only counts as an answer when the rule got as far as asking: FM's yes or no without asking says nothing about the
+    /// job, and is `.notAsked`. The decisions here (no answer without asking, no place for the job, a failed call) need FM to
+    /// run, so they have no test: they were checked live against FM 27.1.0 on a Molde save, 21 Nov 2026.
+    public func staffJobInterest(staff: Staff, team: Int64, job: Int, at: Int64) -> StaffJobAnswer? {
+        guard staffFunction != 0, jobPickEntry != 0, let manager = managers[team], manager != 0, (2...254).contains(job), at != 0 else { return nil }
+        if at != team {
+            // As the rule checks the team it finds for a level: the club's own, open (+0x2f clear), with a place for the job.
+            let club = Int64(MacLayout.Team.club)
+            guard let flag = game.read(at &+ 0x2f, count: 1)?.first else { return nil }
+            let ownClub = game.readPointer(at &+ club)
+            guard ownClub != 0, ownClub == game.readPointer(team &+ club) else { return nil }
+            guard let place: UInt64 = try? sandbox.call(game.pluginBase + Mac27.jobAtTeam, [UInt64(job), UInt64(bitPattern: at)],
+                                                         result: { a64_get_x($0, 0) & 255 }) else { return nil }
+            if flag != 0 || place == 0 { return .refuses }
+        }
+        let level = RulesEngine.staffLevels[0]
         let rule = UInt64(A64_SCRATCH), person = rule + 0x100, context = rule + 0x200, pick = rule + 0x300
         do {
             let (answer, asked) = try sandbox.call(staffFunction, [rule, person, context], prepare: { cpu in

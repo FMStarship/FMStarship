@@ -31,4 +31,18 @@ final class StaffJobTests: XCTestCase {
         XCTAssertEqual(StaffRoles.preferenceNote("Chief Scout"),
                        "Wants job is how keen they are to be a scout: FM keeps one preference for scout and chief scout.")
     }
+
+    /// Would join names the teams FM asked about, each once, and FM's own level names when it can't tell which.
+    func testWouldJoinNamesTheTeamsFMAskedAbout() {
+        let first = TeamAtLevel(object: 1, type: 0), u19 = TeamAtLevel(object: 3, type: 11), u21 = TeamAtLevel(object: 2, type: 10)
+        let molde: [TeamAtLevel?] = [first, u19, u19]
+        XCTAssertEqual(TeamAtLevel.joinText(answers: [true, true, true], teams: molde), "First team, U19")
+        XCTAssertEqual(TeamAtLevel.joinText(answers: [false, true, true], teams: molde), "U19")
+        XCTAssertEqual(TeamAtLevel.joinText(answers: [true, true, true], teams: [first, u21, u19]), "First team, U21, U19")
+        XCTAssertEqual(TeamAtLevel.joinText(answers: [false, false, false], teams: molde), "No")
+        XCTAssertEqual(TeamAtLevel.joinText(answers: [true, true, false], teams: nil), "First team, Reserves")
+        // No team at a level: FM's rule says no there, so a yes can't be named after a team and keeps FM's level name.
+        XCTAssertEqual(TeamAtLevel.joinText(answers: [true, true, false], teams: [first, TeamAtLevel(object: 0, type: -1), u19]),
+                       "First team, Reserves")
+    }
 }

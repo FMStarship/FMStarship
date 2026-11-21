@@ -37,6 +37,8 @@ public final class RulesState: @unchecked Sendable {
     private let lock = NSLock()
     private var interestCache: [Key: PlayerInterest] = [:]
     private var staffCache: [Key: StaffInterest] = [:]
+    /// By team: the team FM's staff rule asks about at each of `staffLevels`, which Interest names.
+    private var levelTeams: [Int64: [TeamAtLevel?]] = [:]
     private var injuryDays: [UInt32: Int] = [:]
     private var clubObjects: [String: Int64] = [:]
     private var managers: [Int64: Int64] = [:]
@@ -48,6 +50,7 @@ public final class RulesState: @unchecked Sendable {
         lock.withLock {
             interestCache.removeAll()
             staffCache.removeAll()
+            levelTeams.removeAll()
             injuryDays.removeAll()
         }
     }
@@ -183,11 +186,18 @@ public final class RulesState: @unchecked Sendable {
         return answer
     }
 
+    /// The teams FM says they'd join, named as the teams FM asked about: for Molde, FM's reserves level is its U19.
     public func staffText(_ staff: Staff) -> String {
         guard let known = staffKnown(staff) else { return "" }
-        let levels = [known.firstTeam ? "First team" : nil, known.reserves ? "Reserves" : nil, known.youth ? "Youth" : nil]
-        let text = levels.compactMap { $0 }.joined(separator: ", ")
-        return text.isEmpty ? "No" : text
+        let team = self.team
+        var teams = lock.withLock { levelTeams[team] }
+        if teams == nil, let engine = GameRules.engine {
+            let found = Self.staffLevels.map { engine.staffLevelTeam(team: team, level: $0) }
+            lock.withLock { levelTeams[team] = found }
+            teams = found
+        }
+        return TeamAtLevel.joinText(answers: [known.firstTeam, known.reserves, known.youth],
+                                    teams: teams.flatMap { $0.contains(nil) ? nil : $0 })
     }
 
     public func checkAllStaff(_ staff: [Staff], workers: Int = RulesState.defaultWorkers,

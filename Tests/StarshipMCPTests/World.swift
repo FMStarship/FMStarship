@@ -7,7 +7,7 @@ import StarshipSearch
 import XCTest
 
 /// FM's rules as a test wants them: everyone answers, and nothing runs FM's code.
-final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
+final class FakeEngine: GameRulesEngine, PositionalRoleEngine, StaffLimitsEngine {
     /// False to stand in for FM giving no role table, as when one of its rules fails.
     var roleRatings = true
     /// When set, only these players get a role table, as when FM's rules fail for some players and not others.
@@ -44,6 +44,25 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     }
     /// FM's staff-rule levels at which people would join: the first team only, unless a test says otherwise.
     var staffJoinLevels: Set<Int> = [1]
+    /// The team FM's staff rule asks about at each of its levels, and the board's limits, whose teams name the levels. Neither
+    /// is known unless a test sets them, as when FM can't tell.
+    var levelTeams: [Int: TeamAtLevel] = [:]
+    var limits: StaffLimits?
+    func staffLevelTeam(team: Int64, level: Int) -> TeamAtLevel? { levelTeams[level] }
+    func staffLimits(team: Int64) -> StaffLimits? { limits }
+
+    /// Molde's teams as FM has them: a first team (the world's own), a second team that plays in a senior league, and a U19.
+    /// FM's staff rule asks about the U19 at its reserves level and its youth level alike.
+    static let secondTeam: Int64 = 20, under19: Int64 = 21
+    func likeMolde() {
+        let teams = [StaffLimits.Team(object: World.team, type: 0), StaffLimits.Team(object: FakeEngine.secondTeam, type: 16),
+                     StaffLimits.Team(object: FakeEngine.under19, type: 11)]
+        let row = [UInt8](repeating: 2, count: 9)
+        limits = StaffLimits(allowed: [UInt8](repeating: 1, count: 11), current: [UInt8](repeating: 0, count: 11), teams: teams,
+                             teamAllowed: [row, row, row], teamCurrent: [row, row, row], modeA: 0, modeB: 1)
+        levelTeams = [1: TeamAtLevel(object: World.team, type: 0), 3: TeamAtLevel(object: FakeEngine.under19, type: 11),
+                      4: TeamAtLevel(object: FakeEngine.under19, type: 11)]
+    }
     /// False for a build where FM can't be asked about one job; staff FM says wouldn't take the job they're asked about,
     /// staff FM gives no answer about a job for, and true for FM answering without weighing the job up, as it does for a
     /// whole club in some game modes.
@@ -51,12 +70,12 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     var staffWontTake: Set<UInt32> = []
     var staffJobUnanswered: Set<UInt32> = []
     var staffJobNotAsked = false
-    /// Each job question: who, the job and FM's level.
-    private var askedJobs: [(uid: UInt32, job: Int, level: Int)] = []
-    var staffJobsAsked: [(uid: UInt32, job: Int, level: Int)] { lock.withLock { askedJobs } }
+    /// Each job question: who, the job and the team it's at.
+    private var askedJobs: [(uid: UInt32, job: Int, at: Int64)] = []
+    var staffJobsAsked: [(uid: UInt32, job: Int, at: Int64)] { lock.withLock { askedJobs } }
     var supportsStaffJobInterest: Bool { staffJobAnswers }
-    func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> StaffJobAnswer? {
-        lock.withLock { askedJobs.append((staff.uid, job, level)) }
+    func staffJobInterest(staff: Staff, team: Int64, job: Int, at: Int64) -> StaffJobAnswer? {
+        lock.withLock { askedJobs.append((staff.uid, job, at)) }
         guard staffJobAnswers, !staffJobUnanswered.contains(staff.uid) else { return nil }
         if staffJobNotAsked { return .notAsked }
         return staffWontTake.contains(staff.uid) ? .refuses : .takes

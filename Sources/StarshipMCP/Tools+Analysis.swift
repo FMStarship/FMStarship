@@ -226,8 +226,17 @@ extension Toolbox {
         // As the screen writes the level: "first team", otherwise the team's own name.
         let teamText = options.level == 0 ? "first team" : team
         // What FM is asked about the job itself, and how to say it.
-        let question = checks.canCheckStaffJob ? StaffRecommender.jobQuestion(role: role, level: options.level) : nil
+        let question = StaffRecommender.jobQuestion(role: role, level: options.level).flatMap { checks.canCheckStaffJob(level: $0.level) ? $0 : nil }
         let jobText = "the job of \(name.lowercased())"
+        // Whether Would join at this level is about the team named here: for Molde, FM's reserves level is its U19, not Molde 2.
+        let fits = checks.wouldJoinFits(level: options.level)
+        // The teams FM's staff search asked about, which Would join names.
+        let levelTeams = (0..<3).map { checks.levelTeamName(level: $0) }
+        var levelsAsked = "the first team, reserves and youth"
+        if let reserves = levelTeams[1], let youth = levelTeams[2] {
+            levelsAsked = checks.reservesAreYouth ? "the first team and the \(youth), FM's reserves and youth levels being the same team"
+                : "the first team, the \(reserves) and the \(youth)"
+        }
         let asked = question.map { q in
             " FM's staff search answers Would join about the club and the team, for the job FM itself would weigh each one up for, "
                 + "which may not be this one. Takes job is the same rule of FM's asked about \(jobText) at "
@@ -243,13 +252,17 @@ extension Toolbox {
                 : "FM only answers that for a club the user manages, and FM Starship found no manager at \(club.name)"
             interest = "FM couldn't be asked who'd join: \(why). This list isn't narrowed to people who'd come, and Would join is empty."
         } else if options.onlyJoin {
-            if !table.interestChecked {
+            if !fits && !table.jobChecked && failed == 0 {
+                interest = "This list isn't narrowed to people who'd come, and Takes job is empty: FM's staff search has no level for "
+                    + "\(club.name)'s \(teamText), and FM couldn't be asked about the job there. Don't present it as people who'd come."
+            } else if !table.interestChecked {
                 let asked = failed > 0 ? "any of the \(failed) people it was asked about" : "anyone it was asked about"
                 interest = "FM gave no answer about who'd join for \(asked), so this list isn't narrowed to people who'd come, and Would join "
                     + "is empty. Don't present it as people who'd come. If asking again gives the same, FM can't answer it for "
                     + "\(club.name) on this build of FM."
             } else {
-                let joins = "would join \(club.name)'s \(teamText)" + (table.jobChecked ? " and take \(jobText)" : "")
+                let joins = fits ? "would join \(club.name)'s \(teamText)" + (table.jobChecked ? " and take \(jobText)" : "")
+                    : "would take \(jobText) at \(club.name)'s \(teamText), among those it says would join the club at some level"
                 interest = table.rows.isEmpty
                     ? failed == 0 && !table.stoppedAtDeepest ? "Nobody FM says \(joins) passes these settings."
                         : "None of those FM answered for \(joins)."
@@ -272,7 +285,9 @@ extension Toolbox {
             }
             // Only those FM says would join at this level are asked about the job: the question skips FM's own job pick, which
             // can turn someone down whatever the job, so a yes for anyone else wouldn't be FM's.
-            let joining = shown.filter { checks.staffKnown($0)?.wouldJoin(level: options.level) == true }
+            let joining = shown.filter { person in
+                checks.staffKnown(person).map { fits ? $0.wouldJoin(level: options.level) : $0.anyLevel } == true
+            }
             var jobAsked = question != nil
             if let question {
                 checks.checkStaffJob(joining, job: question.job, level: question.level)
@@ -287,11 +302,13 @@ extension Toolbox {
                 }
             }
             let unanswered = shown.filter { checks.staffKnown($0) == nil }.count
-            interest = "Not narrowed to who'd join. Would join is FM's answer for each one listed, for the first team, reserves and youth"
+            interest = "Not narrowed to who'd join. Would join is FM's answer for each one listed, naming the teams it was asked about: "
+                + levelsAsked
                 + (unanswered == 0 ? "." : "; FM didn't answer for \(unanswered) of them, whose Would join is empty.")
             if let question, jobAsked {
                 let noJob = joining.filter { checks.staffJobKnown($0, job: question.job, level: question.level) == nil }.count
-                interest += asked + " Takes job is only asked for those FM says would join your \(teamText), and left empty for the rest: "
+                interest += asked + " Takes job is only asked for those FM says would join " + (fits ? "your \(teamText)" : "you at some level")
+                    + ", and left empty for the rest: "
                     + "the question skips the first step of FM's rule, which can turn someone down whatever the job, so a Yes for "
                     + "them wouldn't be FM's." + (noJob == 0 ? "" : " FM didn't answer about the job for \(noJob) of those it was "
                     + "asked about, whose Takes job is empty.")
@@ -308,6 +325,9 @@ extension Toolbox {
 
         var pairs: [(String, JSON)] = [("club", .string(club.name)), ("role", .string(name)), ("team", .string(team))]
         pairs += Output.table(table, limit: limit)
+        if let note = recommender.levelNote(role: role, level: options.level, listedByJob: options.onlyJoin && table.jobChecked) {
+            interest += " " + note
+        }
         pairs.append(("interest", .string(interest)))
         if wageMax == nil, !options.maxWage.isEmpty {
             pairs.append(("wage_max", .string("Left out, so up to the club's wage room, \(recommender.startingMaxWageText), "

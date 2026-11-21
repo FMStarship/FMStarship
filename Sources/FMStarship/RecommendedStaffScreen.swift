@@ -9,6 +9,8 @@ final class RecommendedStaffState: ObservableObject {
         let recommender: StaffRecommender
         let maxWage: String
         let role: StaffRole
+        /// What Would join is about when FM's level is another team, worked out with the search, as it can ask the game.
+        let levelNote: String?
     }
 
     unowned let model: AppModel
@@ -45,7 +47,9 @@ final class RecommendedStaffState: ObservableObject {
             // The max-wage box starts at the wage room.
             if first { options.maxWage = recommender.startingMaxWage }
             guard let table = recommender.find(options, isCancelled: { token.isCancelled }, status: status) else { return nil }
-            return Output(table: table, recommender: recommender, maxWage: options.maxWage, role: options.role)
+            let level = options.role.level >= 0 ? options.role.level : options.level
+            return Output(table: table, recommender: recommender, maxWage: options.maxWage, role: options.role,
+                          levelNote: recommender.levelNote(role: options.role, level: level, listedByJob: table.jobChecked))
         }, done: { [weak self] output in
             self?.recommender = output.recommender
             if first { self?.options.maxWage = output.maxWage }
@@ -140,6 +144,9 @@ struct RecommendedStaffScreen: View {
             Text(note).font(.callout).foregroundStyle(.secondary)
         }
         if let output = job.output, let note = output.recommender.wantsJobNote(output.role) {
+            Text(note).font(.callout).foregroundStyle(.secondary)
+        }
+        if let note = job.output?.levelNote {
             Text(note).font(.callout).foregroundStyle(.secondary)
         }
     }

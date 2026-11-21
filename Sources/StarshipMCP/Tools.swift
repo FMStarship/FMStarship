@@ -362,7 +362,10 @@ extension Toolbox {
                 + "about this job, so a director of football offered recruitment analyst, or a head physio offered physio, is No there. "
                 + "Each row: age, job now, club, score for the job (stars for coaching "
                 + "jobs), FM's stars, key attributes, wage, how much they want the job (FM's 1-20 and its word), the job they prefer, "
-                + "would join (first team, reserves, youth or No), takes job (Yes or No), and against the club's best in that job. head "
+                + "would join (the teams FM said yes for, named as the teams FM asked about, such as \"First team, U19\", or No), takes "
+                + "job (Yes or No), and against the club's best in that job. FM's staff search asks about a reserve team only when it "
+                + "doesn't play in a senior league, and otherwise about a youth team: for a reserves job at a club whose second team "
+                + "FM has no level for, such as Molde 2, the list goes by takes job, asked at that team itself, and interest says so. head "
                 + "says who the club has and how many places the board allows; interest says what FM was asked, for whom it gave no "
                 + "answer, and when it stopped at the best \(Toolbox.staffDeepest); wants_job_note, when there, says whose preference "
                 + "Wants job is, for a job FM keeps no preference of its own for. Wages are in the user's "
@@ -372,7 +375,9 @@ extension Toolbox {
                           required: true),
                 Parameter(name: "level", type: "string",
                           description: "The team the job is at: first_team if left out, reserves (the club's second team, such as its "
-                            + "reserves, B team or U21) or youth (such as its U19). Manager is only reserves or youth.",
+                            + "reserves, B team, 2nd team or U21) or youth (such as its U19). Manager is only reserves or youth. "
+                            + "Takes job is asked at that team; Would join is FM's answer for the team FM's own staff search finds "
+                            + "at that level, which interest names when it's another team.",
                           choices: Toolbox.staffLevels),
                 Parameter(name: "wage_max", type: "number",
                           description: "Wage at most, a full amount in the user's currency. The club's wage room if left out, as the app's screen starts."),
@@ -384,8 +389,9 @@ extension Toolbox {
                             + "sports scientist; for head physio and chief scout, on FM's one preference for physio or scout work.",
                           choices: Toolbox.staffKeenness),
                 Parameter(name: "only_join", type: "boolean",
-                          description: "Only staff FM says would join the club at that level and would take this job. true if left out. "
-                            + "With false, would join and takes job are still FM's answers for each one listed."),
+                          description: "Only staff FM says would join the club at that level and would take this job, or, where FM's "
+                            + "level is another team, would take this job there and join the club at some level. true if left out. "
+                            + "With false, would join is still FM's answer for each one listed, and takes job for those who'd join."),
                 Parameter(name: "limit", type: "integer", description: "How many rows, 1-25. 10 if left out."),
                 club,
              ],
