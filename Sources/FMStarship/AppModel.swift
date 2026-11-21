@@ -204,11 +204,19 @@ package final class AppModel: ObservableObject {
     /// How long the poll must have seen FM on the same day before it isn't pressing on through days. FM can take more
     /// than the poll's 2 s over a day.
     static let settleTime: TimeInterval = 10
+    /// The longest the poll's looks can be apart and still count as FM staying on its day. A longer gap is FM's main
+    /// thread held up, as over a day, or the poll held back, so what FM did meanwhile wasn't seen.
+    static let pollGap: TimeInterval = 4
+    /// How long after the window is shown a read can still start for it. Inside FM the window can stay up while the
+    /// player goes on pressing Continue, so the day FM holds 10 s on much later isn't one the player showed it for.
+    static let showWait: TimeInterval = 60
     /// Outside FM a look at the date goes through the agent, off the main thread, one at a time.
     private var lookingAtDate = false
     /// Set when the window is shown, so a look at the date can start a read. It stays set while FM hasn't yet stayed on
-    /// its day for `settleTime`, until the window is hidden, the app goes to the back, or a read starts.
+    /// its day for `settleTime`, until the window is hidden, the app goes to the back, a read starts, or `showWait` is up.
     private var readIfMovedOn = false
+    /// Until when on the clock `readIfMovedOn` lasts: `showWait` after the window was shown.
+    private var readIfMovedOnUntil: TimeInterval = 0
     /// Starts a read nobody asked for. A test sets its own, so nothing reaches for FM.
     var readOnItsOwn: (AppModel) -> Void = { $0.loadSave(automatic: true) }
     /// Where each read's development snapshot is kept. Only `startUp()` sets it, so a test never writes to the player's.
@@ -220,8 +228,10 @@ package final class AppModel: ObservableObject {
     private var quietSelfCheck: String?
     /// Whether one of FM Starship's windows has a sheet up: an export or shortlist panel, or a question. A test sets its own.
     var sheetShown: () -> Bool = { NSApp?.windows.contains { $0.attachedSheet != nil } ?? false }
-    /// What the poll below costs. Inside FM it runs on FM's main thread, and the plugin logs it.
+    /// What the poll below costs, and installing a held read when it does. Inside FM they run on FM's main thread,
+    /// and the plugin logs them.
     package let checkGameCost = TimerCost()
+    package let heldReadCost = TimerCost()
 
     init() {
         tellFilters()
@@ -495,11 +505,11 @@ package final class AppModel: ObservableObject {
         }
     }
 
-    /// Every 2 s. A read held for the player is installed after what's measured: that's a search and more, not the
-    /// poll's own cost, which the plugin logs. `checkGame` has dropped it if FM has closed.
+    /// Every 2 s. A read held for the player is installed after the poll's own cost is measured, since that's a search
+    /// and more, and has its own. The plugin logs both. `checkGame` has dropped it if FM has closed.
     func pollGame() {
         checkGameCost.measure { checkGame() }
-        useHeldRead()
+        if heldReadReady { heldReadCost.measure { useHeldRead() } }
     }
 
     /// The rules read addresses that only mean something in the game they came from. When that game
@@ -530,12 +540,13 @@ package final class AppModel: ObservableObject {
         guard !loading, !lookingAtDate, let database else { return }
         let game = engine.game
         guard !Self.isInsideGame else {
-            dateLooked(GameReader.gameDate(of: database, in: game), byPoll: byPoll)
+            let (now, time) = Self.look { GameReader.gameDate(of: database, in: game) }
+            dateLooked(now, at: time, byPoll: byPoll)
             return
         }
         lookingAtDate = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let now = GameReader.gameDate(of: database, in: game)
+            let (now, time) = Self.look { GameReader.gameDate(of: database, in: game) }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self else { return }
@@ -545,22 +556,31 @@ package final class AppModel: ObservableObject {
                         self.readIfMovedOn = false
                         return
                     }
-                    self.dateLooked(now, byPoll: byPoll)
+                    self.dateLooked(now, at: time, byPoll: byPoll)
                 }
             }
         }
     }
 
+    /// A look at FM's date, timed when it's made rather than when its answer arrives, so a slow round trip to the
+    /// agent doesn't count as FM staying on its day.
+    nonisolated static func look(_ read: () -> Date?) -> (date: Date?, time: TimeInterval) {
+        let time = ProcessInfo.processInfo.systemUptime
+        return (read(), time)
+    }
+
     func dateLooked(_ now: Date?, at time: TimeInterval = ProcessInfo.processInfo.systemUptime, byPoll: Bool) {
         saveDateSeen(now, at: time, byPoll: byPoll)
-        readIfShown()
+        readIfShown(at: time)
     }
 
     /// Starts the read the window's showing asked for, if `takeReadOnShow` agrees. If all it's waiting for is FM to
-    /// stay on its day, the poll's next looks ask again.
-    private func readIfShown() {
+    /// stay on its day, the poll's next looks ask again, for up to `showWait` after the window was shown.
+    private func readIfShown(at time: TimeInterval) {
         guard readIfMovedOn else { return }
-        if takeReadOnShow() {
+        if time > readIfMovedOnUntil {
+            readIfMovedOn = false
+        } else if takeReadOnShow() {
             readIfMovedOn = false
             readOnItsOwn(self)
         } else if !readOnShowWanted {
@@ -569,9 +589,10 @@ package final class AppModel: ObservableObject {
     }
 
     /// FM's game date as it is now, nil when it can't be told, as once FM has let go of the save that was read. Only
-    /// the poll's looks tell how long FM has stayed on a day; the window's own look can only see that it hasn't.
+    /// the poll's looks tell how long FM has stayed on a day; the window's own look can only see that it hasn't. Nor
+    /// can a poll look that comes more than `pollGap` after the last, so the day's time starts over from it.
     func saveDateSeen(_ now: Date?, at time: TimeInterval = ProcessInfo.processInfo.systemUptime, byPoll: Bool = true) {
-        if now != lastDaySeen {
+        if now != lastDaySeen || (byPoll && time - daySeen.last > Self.pollGap) {
             daySeen = (time, time)
         } else if byPoll {
             daySeen.last = time
@@ -591,12 +612,14 @@ package final class AppModel: ObservableObject {
     }
 
     /// FM Starship's window has been shown, or the app has come to the front. If the save has moved on since it was
-    /// read, it's read again, once the date has been looked at and FM has stayed on its day.
-    package func windowShown() {
+    /// read, it's read again, once the date has been looked at and FM has stayed on its day, if that's within
+    /// `showWait`.
+    package func windowShown(at time: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         readIfMovedOn = true
+        readIfMovedOnUntil = time + Self.showWait
         if let engine = GameRules.engine as? RulesEngine, GameProcess.runningPID() == engine.pid { followSaveDate(engine, byPoll: false) }
         // A look still going on starts the read when it's done.
-        if !lookingAtDate { readIfShown() }
+        if !lookingAtDate { readIfShown(at: time) }
     }
 
     /// Whether showing the window should start a read: once for each save and day it has moved on to, so a read that

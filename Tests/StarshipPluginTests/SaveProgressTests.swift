@@ -45,8 +45,12 @@ final class SaveProgressTests: XCTestCase {
 
     /// The poll seeing FM on `date` for long enough that it isn't pressing on through days.
     private func settle(_ model: AppModel, on date: Date, from time: TimeInterval = 0) {
-        model.saveDateSeen(date, at: time)
-        model.saveDateSeen(date, at: time + AppModel.settleTime)
+        for time in stride(from: time, through: time + AppModel.settleTime, by: 2) { model.saveDateSeen(date, at: time) }
+    }
+
+    /// The poll's looks every 2 s from `start` through `end`, seeing FM on `date`.
+    private func pollLooks(_ model: AppModel, on date: Date, from start: TimeInterval, through end: TimeInterval) {
+        for time in stride(from: start, through: end, by: 2) { model.dateLooked(date, at: time, byPoll: true) }
     }
 
     func testOnlyALaterDayIsMovingOn() {
@@ -114,10 +118,10 @@ final class SaveProgressTests: XCTestCase {
 
     func testTheWindowsOwnLookDoesntSettleTheDay() {
         let model = model(readOn: day(2029, 9, 12))
-        model.saveDateSeen(day(2029, 9, 20), at: 0)
-        model.saveDateSeen(day(2029, 9, 20), at: 30, byPoll: false)
+        for time in stride(from: 0.0, through: 8, by: 2) { model.saveDateSeen(day(2029, 9, 20), at: time) }
+        model.saveDateSeen(day(2029, 9, 20), at: 11, byPoll: false)
         XCTAssertFalse(model.takeReadOnShow(), "Only the poll's looks tell how long FM has stayed on a day")
-        model.saveDateSeen(day(2029, 9, 20), at: 32)
+        model.saveDateSeen(day(2029, 9, 20), at: 12)
         XCTAssertTrue(model.takeReadOnShow())
 
         let moved = self.model(readOn: day(2029, 9, 12))
@@ -245,6 +249,8 @@ final class SaveProgressTests: XCTestCase {
         XCTAssertEqual(readsStarted, 0, "FM has only just stopped on the 22nd")
         model.dateLooked(day(2029, 9, 22), at: 2, byPoll: true)
         XCTAssertEqual(readsStarted, 0, "2 s on the same day")
+        pollLooks(model, on: day(2029, 9, 22), from: 4, through: 8)
+        XCTAssertEqual(readsStarted, 0, "8 s on the same day")
         model.dateLooked(day(2029, 9, 22), at: 10, byPoll: true)
         XCTAssertEqual(readsStarted, 1, "The window's showing still asks: FM has held the day for 10 s")
         model.dateLooked(day(2029, 9, 22), at: 12, byPoll: true)
@@ -255,8 +261,7 @@ final class SaveProgressTests: XCTestCase {
         readsStarted = 0
         pressing.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
         pressing.windowShown()
-        pressing.dateLooked(day(2029, 9, 23), at: 4, byPoll: true)
-        pressing.dateLooked(day(2029, 9, 23), at: 12, byPoll: true)
+        pollLooks(pressing, on: day(2029, 9, 23), from: 4, through: 12)
         XCTAssertEqual(readsStarted, 0, "8 s on the 23rd")
         pressing.dateLooked(day(2029, 9, 23), at: 14, byPoll: true)
         XCTAssertEqual(readsStarted, 1)
@@ -268,7 +273,7 @@ final class SaveProgressTests: XCTestCase {
         hidden.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
         hidden.windowShown()
         hidden.windowHidden()
-        hidden.dateLooked(day(2029, 9, 22), at: 10, byPoll: true)
+        pollLooks(hidden, on: day(2029, 9, 22), from: 2, through: 10)
         XCTAssertEqual(readsStarted, 0, "The window was hidden before the day had held")
         hidden.windowShown()
         XCTAssertEqual(readsStarted, 1, "Shown again once it has")
@@ -279,8 +284,7 @@ final class SaveProgressTests: XCTestCase {
         installed.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
         installed.windowShown()
         installed.install(NewData(database(readOn: day(2029, 9, 15))))
-        installed.dateLooked(day(2029, 9, 22), at: 2, byPoll: true)
-        installed.dateLooked(day(2029, 9, 22), at: 12, byPoll: true)
+        pollLooks(installed, on: day(2029, 9, 22), from: 2, through: 12)
         XCTAssertEqual(readsStarted, 0, "What the window was shown for has been answered")
 
         // A read going on when the day has held, or the player busy then.
@@ -289,12 +293,68 @@ final class SaveProgressTests: XCTestCase {
             readsStarted = 0
             model.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
             model.windowShown()
+            pollLooks(model, on: day(2029, 9, 22), from: 2, through: 8)
             model[keyPath: busy] = true
             model.dateLooked(day(2029, 9, 22), at: 10, byPoll: true)
             model[keyPath: busy] = false
             model.dateLooked(day(2029, 9, 22), at: 12, byPoll: true)
             XCTAssertEqual(readsStarted, 0, "As before: only waiting for the day keeps it waiting")
         }
+    }
+
+    func testAWindowShownStopsWaitingAfterAMinute() {
+        // FM pressing on through days after the window is shown, as inside FM, where the window stays up while the
+        // player clicks back into FM and presses Continue.
+        func pressedOnUntil(_ held: TimeInterval) -> AppModel {
+            let model = model(readOn: day(2029, 9, 12))
+            model.dateLooked(day(2029, 9, 20), at: 0, byPoll: true)
+            model.windowShown(at: 0)
+            for (days, time) in stride(from: 2.0, to: held, by: 2).enumerated() {
+                model.dateLooked(day(2029, 9, 21 + days), at: time, byPoll: true)
+            }
+            return model
+        }
+        readsStarted = 0
+        let inTime = pressedOnUntil(50)
+        pollLooks(inTime, on: day(2029, 10, 30), from: 50, through: 58)
+        XCTAssertEqual(readsStarted, 0)
+        inTime.dateLooked(day(2029, 10, 30), at: 60, byPoll: true)
+        XCTAssertEqual(readsStarted, 1, "FM held a day 10 s within a minute of the window being shown")
+
+        readsStarted = 0
+        let late = pressedOnUntil(52)
+        pollLooks(late, on: day(2029, 10, 31), from: 52, through: 64)
+        XCTAssertTrue(late.daySettled)
+        XCTAssertEqual(readsStarted, 0, "Held from 52 s: that's more than a minute after the window was shown")
+        late.windowShown(at: 66)
+        XCTAssertEqual(readsStarted, 1, "Shown again, it reads at once")
+    }
+
+    func testAGapBetweenThePollsLooksStartsTheDayOver() {
+        let model = model(readOn: day(2029, 9, 12))
+        model.dateLooked(day(2029, 9, 22), at: 0, byPoll: true)
+        model.windowShown(at: 0)
+        model.dateLooked(day(2029, 9, 22), at: 12, byPoll: true)
+        XCTAssertFalse(model.daySettled, "FM's main thread held up for 12 s, as over a day: it wasn't seen staying")
+        XCTAssertEqual(readsStarted, 0)
+        pollLooks(model, on: day(2029, 9, 22), from: 14, through: 20)
+        XCTAssertEqual(readsStarted, 0, "8 s since the gap")
+        model.dateLooked(day(2029, 9, 22), at: 22, byPoll: true)
+        XCTAssertEqual(readsStarted, 1, "10 s since the gap")
+
+        let steady = self.model(readOn: day(2029, 9, 12))
+        for time in stride(from: 0.0, through: 12, by: 4) { steady.saveDateSeen(day(2029, 9, 22), at: time) }
+        XCTAssertTrue(steady.daySettled, "Looks 4 s apart, as when one waits on a slow one before it, still count")
+    }
+
+    func testALookIsTimedWhenItsMade() {
+        let before = ProcessInfo.processInfo.systemUptime
+        let (date, time) = AppModel.look {
+            Thread.sleep(forTimeInterval: 0.2)
+            return self.day(2029, 9, 22)
+        }
+        XCTAssertEqual(date, day(2029, 9, 22))
+        XCTAssertLessThan(time - before, 0.1, "Not when a slow answer arrives, which would stretch how long the day held")
     }
 
     func testAHeldReadWaitsForAnotherReadToFinish() {
@@ -347,6 +407,10 @@ final class SaveProgressTests: XCTestCase {
         model.pollGame()
         XCTAssertTrue(model.database === held)
         XCTAssertLessThan(model.checkGameCost.worst, 0.05, "The plugin logs the poll's cost, not the install's")
+        XCTAssertGreaterThanOrEqual(model.heldReadCost.worst, 0.05, "The install's goes in its own line")
+        model.pollGame()
+        XCTAssertNotNil(model.heldReadCost.take())
+        XCTAssertNil(model.heldReadCost.take(), "Only polls that installed one count")
     }
 
     func testOnlyTheAppAndThePluginKeepDevelopmentSnapshots() {
