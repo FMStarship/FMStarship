@@ -101,13 +101,20 @@ final class GenderFilterTests: XCTestCase {
             filter.ageMax = "21"
             filter.gender = PlayerFilter.ownSide
             XCTAssertEqual(filter.describe(), "age up to 21")
+            XCTAssertEqual(filter.describe(clubSignsWomen: false), "age up to 21")
+            XCTAssertEqual(filter.describe(clubSignsWomen: false, sayingSide: true), "men's players, age up to 21")
+            XCTAssertEqual(filter.describe(clubSignsWomen: true, sayingSide: true), "women's players, age up to 21")
+            XCTAssertEqual(filter.describe(clubSignsWomen: nil, sayingSide: true), "age up to 21",
+                           "With the side unknown it keeps both, so there's nothing to say")
         }
         var plain = PlayerFilter(showHidden: true, showAbility: true)
         plain.ratingAtLeast = ""
         plain.markDefaults()
         XCTAssertEqual(plain.describe(), "")
         plain.gender = PlayerFilter.ownSide
-        XCTAssertEqual(plain.describe(), "your club's side")
+        XCTAssertEqual(plain.describe(clubSignsWomen: false), "men's players")
+        XCTAssertEqual(plain.describe(clubSignsWomen: true), "women's players")
+        XCTAssertEqual(plain.describe(), "", "Chosen with the side unknown, it keeps both")
         XCTAssertTrue(plain.isActive(basics))
     }
 }

@@ -299,8 +299,13 @@ package final class AppModel: ObservableObject {
         }
     }
 
-    var filterSummary: String {
-        listIsStaff ? activeStaffFilter.describe() : activePlayerFilter.describe()
+    var filterSummary: String { summary(sayingSide: false) }
+
+    /// `filterSummary`, and with `sayingSide`, the Players search's default side as well, for a line that would
+    /// otherwise say there are no filters while one side is left out.
+    func summary(sayingSide: Bool) -> String {
+        listIsStaff ? activeStaffFilter.describe()
+            : activePlayerFilter.describe(clubSignsWomen: session?.clubSignsWomen, sayingSide: sayingSide)
     }
 
     func resetFilters() {
@@ -524,6 +529,8 @@ package final class AppModel: ObservableObject {
         persist()
         RulesState.shared.pickClub(name)
         syncSession()
+        // The Players search keeps the chosen club's side, so its rows follow the club.
+        search()
     }
 
     /// The filter window can change the club too, so every search makes sure the session still matches.

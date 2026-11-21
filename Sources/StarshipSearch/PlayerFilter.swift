@@ -233,8 +233,9 @@ public struct PlayerFilter: SearchFilter, Equatable {
         return (wanted.transfer && known.transfer) || (wanted.loan && known.loan)
     }
 
-    /// The summary line under the filters.
-    public func describe() -> String {
+    /// The summary line under the filters. `clubSignsWomen` is the chosen club's side, as `criteria` takes it, so
+    /// "Your club's side" reads as the side it keeps. As the default it's left out, unless `sayingSide` is set.
+    public func describe(clubSignsWomen: Bool? = nil, sayingSide: Bool = false) -> String {
         let wanted = interestWanted
         let rating = Net.int32(ratingAtLeast)
         let symbol = Units.money.symbol
@@ -251,7 +252,7 @@ public struct PlayerFilter: SearchFilter, Equatable {
             FilterText.pick(nation, ""),
             FilterText.typed(self.club, ""),
             squad == "Any" ? nil : squad,
-            genderText,
+            genderText(clubSignsWomen: clubSignsWomen, sayingSide: sayingSide),
             FilterText.pick(league, ""),
             FilterText.pick(region, ""),
             FilterText.range("age", ageMin, ageMax),
@@ -301,12 +302,16 @@ public struct PlayerFilter: SearchFilter, Equatable {
         return Net.join(marked + activeRuleTexts + closing)
     }
 
-    /// "Men or women" in the summary, while it isn't what the filter starts on.
-    private var genderText: String? {
+    /// "Men or women" in the summary, while it isn't what the filter starts on. "Your club's side" reads as the side
+    /// it keeps, and as nothing when the side isn't known, since it then keeps both.
+    private func genderText(clubSignsWomen: Bool?, sayingSide: Bool) -> String? {
+        if gender == Self.ownSide {
+            guard let clubSignsWomen, sayingSide || gender != startingGender else { return nil }
+            return clubSignsWomen ? "women's players" : "men's players"
+        }
         guard gender != startingGender else { return nil }
         switch gender {
         case "Any", "": return "men and women"
-        case Self.ownSide: return "your club's side"
         default: return FilterText.pick(gender, "")
         }
     }
