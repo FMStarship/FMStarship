@@ -12,6 +12,11 @@ public final class RulesEngine: GameRulesEngine {
         package static let statusFunction: Int64 = 0xd64e80
         package static let interestSlot = 30
         package static let staffRuleSlot = 20
+        /// `GAME_PERSON`, whose slot `jobPickSlot` the staff rule asks which job, and at which team, it weighs up a person for.
+        package static let personGlobal: Int64 = 0x57b2e68
+        package static let jobPickSlot = 0x150 / 8
+        /// The club's team at a staff-rule level (3 reserves, 4 youth), as the rule finds it.
+        package static let teamAtLevel: Int64 = 0x12402f4
         package static let statFunction: Int64 = 0xf973c8
         package static let statsContainerSlot = 65
         package static let personStatsSlot = 0x668 / 8
@@ -66,6 +71,8 @@ public final class RulesEngine: GameRulesEngine {
     private let interestFunction: Int64
     private let statusFunction: Int64
     private let staffFunction: Int64
+    /// The address of `GAME_PERSON`'s job-pick slot in its vtable. 0 when not found.
+    private let jobPickEntry: Int64
     private let statFunction: Int64
     private let statsContainerFunction: Int64
     private let conditionFunction: Int64
@@ -107,6 +114,10 @@ public final class RulesEngine: GameRulesEngine {
         statsContainerFunction = rtti.word(vtable.addressPoint + Mac27.statsContainerSlot * 8)
         staffFunction = rtti.vtables("PERSON_NON_PLAYER_INTERESTED_FILTER_RULE").first { $0.offsetToTop == 0 }
             .map { rtti.word($0.addressPoint + Mac27.staffRuleSlot * 8) } ?? 0
+        let person = game.readPointer(game.pluginBase + Mac27.personGlobal)
+        jobPickEntry = rtti.vtables("GAME_PERSON").first { $0.offsetToTop == 0 }
+            .map { game.pluginBase + Int64($0.addressPoint) }
+            .flatMap { person != 0 && game.readPointer(person) == $0 ? $0 + Int64(Mac27.jobPickSlot * 8) : nil } ?? 0
         let player = rtti.vtables("ACTUAL_PLAYER").first { $0.offsetToTop == 0 }
         func getter(_ slot: Int) -> Int64 {
             let function = player.map { rtti.word($0.addressPoint + slot * 8) } ?? 0
@@ -155,6 +166,60 @@ public final class RulesEngine: GameRulesEngine {
                 a64_write(cpu, context + 16, UInt64(bitPattern: team), 8)
                 a64_write(cpu, context + 24, UInt64(bitPattern: manager &+ Int64(MacLayout.Human.managerIdentity)), 8)
             }, result: { a64_get_x($0, 0) & 255 != 0 })
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
+    }
+
+    /// What stands in for `GAME_PERSON`'s job pick, called as FM calls it with the answer's address in x3: it writes `job` as
+    /// the answer's job byte and `team` as its team, returns 1, and sets the word at `jobPickAsked`. In order: x10 = team,
+    /// w9 = job, out.job = w9, out.team = x10, w0 = 1, x11 = &asked, asked = w0, return; then the team, the job and asked.
+    package static let jobPickCode: [UInt32] = [0x5800_010a, 0x1800_0129, 0x3900_0069, 0xf900_046a, 0x5280_0020, 0x1000_00cb,
+                                                0xb900_0160, 0xd65f_03c0]
+    package static let jobPickAsked: UInt64 = 44
+
+    package static func writeJobPick(_ cpu: OpaquePointer, at address: UInt64, job: Int, team: Int64) {
+        for (i, word) in jobPickCode.enumerated() { a64_write(cpu, address + UInt64(i * 4), UInt64(word), 4) }
+        a64_write(cpu, address + 32, UInt64(bitPattern: team), 8)
+        a64_write(cpu, address + 40, UInt64(job), 4)
+        a64_write(cpu, address + jobPickAsked, 0, 4)
+    }
+
+    public var supportsStaffJobInterest: Bool { staffFunction != 0 && jobPickEntry != 0 }
+
+    /// The staff rule asked about one job. The rule asks `GAME_PERSON` which job, and at which team, to weigh a person up for,
+    /// then runs FM's own checks and its own score for that job against its own bar. Here that one call, in the sandbox's
+    /// private copy of FM's memory, answers `job` at the club's team at `level` instead, so every check and the score are
+    /// still FM's. It only counts as an answer when the rule got as far as asking: FM's yes without asking says nothing about
+    /// the job.
+    public func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool? {
+        guard staffFunction != 0, jobPickEntry != 0, let manager = managers[team], manager != 0, (2...254).contains(job) else { return nil }
+        // The team the job is at, as FM's own pick gives it: the rule looks for a manager there before offering a manager's job.
+        let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
+        var at = team
+        if level != RulesEngine.staffLevels[0] {
+            guard club != 0, let found: Int64 = try? sandbox.call(game.pluginBase + Mac27.teamAtLevel, [UInt64(bitPattern: club), UInt64(level)],
+                                                                   result: { Int64(bitPattern: a64_get_x($0, 0)) }) else { return nil }
+            // No such team at the club: the rule says no without asking.
+            if found == 0 { return false }
+            at = found
+        }
+        let rule = UInt64(A64_SCRATCH), person = rule + 0x100, context = rule + 0x200, pick = rule + 0x300
+        do {
+            let (answer, asked) = try sandbox.call(staffFunction, [rule, person, context], prepare: { cpu in
+                a64_write(cpu, rule + 24, UInt64(level), 1)
+                a64_write(cpu, rule + 25, 1, 1)
+                a64_write(cpu, person + 8, UInt64(bitPattern: staff.block &+ Int64(MacLayout.Staff.identity)), 8)
+                a64_write(cpu, context + 8, UInt64(bitPattern: manager), 8)
+                a64_write(cpu, context + 16, UInt64(bitPattern: team), 8)
+                a64_write(cpu, context + 24, UInt64(bitPattern: manager &+ Int64(MacLayout.Human.managerIdentity)), 8)
+                RulesEngine.writeJobPick(cpu, at: pick, job: job, team: at)
+                a64_write(cpu, UInt64(bitPattern: self.jobPickEntry), pick, 8)
+            }, result: { cpu in (a64_get_x(cpu, 0) & 255 != 0, a64_read(cpu, pick + RulesEngine.jobPickAsked, 4) != 0) })
+            return answer && !asked ? nil : answer
         } catch {
             failureLock.lock()
             failure = "\(error)"

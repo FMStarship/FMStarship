@@ -47,6 +47,8 @@ public final class GameChecks {
     private let lock = NSLock()
     private var players: [UInt32: JoinAnswer] = [:]
     private var staff: [UInt32: StaffJoinAnswer] = [:]
+    /// Per person, by `jobKey`: whether FM says they'd take that job.
+    private var staffJobs: [UInt32: [Int: Bool]] = [:]
     private var preferences: [UInt32: [UInt8]] = [:]
     private var injuries: [UInt32: Int] = [:]
     private var failed = 0
@@ -62,6 +64,9 @@ public final class GameChecks {
 
     /// Staff interest also needs the user to be the club's manager.
     public var canCheckStaffInterest: Bool { canCheckInterest && club.manager != 0 }
+
+    /// Whether FM can also be asked whether someone would take a particular job.
+    public var canCheckStaffJob: Bool { canCheckStaffInterest && engine?.supportsStaffJobInterest == true }
 
     /// How many questions the engine couldn't answer.
     public var failures: Int { locked { failed } }
@@ -149,6 +154,46 @@ public final class GameChecks {
         let levels = [answer.firstTeam ? "First team" : nil, answer.reserves ? "Reserves" : nil, answer.youth ? "Youth" : nil]
         let text = levels.compactMap { $0 }.joined(separator: ", ")
         return text.isEmpty ? "No" : text
+    }
+
+    private static func jobKey(job: Int, level: Int) -> Int { job * 4 + level }
+
+    /// FM's answer, already asked, to whether they'd take `job` (from `Names.jobs`) at team level `level` (0 first team,
+    /// 1 reserves, 2 youth).
+    public func staffJobKnown(_ person: Staff, job: Int, level: Int) -> Bool? {
+        locked { staffJobs[person.index]?[GameChecks.jobKey(job: job, level: level)] }
+    }
+
+    /// Whether FM says they'd take `job` at team level `level`: FM's staff search rule, the one behind `staffCheck`, asked
+    /// about this job rather than the one FM picks for them. Nil when FM can't be asked or didn't answer.
+    public func staffJobCheck(_ person: Staff, job: Int, level: Int) -> Bool? {
+        guard let engine, canCheckStaffJob, person.block != 0, GameChecks.staffLevels.indices.contains(level) else { return nil }
+        if let answer = staffJobKnown(person, job: job, level: level) { return answer }
+        let answer: Bool
+        if GameChecks.board.contains(person.job) {
+            answer = false
+        } else {
+            guard let asked = engine.staffJobInterest(staff: person, team: club.team, job: job, level: GameChecks.staffLevels[level]) else {
+                locked { failed += 1 }
+                return nil
+            }
+            answer = asked
+        }
+        locked { staffJobs[person.index, default: [:]][GameChecks.jobKey(job: job, level: level)] = answer }
+        return answer
+    }
+
+    public func checkStaffJob(_ people: [Staff], job: Int, level: Int, isCancelled: () -> Bool = { false }) {
+        let todo = people.filter { staffJobKnown($0, job: job, level: level) == nil }
+        let workers = max(1, ProcessInfo.processInfo.activeProcessorCount - 2)
+        parallelFor(count: todo.count, workers: workers) { i in
+            if !isCancelled() { _ = self.staffJobCheck(todo[i], job: job, level: level) }
+        }
+    }
+
+    /// "Yes" or "No" when FM has answered, otherwise empty.
+    public func staffJobText(_ person: Staff, job: Int, level: Int) -> String {
+        staffJobKnown(person, job: job, level: level).map { $0 ? "Yes" : "No" } ?? ""
     }
 
     /// `RecommendStaffForm.Want`: how much he wants the job at `Names.prefJobs[index]`.

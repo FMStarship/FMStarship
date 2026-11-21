@@ -25,7 +25,7 @@ chosen in FM Starship.
 | `compare` | Two to four players, or two to four staff, side by side |
 | `development` | How the user's players have developed, from FM Starship's own record of the squad: each player's CA and PA and every attribute that went up or down between two records, over the last 90 days unless you give `since` (`until` sets the end), and who joined or left in between. With `uid`, one player at every recorded date |
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
-| `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
+| `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join and would take that job unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
 | `results` | A club's played matches, newest first, with both sides' xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
@@ -112,6 +112,17 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   they're left out, and asking again or `person` may get their answers. FM is asked about the best 600 for the job at most, and
   `interest` says when it stopped there. FM only answers about staff for a club the user manages. `wage_max` starts at the
   club's wage room when you leave it out.
+- **Would join is about the club, not the job.** FM's staff search answers it for the job FM itself would weigh the person up
+  for, such as a director of football's own job. `recommend_staff`'s `Takes job` is the same rule of FM's asked about the job you
+  searched for (Yes or No), and with `only_join` it lists only people FM says would join and take that job. FM turns down a
+  bigger job's holder for a smaller one there: a director of football as recruitment analyst, a head physio as physio. People
+  FM's No has matched refusals in talks, so don't put them forward for that job. When `interest` says FM couldn't be
+  asked about the job, `Takes job` is empty and people in a bigger job may refuse a smaller one in talks.
+- **Wants job** is FM's 1-20 for how keen they are on a job, from FM's 15 job preferences. FM keeps none for recruitment
+  analyst, head performance analyst or head of sports science, so there it's their preference for performance analyst or
+  sports scientist, and `wants_job_note` says so; head physio and chief scout share physio's and scout's. Keenness isn't the
+  same as taking the job: a head physio can be 20 for physio work and still turn down a physio's job. `Takes job` is FM's
+  answer to that.
 - **Development** is FM Starship's own record, not FM's history: a snapshot of the club's squad on each game day FM Starship
   read the save, in the app or in its tab inside FM, for the club picked in FM Starship. A gap between dates is days nobody read
   the save with FM Starship, not days nothing changed, so say which dates you compared (`compared`). Without `since` it

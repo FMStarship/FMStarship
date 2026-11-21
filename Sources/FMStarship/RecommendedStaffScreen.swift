@@ -8,6 +8,7 @@ final class RecommendedStaffState: ObservableObject {
         let table: AnalysisTable
         let recommender: StaffRecommender
         let maxWage: String
+        let role: StaffRole
     }
 
     unowned let model: AppModel
@@ -44,7 +45,7 @@ final class RecommendedStaffState: ObservableObject {
             // The max-wage box starts at the wage room.
             if first { options.maxWage = recommender.startingMaxWage }
             guard let table = recommender.find(options, isCancelled: { token.isCancelled }, status: status) else { return nil }
-            return Output(table: table, recommender: recommender, maxWage: options.maxWage)
+            return Output(table: table, recommender: recommender, maxWage: options.maxWage, role: options.role)
         }, done: { [weak self] output in
             self?.recommender = output.recommender
             if first { self?.options.maxWage = output.maxWage }
@@ -138,6 +139,9 @@ struct RecommendedStaffScreen: View {
         if let note = missingNote {
             Text(note).font(.callout).foregroundStyle(.secondary)
         }
+        if let output = job.output, let note = output.recommender.wantsJobNote(output.role) {
+            Text(note).font(.callout).foregroundStyle(.secondary)
+        }
     }
 
     /// What the game couldn't tell us. The columns stay, empty, and this says why.
@@ -145,6 +149,7 @@ struct RecommendedStaffScreen: View {
         guard let output = job.output else { return nil }
         var missing: [String] = []
         if output.recommender.limits == nil { missing.append("the board's staff limits") }
+        if output.recommender.onlyJoinEnabled, !output.recommender.jobCheckEnabled { missing.append("whether they'd take this job") }
         let wantsJob = output.table.columns.firstIndex { $0.title == "Wants job" } ?? -1
         let rows = output.table.rows
         if !rows.isEmpty, wantsJob >= 0, rows.allSatisfy({ wantsJob < $0.cells.count && $0.cells[wantsJob].isEmpty }) {

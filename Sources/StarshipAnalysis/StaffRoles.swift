@@ -166,6 +166,28 @@ public enum StaffRoles {
         }
     }
 
+    /// FM's own number for a job, from `Names.jobs`, which FM's staff rules are asked about.
+    public static func jobCode(_ job: String) -> Int? {
+        Names.jobs.first { $0.value == job }?.key
+    }
+
+    /// Whose preference Wants job reads, for a job FM keeps no preference of its own for. FM keeps 15 (`Names.prefJobs`):
+    /// its own preferred-job answer reads head physio from the physio one and chief scout from the scout one, and none of
+    /// them is for a recruitment analyst, a head performance analyst or a head of sports science.
+    public static func preferenceNote(_ job: String) -> String? {
+        let index = preferenceIndex(job), key = Names.jobs.first { $0.value == job }?.key
+        guard index >= 0, index < Names.prefJobs.count, let read = Names.jobs[Names.prefJobs[index]], key != Names.prefJobs[index] else {
+            return nil
+        }
+        let shared = ["Head Physio", "Chief Scout"].contains(job)
+        return "Wants job is how keen they are to be \(article(read)) \(read.lowercased()): FM keeps "
+            + (shared ? "one preference for \(read.lowercased()) and \(job.lowercased())." : "no preference for \(job.lowercased()).")
+    }
+
+    private static func article(_ job: String) -> String {
+        "aeiou".contains(job.lowercased().first ?? "x") ? "an" : "a"
+    }
+
     public static func plural(_ name: String) -> String {
         let lower = name.lowercased()
         if lower.hasPrefix("head of ") { return "heads" + lower.dropFirst(4) }

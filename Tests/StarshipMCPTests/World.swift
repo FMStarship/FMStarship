@@ -42,6 +42,20 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
         lock.withLock { _ = askedStaff.insert(staff.uid) }
         return staffAnswers && !staffUnanswered.contains(staff.uid) ? level == 1 && !staffWontJoin.contains(staff.uid) : nil
     }
+    /// False for a build where FM can't be asked about one job; staff FM says wouldn't take the job they're asked about, and
+    /// staff FM gives no answer about a job for.
+    var staffJobAnswers = true
+    var staffWontTake: Set<UInt32> = []
+    var staffJobUnanswered: Set<UInt32> = []
+    /// Each job question: who, the job and FM's level.
+    private var askedJobs: [(uid: UInt32, job: Int, level: Int)] = []
+    var staffJobsAsked: [(uid: UInt32, job: Int, level: Int)] { lock.withLock { askedJobs } }
+    var supportsStaffJobInterest: Bool { staffJobAnswers }
+    func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool? {
+        lock.withLock { askedJobs.append((staff.uid, job, level)) }
+        guard staffJobAnswers, !staffJobUnanswered.contains(staff.uid) else { return nil }
+        return !staffWontTake.contains(staff.uid)
+    }
     func preferredJob(staff: Staff) -> Int? { nil }
     func jobPreferences(staff: Staff) -> [UInt8]? { nil }
     func roleRows(player: Player, team: Int64) -> [RoleRow]? { nil }

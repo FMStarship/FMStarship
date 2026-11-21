@@ -114,6 +114,8 @@ public struct AnalysisTable {
     public var interestChecked: Bool
     /// True when a search stopped at how far down the ranking it may look, before finding as many as it wanted.
     public var stoppedAtDeepest = false
+    /// True when Recommended staff also had FM say whether each one would take the job, and lists only those who would.
+    public var jobChecked = false
 
     public init(columns: [TableColumn] = [], rows: [TableRow] = [], head: String = "", status: String = "",
                 interestChecked: Bool = true) {

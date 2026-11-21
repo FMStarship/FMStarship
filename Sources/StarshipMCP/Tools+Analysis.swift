@@ -225,6 +225,18 @@ extension Toolbox {
         let team = recommender.levelNames[options.level]
         // As the screen writes the level: "first team", otherwise the team's own name.
         let teamText = options.level == 0 ? "first team" : team
+        // What FM is asked about the job itself, and how to say it.
+        let question = checks.canCheckStaffJob ? StaffRecommender.jobQuestion(role: role, level: options.level) : nil
+        let jobText = "the job of \(name.lowercased())"
+        let asked = question.map { q in
+            " FM's staff search answers Would join about the club and the team, for the job FM itself would weigh each one up for, "
+                + "which may not be this one. Takes job is the same rule of FM's asked about \(jobText) at "
+                + (q.level == 0 ? "the first team" : "the \(teamText)") + ": No is FM turning them down for this job, as it does when "
+                + "someone in a bigger job, such as a director of football, is offered a smaller one."
+        } ?? ""
+        let noJobAnswer = " FM couldn't be asked whether they'd take this job itself, so Takes job is empty: Would join is FM's answer "
+            + "about the club and the team, not the job, and people in a bigger job, such as a director of football, may refuse a "
+            + "smaller one in talks."
         var interest: String
         if !recommender.onlyJoinEnabled {
             let why = context.read.engine == nil ? "FM's rules are off on this build of FM"
@@ -237,14 +249,16 @@ extension Toolbox {
                     + "is empty. Don't present it as people who'd come. If asking again gives the same, FM can't answer it for "
                     + "\(club.name) on this build of FM."
             } else {
+                let joins = "would join \(club.name)'s \(teamText)" + (table.jobChecked ? " and take \(jobText)" : "")
                 interest = table.rows.isEmpty
-                    ? failed == 0 && !table.stoppedAtDeepest ? "Nobody FM says would join \(club.name)'s \(teamText) passes these settings."
-                        : "None of those FM answered for would join \(club.name)'s \(teamText)."
-                    : "Everyone listed is someone FM says would join \(club.name)'s \(teamText)."
+                    ? failed == 0 && !table.stoppedAtDeepest ? "Nobody FM says \(joins) passes these settings."
+                        : "None of those FM answered for \(joins)."
+                    : "Everyone listed is someone FM says \(joins)."
                 if failed > 0 {
                     interest += " FM didn't answer for \(failed) of the people it was asked about, so they're left out; asking again may "
                         + "get their answers."
                 }
+                interest += table.jobChecked ? asked : noJobAnswer
             }
         } else {
             // The screen only fills Would join for people FM was asked about, so the rows sent out are asked about here.
@@ -256,9 +270,24 @@ extension Toolbox {
                     table.rows[index].cells[column] = checks.staffText(person)
                 }
             }
+            if let question {
+                checks.checkStaffJob(shown, job: question.job, level: question.level)
+                if let column = table.columns.firstIndex(where: { $0.title == "Takes job" }) {
+                    for index in table.rows.indices.prefix(limit) {
+                        guard let person = table.rows[index].person as? Staff, column < table.rows[index].cells.count else { continue }
+                        table.rows[index].cells[column] = checks.staffJobText(person, job: question.job, level: question.level)
+                    }
+                }
+            }
             let unanswered = shown.filter { checks.staffKnown($0) == nil }.count
             interest = "Not narrowed to who'd join. Would join is FM's answer for each one listed, for the first team, reserves and youth"
                 + (unanswered == 0 ? "." : "; FM didn't answer for \(unanswered) of them, whose Would join is empty.")
+            if let question {
+                let noJob = shown.filter { checks.staffJobKnown($0, job: question.job, level: question.level) == nil }.count
+                interest += asked + (noJob == 0 ? "" : " FM didn't answer that for \(noJob) of them, whose Takes job is empty.")
+            } else {
+                interest += noJobAnswer
+            }
         }
         if table.stoppedAtDeepest {
             interest += " FM was asked about the best \(Self.staffDeepest) for the job who pass these settings and no further, so there may "
@@ -277,12 +306,14 @@ extension Toolbox {
         // As the screen's note: what this build of FM couldn't tell.
         var missing: [String] = []
         if recommender.limits == nil { missing.append("the board's staff limits") }
+        if recommender.onlyJoinEnabled, !checks.canCheckStaffJob { missing.append("whether they'd take this job") }
         if StaffRoles.preferenceIndex(role.name) >= 0, !table.rows.isEmpty,
            let column = table.columns.firstIndex(where: { $0.title == "Wants job" }),
            table.rows.allSatisfy({ column >= $0.cells.count || $0.cells[column].isEmpty }) {
             missing.append("how keen they are on the job and the job they prefer" + (args.has("wants_job") ? ", so wants_job wasn't used" : ""))
         }
         if !missing.isEmpty { pairs.append(("not_available", .string("Not available on this version: " + missing.joined(separator: ", ") + "."))) }
+        if let note = recommender.wantsJobNote(role) { pairs.append(("wants_job_note", .string(note))) }
         return .object(pairs)
     }
 

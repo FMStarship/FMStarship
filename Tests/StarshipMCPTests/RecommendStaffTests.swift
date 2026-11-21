@@ -36,7 +36,12 @@ final class RecommendStaffTests: XCTestCase {
         XCTAssertEqual(answer["team"], "First team")
         XCTAssertEqual(Set(uids(answer)), [502, 503], "not the coach who wouldn't come, nor the club's own")
         XCTAssertTrue(answer.rowsByName.allSatisfy { $0["Would join"] == "First team" })
-        XCTAssertEqual(answer["interest"], "Everyone listed is someone FM says would join Testing FC's first team.")
+        let interest = answer["interest"]?.string ?? ""
+        XCTAssertTrue(interest.hasPrefix("Everyone listed is someone FM says would join Testing FC's first team and take the job of coach. "),
+                      interest)
+        XCTAssertTrue(interest.contains("Takes job is the same rule of FM's asked about the job of coach at the first team"), interest)
+        XCTAssertTrue(answer.rowsByName.allSatisfy { $0["Takes job"] == "Yes" })
+        XCTAssertNil(answer["wants_job_note"], "a coach's preference is a coach's")
         XCTAssertTrue(answer["head"]?.string?.hasPrefix("You have 1 coach;") ?? false, answer["head"]?.text ?? "")
         XCTAssertTrue(answer["status"]?.string?.contains("who'd join your first team") ?? false)
         XCTAssertEqual(Array(answer.columnNames.prefix(4)), ["uid", "Name", "Age", "Job now"])
@@ -71,8 +76,9 @@ final class RecommendStaffTests: XCTestCase {
         let reserves = try harness.answer("recommend_staff", ["role": "Coach", "level": "reserves"])
         XCTAssertEqual(reserves["team"], "Reserves")
         XCTAssertTrue(uids(reserves).isEmpty)
-        XCTAssertEqual(reserves["interest"], "Nobody FM says would join Testing FC's Reserves passes these settings.",
-                       "the team's own name, as the screen writes it")
+        XCTAssertTrue(reserves["interest"]?.string?.hasPrefix("Nobody FM says would join Testing FC's Reserves and take the job of coach "
+                                                              + "passes these settings.") ?? false,
+                      "the team's own name, as the screen writes it: \(reserves["interest"]?.text ?? "")")
         XCTAssertTrue(reserves["status"]?.string?.contains("only_join false") ?? false, reserves["status"]?.text ?? "")
         let open = try harness.answer("recommend_staff", ["role": "Coach", "level": "reserves", "only_join": false])
         XCTAssertFalse(uids(open).isEmpty)
@@ -139,7 +145,7 @@ final class RecommendStaffTests: XCTestCase {
         XCTAssertEqual(uids(answer), [502, 503])
         XCTAssertEqual(engine.staffAsked.count, 600, "the best 600 and no further")
         let said = answer["interest"]?.string ?? ""
-        XCTAssertTrue(said.hasPrefix("Everyone listed is someone FM says would join Testing FC's first team."), said)
+        XCTAssertTrue(said.hasPrefix("Everyone listed is someone FM says would join Testing FC's first team and take the job of coach."), said)
         XCTAssertTrue(said.contains("FM was asked about the best 600 for the job who pass these settings and no further"), said)
 
         // Nobody to find: still not "Nobody", as FM wasn't asked about everyone. FM's answers last the session, so a new one.
@@ -184,15 +190,15 @@ final class RecommendStaffTests: XCTestCase {
         engine.staffUnanswered = [502]
         let some = try harness.answer("recommend_staff", ["role": "Coach"])
         XCTAssertEqual(uids(some), [503])
-        let expected = "Everyone listed is someone FM says would join Testing FC's first team. FM didn't answer for 1 of "
-            + "the people it was asked about, so they're left out; asking again may get their answers."
-        XCTAssertEqual(some["interest"]?.string, expected)
+        let expected = "Everyone listed is someone FM says would join Testing FC's first team and take the job of coach. FM didn't "
+            + "answer for 1 of the people it was asked about, so they're left out; asking again may get their answers. FM's staff search"
+        XCTAssertTrue(some["interest"]?.string?.hasPrefix(expected) ?? false, some["interest"]?.text ?? "")
 
         // A failure isn't remembered, so asking again gets the answer.
         engine.staffUnanswered = []
         let again = try harness.answer("recommend_staff", ["role": "Coach"])
         XCTAssertEqual(Set(uids(again)), [502, 503])
-        XCTAssertEqual(again["interest"], "Everyone listed is someone FM says would join Testing FC's first team.")
+        XCTAssertFalse(again["interest"]?.string?.contains("didn't answer") ?? true)
 
         // FM answers about the coach who wouldn't come, but about nobody who would. A new session, as FM's answers last one.
         let noneEngine = FakeEngine()
@@ -201,7 +207,8 @@ final class RecommendStaffTests: XCTestCase {
         XCTAssertTrue(uids(none).isEmpty)
         let said = none["interest"]?.string ?? ""
         XCTAssertFalse(said.hasPrefix("Nobody"), said)
-        XCTAssertTrue(said.hasPrefix("None of those FM answered for would join Testing FC's first team. FM didn't answer for 2 of"), said)
+        XCTAssertTrue(said.hasPrefix("None of those FM answered for would join Testing FC's first team and take the job of coach. FM "
+                                     + "didn't answer for 2 of"), said)
     }
 
     func testTheWageNoteIsTheCapUsed() throws {
@@ -228,5 +235,74 @@ final class RecommendStaffTests: XCTestCase {
         XCTAssertTrue(try harness().answer("recommend_staff", ["role": "Coach"]).columnNames.contains("FM stars"))
         XCTAssertFalse(try harness(hidden: true, reveal: .hidden).answer("recommend_staff", ["role": "Coach"]).columnNames.contains("FM stars"))
         XCTAssertFalse(try harness(hidden: false).answer("recommend_staff", ["role": "Coach"]).columnNames.contains("FM stars"))
+    }
+
+    // MARK: Whether they'd take the job
+
+    func testSomeoneWhoWouldJoinButNotTakeTheJobIsLeftOut() throws {
+        let engine = FakeEngine()
+        let harness = harness(engine)
+        engine.staffWontTake = [502]
+        let answer = try harness.answer("recommend_staff", ["role": "Coach"])
+        XCTAssertEqual(uids(answer), [503], "FM says 502 would join but wouldn't take the job")
+        XCTAssertTrue(engine.staffJobsAsked.contains { $0.uid == 502 && $0.job == 2 && $0.level == 1 }, "coach, at the first team")
+        XCTAssertFalse(engine.staffJobsAsked.contains { $0.uid == 505 }, "nobody FM says wouldn't join is asked about the job")
+
+        let open = try harness.answer("recommend_staff", ["role": "Coach", "only_join": false])
+        let byUID = Dictionary(uniqueKeysWithValues: open.rowsByName.map { ($0["uid"]?.int ?? 0, $0) })
+        XCTAssertEqual(byUID[502]?["Would join"], "First team", "Would join stays FM's answer about the club and the team")
+        XCTAssertEqual(byUID[502]?["Takes job"], "No")
+        XCTAssertEqual(byUID[503]?["Takes job"], "Yes")
+        XCTAssertEqual(byUID[505]?["Takes job"], "Yes", "asked for everyone listed, as Would join is")
+        let said = open["interest"]?.string ?? ""
+        XCTAssertTrue(said.hasPrefix("Not narrowed to who'd join.") && said.contains("Takes job is the same rule of FM's"), said)
+    }
+
+    func testAJobIsAskedAboutWhereItIs() throws {
+        let engine = FakeEngine()
+        let harness = harness(engine)
+        _ = try harness.answer("recommend_staff", ["role": "Assistant Manager", "level": "reserves", "only_join": false])
+        XCTAssertTrue(engine.staffJobsAsked.allSatisfy { $0.job == 20 && $0.level == 3 }, "a team's job at that team")
+        let before = engine.staffJobsAsked.count
+        let analyst = try harness.answer("recommend_staff", ["role": "Recruitment Analyst", "level": "reserves", "only_join": false])
+        let asked = engine.staffJobsAsked.dropFirst(before)
+        XCTAssertFalse(asked.isEmpty)
+        XCTAssertTrue(asked.allSatisfy { $0.job == 58 && $0.level == 1 }, "a club's job where FM places it, with the first team")
+        XCTAssertTrue(analyst["interest"]?.string?.contains("asked about the job of recruitment analyst at the first team") ?? false,
+                      analyst["interest"]?.text ?? "")
+    }
+
+    func testNoAnswerAboutTheJobIsNeverAYes() throws {
+        let engine = FakeEngine()
+        let harness = harness(engine)
+        engine.staffJobUnanswered = [502]
+        let answer = try harness.answer("recommend_staff", ["role": "Coach"])
+        XCTAssertEqual(uids(answer), [503])
+        XCTAssertTrue(answer["interest"]?.string?.contains("FM didn't answer for 1 of the people it was asked about") ?? false,
+                      answer["interest"]?.text ?? "")
+    }
+
+    func testWhenFMCantBeAskedAboutTheJobItSaysWhatWouldJoinMeans() throws {
+        let engine = FakeEngine()
+        engine.staffJobAnswers = false
+        let answer = try harness(engine).answer("recommend_staff", ["role": "Coach"])
+        XCTAssertEqual(Set(uids(answer)), [502, 503], "narrowed by who'd join only")
+        XCTAssertTrue(answer.rowsByName.allSatisfy { $0["Takes job"] == .null })
+        let said = answer["interest"]?.string ?? ""
+        XCTAssertTrue(said.hasPrefix("Everyone listed is someone FM says would join Testing FC's first team. FM couldn't be asked whether "
+                                     + "they'd take this job itself"), said)
+        XCTAssertTrue(said.contains("Would join is FM's answer about the club and the team, not the job"), said)
+        XCTAssertTrue(answer["not_available"]?.string?.contains("whether they'd take this job") ?? false)
+        XCTAssertFalse(answer["status"]?.string?.contains("take the job") ?? true)
+    }
+
+    func testWantsJobSaysWhosePreferenceItIs() throws {
+        let harness = harness()
+        let analyst = try harness.answer("recommend_staff", ["role": "Recruitment Analyst", "only_join": false])
+        XCTAssertEqual(analyst["wants_job_note"],
+                       "Wants job is how keen they are to be a performance analyst: FM keeps no preference for recruitment analyst.")
+        let physio = try harness.answer("recommend_staff", ["role": "Head Physio", "only_join": false])
+        XCTAssertEqual(physio["wants_job_note"], "Wants job is how keen they are to be a physio: FM keeps one preference for physio and head physio.")
+        XCTAssertNil(try harness.answer("recommend_staff", ["role": "Physio", "only_join": false])["wants_job_note"])
     }
 }

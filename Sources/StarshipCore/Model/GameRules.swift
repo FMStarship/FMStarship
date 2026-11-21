@@ -62,6 +62,11 @@ public protocol GameRulesEngine: AnyObject {
     var supportsInjuryDays: Bool { get }
     func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)?
     func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool?
+    /// Whether `staffJobInterest` can be asked on this build.
+    var supportsStaffJobInterest: Bool { get }
+    /// `staffInterest` asked about one job, `job` from `Names.jobs`, instead of the job FM picks for the person itself.
+    /// Nil when FM didn't answer or didn't weigh the job up.
+    func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool?
     func preferredJob(staff: Staff) -> Int?
     func jobPreferences(staff: Staff) -> [UInt8]?
     func roleRows(player: Player, team: Int64) -> [RoleRow]?
@@ -91,6 +96,8 @@ public protocol GameRulesEngine: AnyObject {
 }
 
 extension GameRulesEngine {
+    public var supportsStaffJobInterest: Bool { false }
+    public func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool? { nil }
     public func matchHistory(player: Player) -> MatchHistory? { nil }
     public func fitness(player: Player) -> Fitness? { nil }
     public func homeGrown(player: Player) -> HomeGrown? { nil }
