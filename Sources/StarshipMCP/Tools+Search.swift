@@ -107,12 +107,18 @@ extension Toolbox {
         filter.rules = rules
         // FM keeps men's and women's football apart, and the user's club can sign players only from its own side.
         var side: String?
-        if try args.bool("other_side") != true, let club = try? context.ownClub(nil) {
+        let otherSide = try args.bool("other_side") ?? false
+        if let club = try? context.ownClub(nil) {
             if context.db.knowsSides {
                 let womens = context.db.womensTeams.contains(club.team)
-                filter.gender = womens ? "Women" : "Men"
-                side = (womens ? "Women's" : "Men's") + " football only, the side \(club.name) can sign from. other_side true lists "
-                    + (womens ? "men" : "women") + " too."
+                if otherSide {
+                    side = "Both sides, men's and women's football, as other_side asked. \(club.name) can sign only "
+                        + (womens ? "women" : "men") + "."
+                } else {
+                    filter.gender = womens ? "Women" : "Men"
+                    side = (womens ? "Women's" : "Men's") + " football only, the side \(club.name) can sign from. other_side true lists "
+                        + (womens ? "men" : "women") + " too."
+                }
             } else {
                 side = "Men's and women's football together: FM Starship couldn't tell them apart on this build of FM."
             }

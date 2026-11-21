@@ -283,7 +283,7 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("search_players", ["name": "First 11"])["found"], 1, "the club's own side is there")
         let both = try harness.answer("search_players", ["name": "Made-up", "other_side": true])
         XCTAssertEqual(both.rowsByName.map { $0["uid"] }, [40])
-        XCTAssertNil(both["side"])
+        XCTAssertEqual(both["side"], .string("Both sides, men's and women's football, as other_side asked. \(World.club) can sign only men."))
 
         harness.source.database.womensTeams = [1]
         harness.source.current = false
