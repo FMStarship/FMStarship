@@ -147,6 +147,9 @@ extension Toolbox {
                           description: "A player trait (preferred move) by its English name, whatever the game's language. A wrong one is answered with the list."),
                 Parameter(name: "role", type: "string",
                           description: "Suits this role, by its English name with (IP) or (OOP), whatever the game's language. A wrong one is answered with the list."),
+                Parameter(name: "other_side", type: "boolean",
+                          description: "Also players from the other side of FM's men's and women's football, such as women for a men's club, "
+                            + "whom the user's club can't sign. Left out unless true."),
                 Parameter(name: "ca_min", type: "integer", description: "CA at least. Only while Ability is on."),
                 Parameter(name: "ca_max", type: "integer", description: "CA at most. Only while Ability is on."),
                 Parameter(name: "pa_min", type: "integer", description: "PA at least. Only while Ability is on."),

@@ -17,7 +17,7 @@ chosen in FM Starship.
 | `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has his season in the league, the cup and continental matches apart, his last match (competition, opponent, minutes, rating), and his condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status |
 | `staff` | A club's staff, with jobs and their best coaching areas. For an AI club whose read has no coaching or medical staff, `note` says the rest isn't known |
 | `person` | One player or member of staff in full, by `uid`. For a player, `Contract` has his clauses for goals in the season with his league goals so far, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension and each rule set's bookings in full |
-| `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
+| `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows. `search_players` keeps to the side of FM's men's and women's football the user's club can sign from, and says so in `side`; `other_side` true lists both |
 | `shortlists`, `shortlist` | The user's FM shortlists, and the people on one |
 | `club_overview` | FM Starship's dashboard: facts, budget, who needs action now, the best prospects |
 | `squad_overview` | Each place in the user's tactic, who plays there and how they stand against the league |
