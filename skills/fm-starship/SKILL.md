@@ -29,7 +29,7 @@ chosen in FM Starship.
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
 | `results` | A club's played matches, newest first, with both sides' xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
-| `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club. `since`, `kind` and `limit` narrow it. FM keeps only about the last month |
+| `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club; for fines, unhappiness with training and coach feedback, the player. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
@@ -147,13 +147,18 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   on that opponent made since the last match against them; with none, say FM has no scout report on them, don't make one up.
 - **The inbox** (`inbox`) is FM's own list of the user's news items, as FM keeps it now. FM stores no text for an item, only
   its kind and fields, so FM Starship can't quote a message and gives `about` only for injury reports (the player, FM's name for
-  the injury and its length in days), contracts expiring soon (whose), transfers completed (the person and the other club, not
-  which way it went) and come-and-get-me pleas (the player and the club). For any other kind you have its kind, date, sender and
-  team: say that's all you know, don't fill in what it probably said. `window` says from when FM keeps items, about a month:
+  the injury and its length in days), contracts expiring soon (whose, and the contract FM has for them now, which may be a new
+  one: the item keeps no date), transfers completed (the person and the other club, not which way it went), come-and-get-me
+  pleas (the player and the club), a player unhappy with training (the player), fines (the player, not the amount) and coach
+  feedback on a player (the player, not what it says). For any other kind, the board's confidence included, you have its kind,
+  date, sender and team: say that's all you know, don't fill in what it probably said. `important: true` keeps the kinds a
+  manager acts on: injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, fines, contracts and board items;
+  `false` gives the rest (staff meeting advice, press, odds, previews, coach feedback, bans and the like). `window` says from when FM keeps items, about a month:
   anything older isn't there, so for something before then, such as a member of staff who left, say the inbox no longer has it,
   never that it didn't happen, and look elsewhere (`staff`, `person`). Read and unread aren't known. `kinds` counts the kinds in
-  the answer; use `kind` with part of one, such as "injury", "contract" or "transfer", to narrow to it. `team` is world news for
-  an item FM copied in from the news of the world.
+  the answer; use `kind` with part of one, such as "injury", "contract" or "transfer", to narrow to it. `team` is "not
+  addressed to one team" for FM's own news item copied in; on the save this was checked on, each was still about the club,
+  such as a ban or a call-up for one of its players.
 - **Match load (14 days)** in `squad` and `person` is FM's match load: the matches he played in the 14 days up to today, his
   minutes in them, and 90 a match. "3 matches, 212 of 270 min" is FM's "3 kamper (212/270 minutter) siste 14 dager", and it
   matched FM's figure on the save it was checked on. FM's word for it ("Intensiv" and the like) and where the words start

@@ -9,7 +9,8 @@ final class FakeGame {
     /// The classes whose records the reader finds by their vtables.
     static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER", "SCOUT_TEAM_REPORT_NEWS",
                           "CLUB_HUMAN_MANAGER_DETAILS", "CLUB", "INJURY", "AGENT", "INJURY_REPORT_NEWS_ITEM", "CONTRACT_EXPIRES_SOON_NEWS",
-                          "TRANSFER_COMPLETED_NEWS", "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", "BOARD_CONFIDENCE_UPDATE_NEWS"]
+                          "TRANSFER_COMPLETED_NEWS", "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", "BOARD_CONFIDENCE_UPDATE_NEWS",
+                          "PLAYER_UNHAPPINESS_TRAINING_NEWS", "FINE_NEWS", "COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM"]
     /// `FixturesReader`'s, which RTTI spells in the sicomps namespace.
     static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE"]
     /// Classes of the reader's names in the sicomps namespace, which FM doesn't have, laid out ahead of the real ones: the

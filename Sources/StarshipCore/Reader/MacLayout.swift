@@ -458,12 +458,28 @@ enum MacLayout {
             static let player: Int64 = 0x110
         }
         enum ContractsExpiring {
-            /// A vector (begin, end) of `size`-byte records, one for each person whose contract runs out.
+            /// A vector (begin, end) of pointers to records, one for each person whose contract runs out: 2 and 21 on the
+            /// two items seen. The records hold no date.
             static let people: Int64 = 0x3a0
-            static let size: Int64 = 0x40
-            static let club: Int64 = 0
-            /// The person's database index (`Identity.index`).
-            static let index: Int64 = 0x28
+            /// What's read of a record: as far as the index. FM allocates them 0x50 apart, so each is at most that.
+            static let size = 0x30
+            /// The person's club, then a second club (unknown), the team at +0x10 for a player or +0x18 for staff, and the nation.
+            static let club = 0
+            /// The person's database index (`Identity.index`), matched to the person's name on all 23 records.
+            static let index = 0x28
+        }
+        /// PLAYER_UNHAPPINESS_TRAINING_NEWS: the player, then the coach who sent it and the team (one item, and its copy).
+        enum UnhappyWithTraining {
+            static let player: Int64 = 0xa0
+        }
+        /// FINE_NEWS: the player fined, then the user, the club and its team (two items, each with a copy). The two differ
+        /// only in the player and one byte, so no amount was found.
+        enum Fine {
+            static let player: Int64 = 0xf8
+        }
+        /// COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM: the user, then the player the coach reports on (three items, each with a copy).
+        enum CoachFeedback {
+            static let player: Int64 = 0x258
         }
         enum TransferCompleted {
             static let person: Int64 = 0x140

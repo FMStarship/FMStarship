@@ -26,6 +26,12 @@ public enum NewsSubject: Equatable {
     case transfer(person: NewsPerson, club: String)
     /// A player asking for a move to a club.
     case comeAndGetMe(player: NewsPerson, club: String)
+    /// A coach telling the user a player is unhappy with his training.
+    case unhappyWithTraining(player: NewsPerson)
+    /// A player fined. The item holds no amount FM Starship found.
+    case fine(player: NewsPerson)
+    /// A coach's feedback on a player: whom it's on, not what it says.
+    case coachFeedback(player: NewsPerson)
 }
 
 /// One item in the user's inbox. FM keeps no text for it, only its class and fields.
@@ -58,6 +64,8 @@ public struct InboxItem {
 
     /// The class in plain words: INJURY_REPORT_NEWS_ITEM is "injury report".
     public var kind: String { InboxReader.kind(className) }
+    /// Whether it's a kind a manager acts on: see `InboxReader.importantWords`.
+    public var isImportant: Bool { InboxReader.isImportant(className) }
 }
 
 /// The user's inbox as FM holds it, oldest first, or why it can't be read.
@@ -149,15 +157,26 @@ public final class InboxReader {
             typealias C = L.ContractsExpiring
             guard let head = game.read(item &+ C.people, count: 16) else { return nil }
             let begin = Self.i64(head, 0), end = Self.i64(head, 8)
-            guard begin > 0, end > begin, (end &- begin) % C.size == 0, (end &- begin) / C.size <= 500,
-                  let records = game.read(begin, count: Int(end &- begin)) else { return nil }
+            guard begin > 0, end > begin, (end &- begin) % 8 == 0, (end &- begin) / 8 <= 500,
+                  let pointers = game.read(begin, count: Int(end &- begin)) else { return nil }
             var indexes: [UInt32] = []
-            for at in stride(from: 0, to: records.count, by: Int(C.size)) {
-                // Every record starts with the person's club, so a wrong size is caught at the second record.
-                guard className(game.readPointer(Self.i64(records, at + Int(C.club)))) == "CLUB" else { return nil }
-                indexes.append(Self.u32(records, at + Int(C.index)))
+            for at in stride(from: 0, to: pointers.count, by: 8) {
+                // Every record starts with the person's club: anything else isn't one of these records.
+                let record = Self.i64(pointers, at)
+                guard record > 0, record % 8 == 0, let fields = game.read(record, count: C.size),
+                      className(game.readPointer(Self.i64(fields, C.club))) == "CLUB" else { return nil }
+                indexes.append(Self.u32(fields, C.index))
             }
             return .contractsExpiring(indexes: indexes)
+        case "PLAYER_UNHAPPINESS_TRAINING_NEWS":
+            guard let player = person(game.readPointer(item &+ L.UnhappyWithTraining.player)), player.isPlayer else { return nil }
+            return .unhappyWithTraining(player: player)
+        case "FINE_NEWS":
+            guard let player = person(game.readPointer(item &+ L.Fine.player)), player.isPlayer else { return nil }
+            return .fine(player: player)
+        case "COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM":
+            guard let player = person(game.readPointer(item &+ L.CoachFeedback.player)), player.isPlayer else { return nil }
+            return .coachFeedback(player: player)
         case "TRANSFER_COMPLETED_NEWS":
             typealias T = L.TransferCompleted
             guard let person = person(game.readPointer(item &+ T.person)), let club = club(game.readPointer(item &+ T.team)) else { return nil }
@@ -226,6 +245,16 @@ public final class InboxReader {
             rest = rest[stop...]
         }
         return last.isEmpty ? mangled : last
+    }
+
+    /// The words in FM's class names of the kinds a manager acts on: injuries, transfers, bids and offers, come-and-get-me
+    /// pleas, unhappiness, fines, contracts and the board. Staff meeting advice, press, odds, previews and the rest aren't.
+    public static let importantWords: Set<String> = ["INJURY", "INJURED", "TRANSFER", "OFFER", "BID", "PLEA", "UNHAPPINESS",
+                                                     "UNHAPPY", "FINE", "CONTRACT", "BOARD"]
+
+    /// Whether an item of this class is one a manager acts on, by the words in its name.
+    public static func isImportant(_ className: String) -> Bool {
+        !importantWords.isDisjoint(with: className.split(separator: "_").map(String.init))
     }
 
     /// FM's class in plain words: INJURY_REPORT_NEWS_ITEM is "injury report", BOARD_CONFIDENCE_UPDATE_NEWS "board

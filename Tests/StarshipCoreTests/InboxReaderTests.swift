@@ -76,15 +76,23 @@ final class InboxReaderTests: XCTestCase {
             return InboxReader(game: game.process(), rtti: Rtti(game.process())).inbox(manager: manager.address, teams: teams, today: today)
         }
 
-        /// Records of `size` bytes, each starting with the club, with a person's database index at `ContractsExpiring.index`.
-        func contracts(in item: FakeRecord, indexes: [UInt32], size: Int = Int(L.ContractsExpiring.size)) {
-            let buffer = game.allocate(indexes.count * size)
+        /// As FM keeps them: a vector of pointers, each to a record of its own 0x50 bytes that starts with the person's
+        /// club and has their database index at `ContractsExpiring.index`, with a second club, a team and a nation between.
+        /// `club` false leaves the club out of the last record.
+        func contracts(in item: FakeRecord, indexes: [UInt32], club withClub: Bool = true) {
+            let buffer = game.allocate(max(8, indexes.count * 8))
             for (i, index) in indexes.enumerated() {
-                game.poke(club, at: buffer + Int64(i * size))
-                game.poke(index, at: buffer + Int64(i * size) + L.ContractsExpiring.index)
+                let record = game.record("contract expiring", size: 0x50)
+                if withClub || i < indexes.count - 1 { record.set("club", L.ContractsExpiring.club, club) }
+                record.set("other club", 8, rivals)
+                record.set("team", 0x10, first)
+                record.set("index", L.ContractsExpiring.index, index)
+                record.set("unknown", 0x30, UInt32.max)
+                game.poke(record.address, at: buffer + Int64(i * 8))
             }
             item.set("people begin", Int(L.ContractsExpiring.people), buffer)
-            item.set("people end", Int(L.ContractsExpiring.people) + 8, buffer + Int64(indexes.count * size))
+            item.set("people end", Int(L.ContractsExpiring.people) + 8, buffer + Int64(indexes.count * 8))
+            item.set("people capacity", Int(L.ContractsExpiring.people) + 16, buffer + Int64(indexes.count * 8))
         }
     }
 
@@ -127,12 +135,25 @@ final class InboxReaderTests: XCTestCase {
 
         world.item("BOARD_CONFIDENCE_UPDATE_NEWS", serial: 104, day: 280, from: world.identity(world.director), job: 4)
 
+        let unhappy = world.item("PLAYER_UNHAPPINESS_TRAINING_NEWS", serial: 105, day: 281, from: world.identity(world.director), job: 2)
+        unhappy.set("player", Int(L.UnhappyWithTraining.player), world.identity(world.player))
+        unhappy.set("coach", Int(L.UnhappyWithTraining.player) + 8, world.identity(world.director))
+        unhappy.set("team", Int(L.UnhappyWithTraining.player) + 16, world.first)
+        let fine = world.item("FINE_NEWS", serial: 106, day: 281)
+        fine.set("player", Int(L.Fine.player), world.identity(world.player))
+        fine.set("user", Int(L.Fine.player) + 8, world.identity(world.director))
+        fine.set("club", Int(L.Fine.player) + 16, world.club)
+        let feedback = world.item("COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM", serial: 107, day: 282, from: world.identity(world.director), job: 20)
+        feedback.set("user", Int(L.CoachFeedback.player) - 8, world.identity(world.director))
+        feedback.set("player", Int(L.CoachFeedback.player), world.identity(world.player))
+
         let items = try items(world.inbox())
-        XCTAssertEqual(items.map(\.serial), [100, 101, 102, 103, 104])
+        XCTAssertEqual(items.map(\.serial), [100, 101, 102, 103, 104, 105, 106, 107])
         XCTAssertEqual(items.map(\.kind), ["injury report", "contract expires soon", "transfer completed", "player come and get me plea",
-                                           "board confidence update"])
-        XCTAssertEqual(items.map { Output.day($0.date) }, [271, 274, 274, 280, 280], "the upper bits of the day word aren't the day")
-        XCTAssertEqual(items.map(\.team), [0x438, 0x438, 0x4401, nil, 0x438])
+                                           "board confidence update", "player unhappiness training", "fine", "coach feedback on player"])
+        XCTAssertEqual(items.map { Output.day($0.date) }, [271, 274, 274, 280, 280, 281, 281, 282], "the upper bits of the day word aren't the day")
+        XCTAssertEqual(items.map(\.team), [0x438, 0x438, 0x4401, nil, 0x438, 0x438, 0x438, 0x438])
+        XCTAssertEqual(items.map(\.isImportant), [true, true, true, true, true, true, true, false])
         XCTAssertEqual(items[0].sender?.name, "Pat Physio")
         XCTAssertEqual(items[0].sender?.uid, 7001)
         XCTAssertEqual(items[0].senderJob, "Head Physio")
@@ -149,14 +170,29 @@ final class InboxReaderTests: XCTestCase {
                                                    club: "Fixture Town AFC"))
         XCTAssertEqual(items[3].subject, .comeAndGetMe(player: player, club: "Fixture Town AFC"))
         XCTAssertNil(items[4].subject, "a kind whose fields aren't known says nothing more")
+        XCTAssertEqual(items[5].subject, .unhappyWithTraining(player: player))
+        XCTAssertEqual(items[6].subject, .fine(player: player))
+        XCTAssertEqual(items[7].subject, .coachFeedback(player: player))
+    }
+
+    /// The people a contracts-expiring item names are a vector of pointers to records of their own, as on Molde's save, not
+    /// records inline: two pointers are 16 bytes, which no record size divides.
+    func testContractsExpiringAreAVectorOfPointersToRecords() throws {
+        let world = Club()
+        let two = world.item("CONTRACT_EXPIRES_SOON_NEWS", serial: 1, day: 274)
+        world.contracts(in: two, indexes: [35080, 37369])
+        let one = world.item("CONTRACT_EXPIRES_SOON_NEWS", serial: 2, day: 274)
+        world.contracts(in: one, indexes: [7141])
+        let items = try items(world.inbox())
+        XCTAssertEqual(items.map(\.subject), [.contractsExpiring(indexes: [35080, 37369]), .contractsExpiring(indexes: [7141])])
     }
 
     /// A field that isn't what it should be leaves the item's subject out, never a guess, and the item stays.
     func testAFieldThatIsntWhatItShouldBeLeavesTheSubjectOut() throws {
         let world = Club()
-        // Records of another size: the second starts in the middle of the first, where no club is.
+        // A record that doesn't start with a club: the whole list goes, not just that person.
         let expiring = world.item("CONTRACT_EXPIRES_SOON_NEWS", serial: 1, day: 274)
-        world.contracts(in: expiring, indexes: [73, 71], size: 0x80)
+        world.contracts(in: expiring, indexes: [73, 71], club: false)
         // A staff member where the player should be.
         let plea = world.item("PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", serial: 2, day: 275)
         plea.set("player", Int(L.ComeAndGetMe.player), world.identity(world.director))
@@ -165,11 +201,34 @@ final class InboxReaderTests: XCTestCase {
         let report = world.item("INJURY_REPORT_NEWS_ITEM", serial: 3, day: 276, from: Int64.max - 3)
         report.set("player", Int(L.InjuryReport.player), Int64.max - 3)
         report.set("injury", Int(L.InjuryReport.injury), Int64.max - 3)
+        // A contracts-expiring item whose vector holds a pointer to nothing readable.
+        let unreadable = world.item("CONTRACT_EXPIRES_SOON_NEWS", serial: 4, day: 276)
+        let pointers = world.game.allocate(8)
+        world.game.poke(Int64.max - 7, at: pointers)
+        unreadable.set("people begin", Int(L.ContractsExpiring.people), pointers)
+        unreadable.set("people end", Int(L.ContractsExpiring.people) + 8, pointers + 8)
+        // Staff where the fined, unhappy or reported-on player should be.
+        for (serial, kind, at) in [(UInt32(5), "FINE_NEWS", L.Fine.player), (6, "PLAYER_UNHAPPINESS_TRAINING_NEWS", L.UnhappyWithTraining.player),
+                                   (7, "COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM", L.CoachFeedback.player)] {
+            world.item(kind, serial: serial, day: 277).set("player", Int(at), world.identity(world.director))
+        }
 
         let items = try items(world.inbox())
-        XCTAssertEqual(items.count, 3)
-        XCTAssertEqual(items.map(\.subject), [nil, nil, nil])
+        XCTAssertEqual(items.count, 7)
+        XCTAssertEqual(items.map(\.subject), [nil, nil, nil, nil, nil, nil, nil])
         XCTAssertNil(items[2].sender)
+    }
+
+    func testWhichKindsAreImportant() {
+        for name in ["INJURY_REPORT_NEWS_ITEM", "INJURY_FULL_TRAINING_NEWS", "TRANSFER_COMPLETED_NEWS", "TRANSFER_OFFER_CONFIRMATION_NEWS",
+                     "TRADE_OFFER_NEWS", "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", "PLAYER_UNHAPPINESS_TRAINING_NEWS", "FINE_NEWS",
+                     "CONTRACT_EXPIRES_SOON_NEWS", "CONTRACT_ADD_ON_ACTIVATED_NEWS", "BOARD_CONFIDENCE_UPDATE_NEWS"] {
+            XCTAssertTrue(InboxReader.isImportant(name), name)
+        }
+        for name in ["STAFF_MEETING_ADVICE_NEWS", "PRESS_CONFERENCE_SUMMARY_NEWS", "PRE_MATCH_ODDS_NEWS", "MANAGER_SACK_RACE_NEWS",
+                     "COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM", "MONTHLY_FINANCIAL_UPDATE_NEWS", "ACCUMULATIVE_BAN_NEWS", "CUP_DRAW_WARNING"] {
+            XCTAssertFalse(InboxReader.isImportant(name), name)
+        }
     }
 
     func testAnInboxThatDoesntReadAsOneFailsAsAWhole() {

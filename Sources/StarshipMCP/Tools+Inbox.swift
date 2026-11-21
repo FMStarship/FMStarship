@@ -7,11 +7,15 @@ import StarshipCore
 /// inbox, and no ratings are read from it.
 extension Toolbox {
     private static let someone = "someone FM Starship doesn't read"
+    /// An item not addressed to one of the club's teams: FM's own news item, copied into the inbox. On the save checked,
+    /// every one named the club's team or one of its players (bans, call-ups, scouting).
+    static let noTeam = "not addressed to one team"
 
     func inbox(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let club = try context.ownClub(try args.string("club"))
         let since = try Self.date(args, "since")
         let kind = try args.string("kind")
+        let important = try args.bool("important")
         let limit = try args.int("limit", in: 1...200) ?? 50
         guard let source = context.read.inbox else {
             throw ToolError("FM Starship can't read FM's inbox on this build of FM.")
@@ -44,12 +48,14 @@ extension Toolbox {
                          + "\(Output.iso(since)) to then.")
         }
         var chosen = items.filter { item in since.map { item.date >= $0 } ?? true }
+        if let important { chosen = chosen.filter { $0.isImportant == important } }
         if let kind {
             let all = chosen
             chosen = chosen.filter { $0.kind.range(of: kind, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
             if chosen.isEmpty {
                 let kinds = Array(Set(all.map(\.kind))).sorted()
                 notes.append("No item's kind contains \"\(kind)\"" + (since.map { " since \(Output.iso($0))" } ?? "")
+                             + (important.map { $0 ? " among the important ones" : " among the others" } ?? "")
                              + ". Kinds there: \(kinds.joined(separator: ", ")).")
             }
         }
@@ -62,24 +68,31 @@ extension Toolbox {
         let rows: [JSON] = chosen.prefix(limit).map { item in
             let squad: String = item.team.map { team in
                 Names.squadName(db.humanTeams[club.team]?[team] ?? 0)
-            } ?? "world news"
+            } ?? Self.noTeam
             return .object(dropping: [
                 ("date", .string(Output.iso(item.date))),
                 ("kind", .string(item.kind)),
                 ("from", Self.sender(item, people)),
                 ("team", .string(squad)),
-                ("about", Self.about(item.subject, people, names)),
+                ("about", Self.about(item.subject, people, names, club: club.name)),
             ])
         }
         if chosen.count > limit { notes.append("Showing the newest \(limit) of \(chosen.count).") }
         notes.append("FM keeps no text for an item, only its kind and fields, so about is given only for the kinds FM Starship has "
-                     + "checked: injury reports, contracts expiring soon, transfers completed and come-and-get-me pleas.")
+                     + "checked: injury reports, contracts expiring soon, transfers completed, come-and-get-me pleas, players "
+                     + "unhappy with training, fines (who, not how much) and coach feedback on a player (whom, not what).")
+        if important == true {
+            notes.append("Important means these kinds: injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, "
+                         + "fines, contracts and the board. Everything else, such as staff meeting advice, press, odds, coach "
+                         + "feedback and bans, is left out; important false gives those.")
+        }
 
         return .object(dropping: [
             ("club", .string(club.name)),
             ("window", .string(window)),
             ("since", since.map { .string(Output.iso($0)) }),
             ("kind", kind.map { .string($0) }),
+            ("important", important.map { .bool($0) }),
             ("found", .int(chosen.count)),
             ("kinds", counts.isEmpty ? nil : .object(counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                 .map { ($0.key, .int($0.value)) })),
@@ -134,7 +147,7 @@ extension Toolbox {
     }
 
     private static func about(_ subject: NewsSubject?, _ people: (players: [UInt32: Player], staff: [UInt32: Staff]),
-                              _ names: [UInt32: Person]) -> JSON? {
+                              _ names: [UInt32: Person], club: String) -> JSON? {
         switch subject {
         case nil:
             return nil
@@ -142,11 +155,24 @@ extension Toolbox {
             return .object(dropping: [("player", person(player, people)), ("injury", Output.text(injury)),
                                       ("injured_on", on.map { .string(Output.iso($0)) }), ("days", .int(days))])
         case .contractsExpiring(let indexes)?:
+            // The item holds no date: what's given is the contract FM has for them now, while they're still at the club.
             return .object([("contracts_expiring", .array(indexes.map { index in
                 guard let known = names[index] else { return .object([("name", .string(someone + " (database index \(index))"))]) }
+                let here = known.clubFull == club
                 return .object(dropping: [("uid", .int(Int(known.uid))), ("name", .string(known.name)),
-                                          ("job", (known as? Staff).flatMap { Output.text($0.job) })])
-            }))])
+                                          ("job", (known as? Staff).flatMap { Output.text($0.job) }),
+                                          ("contract_ends_now", here ? known.contractEnd.map { .string(Output.iso($0)) } : nil),
+                                          ("now_at", here ? nil : .string(known.clubFull.isEmpty ? "no club" : known.clubFull))])
+            })), ("note", .string("FM's item keeps no end date. contract_ends_now is the contract FM has for them today, which may "
+                  + "be a new one signed since the item."))])
+        case .unhappyWithTraining(let player)?:
+            return .object([("player", person(player, people))])
+        case .fine(let player)?:
+            return .object([("player", person(player, people)),
+                            ("note", "FM's fine item holds no amount FM Starship has found, so how much isn't given.")])
+        case .coachFeedback(let player)?:
+            return .object([("player", person(player, people)),
+                            ("note", "Whom the feedback is on; what it says isn't read.")])
         case .transfer(let who, let club)?:
             return .object([("person", person(who, people)), ("other_club", .string(club)),
                             ("note", "Which way the transfer went isn't read: the item names the person and the other club.")])

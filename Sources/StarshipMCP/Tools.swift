@@ -202,15 +202,23 @@ extension Toolbox {
              description: "What happened at the user's club, from FM's inbox as FM keeps it now, newest first: each item's date, "
                 + "kind (FM's own, in plain words, such as injury report, contract expires soon, transfer completed, board "
                 + "confidence update), who sent it with their job, and the team it's for (first team, reserves, a youth team, or "
-                + "world news FM copied in). For injury reports, the player, FM's name for the injury and its length in days; for "
-                + "contracts expiring soon, whose; for a transfer completed, the person and the other club; for a come-and-get-me "
-                + "plea, the player and the club he wants. Other kinds say nothing more, as FM keeps no text for an item. FM keeps "
-                + "only about the last month, and window says from when: anything older isn't there, which doesn't mean it didn't "
-                + "happen. Read and unread aren't known. The kinds there are counted in kinds.",
+                + "not addressed to one team: FM's own news item copied in, such as a ban or a call-up for one of the club's "
+                + "players). For injury reports, the player, FM's name for the injury and its length in days; for contracts "
+                + "expiring soon, whose, with the contract FM has for them now; for a transfer completed, the person and the other "
+                + "club; for a come-and-get-me plea, the player and the club he wants; for a player unhappy with training, the "
+                + "player; for a fine, the player (not the amount); for coach feedback on a player, the player (not what it says). "
+                + "Other kinds say nothing more, as FM keeps no text for an item. important keeps the kinds a manager acts on: "
+                + "injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, fines, contracts and the board. FM "
+                + "keeps only about the last month, and window says from when: anything older isn't there, which doesn't mean it "
+                + "didn't happen. Read and unread aren't known. The kinds there are counted in kinds.",
              parameters: [club,
                           Parameter(name: "since", type: "string", description: "Only items on this date or later, YYYY-MM-DD."),
                           Parameter(name: "kind", type: "string",
                                     description: "Only items whose kind contains this, ignoring case, such as \"injury\" or \"contract\"."),
+                          Parameter(name: "important", type: "boolean",
+                                    description: "true: only injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, "
+                                        + "fines, contracts and board items. false: only the rest (staff meeting advice, press, "
+                                        + "odds, previews, coach feedback, bans and the like). Left out: all."),
                           Parameter(name: "limit", type: "integer", description: "How many items, 1-200. 50 if left out.")],
              run: { $0.inbox }),
         Tool(name: "staff_overview", title: "Staff overview",
