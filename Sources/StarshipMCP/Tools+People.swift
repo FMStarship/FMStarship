@@ -258,6 +258,7 @@ extension Toolbox {
         let catalogue: [Col]
         let groups: [String]
         let recent = try args.int("matches", in: 0...40) ?? 10
+        let competitive = try args.bool("competitive") ?? false
         if let player = person as? Player {
             pairs.append(("kind", "player"))
             // A player/manager or player/coach, whose staff side is asked for apart.
@@ -300,7 +301,7 @@ extension Toolbox {
                 pairs.append(("Fitness and morale", state))
             }
             if let load = Self.matchLoad(history, today: context.db.gameDate) { pairs.append((Self.matchLoadName, load)) }
-            if let history, let matches = recentMatches(history, player: player, limit: recent, context) { pairs.append(("Recent matches", matches)) }
+            if let history, let matches = recentMatches(history, player: player, limit: recent, competitive: competitive, context) { pairs.append(("Recent matches", matches)) }
             let traits = player.traits.components(separatedBy: "; ").filter { !$0.isEmpty }
             if !traits.isEmpty { pairs.append(("Traits", .array(traits.map { .string($0) }))) }
         }
@@ -318,10 +319,14 @@ extension Toolbox {
 
     /// His latest matches in FM's record of his form, for any team, newest first: which competition and opponent a goal or a
     /// rating came from.
-    private func recentMatches(_ history: MatchHistory, player: Player, limit: Int, _ context: CallContext) -> JSON? {
+    private func recentMatches(_ history: MatchHistory, player: Player, limit: Int, competitive: Bool, _ context: CallContext) -> JSON? {
         guard limit > 0, !history.matches.isEmpty else { return nil }
         let names = competitionNames(context.read)
-        let rows: [JSON] = history.matches.prefix(limit).map { match in
+        // With competitive, friendlies by FM's type of competition are left out, and a match whose type isn't known is kept.
+        let friendly = competitive ? friendlyByCompetition(context.read) : [:]
+        func isFriendly(_ match: PlayerMatch) -> Bool? { match.friendly ?? friendly[match.competitionIndex] }
+        let shown = Array((competitive ? history.matches.filter { isFriendly($0) != true } : history.matches).prefix(limit))
+        let rows: [JSON] = shown.map { match in
             let head: [JSON] = [.string(Output.iso(match.date)), Output.text(match.teamName) ?? .null,
                                 Self.competitionName(match, names) ?? .null, Output.text(match.opponentName) ?? .null]
             guard match.played else {
@@ -330,10 +335,15 @@ extension Toolbox {
             return .array(head + [.int(match.minutes), match.rating.map { .double($0) } ?? .null, .int(match.goals),
                                   .int(match.assists), .int(match.yellow), .int(match.red), .null])
         }
-        let note = "Newest first, for every team he played for, friendlies, youth and international matches too. team is the "
+        var note = "Newest first, for every team he played for, "
+            + (competitive ? "youth and international matches too, but no friendlies. " : "friendlies, youth and international matches too. ")
+            + "team is the "
             + "club's name, so a reserve or youth team shows as its club, and it's empty for a national team. FM keeps his last "
             + "\(MatchHistory.kept) matches for each team. didnt_play is set when he didn't play, with FM's reason: unused substitute, "
             + "not in the matchday squad, suspended or injured, or reason not known. An empty competition is one FM Starship couldn't name."
+        if competitive, let unknown = Self.competitiveSentence(unknown: shown.filter { isFriendly($0) == nil }.count) {
+            note += " " + unknown
+        }
         return .object([("columns", .array(Self.recentMatchColumns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }
 

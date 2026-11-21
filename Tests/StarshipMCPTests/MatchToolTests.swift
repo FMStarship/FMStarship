@@ -74,6 +74,44 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("fixtures", ["to": "2026-09-14"])["found"], 1, "to alone starts from the first")
     }
 
+    /// competitive leaves out the matches FM's type of competition makes friendlies, and keeps one whose type isn't known,
+    /// saying so. Left out, everything is listed as before.
+    func testCompetitiveLeavesFriendliesOut() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        var ours = try XCTUnwrap(matches.teams[World.team])
+        for i in ours.fixtures.indices { ours.fixtures[i].friendly = false }
+        var friendly = World.fixture(World.firstMatch - 7, home: World.team, away: World.minnowsTeam, score: (5, 0))
+        friendly.competition = "Treningskamp"
+        friendly.competitionIndex = 131
+        friendly.friendly = true
+        var unknown = World.fixture(World.secondMatch + 1, home: World.minnowsTeam, away: World.team, score: (0, 1))
+        unknown.competition = "Mock Oddity"
+        unknown.competitionIndex = 999
+        ours.fixtures = ([friendly, unknown] + ours.fixtures).sorted { $0.date < $1.date }
+        matches.teams[World.team] = ours
+
+        let all = try harness.answer("fixtures", ["from": "2026-09-01"])
+        XCTAssertEqual(rows(all).map { $0["competition"] },
+                       ["Treningskamp", "Mock League", "Mock League", "Mock Oddity", "Mock Cup", "Mock League", "Mock Cup"])
+        XCTAssertNil(all["note"], "nothing to say without competitive")
+        let competitive = try harness.answer("fixtures", ["from": "2026-09-01", "competitive": true])
+        XCTAssertEqual(competitive["found"], 6)
+        XCTAssertEqual(competitive.columnNames, Toolbox.fixtureColumns, "the competition column stays")
+        XCTAssertEqual(rows(competitive).map { $0["competition"] },
+                       ["Mock League", "Mock League", "Mock Oddity", "Mock Cup", "Mock League", "Mock Cup"])
+        XCTAssertEqual(competitive["note"]?.string,
+                       "One match is kept in although competitive is set, because FM Starship couldn't read whether it's a friendly.")
+
+        XCTAssertEqual(try harness.answer("results")["found"], 5)
+        let results = try harness.answer("results", ["competitive": true])
+        XCTAssertEqual(results["found"], 4)
+        XCTAssertEqual(rows(results).map { $0["date"] }, ["2026-09-23", "2026-09-21", "2026-09-20", "2026-09-13"])
+        XCTAssertTrue(results["note"]?.string?.contains("One match is kept in although competitive is set") ?? false)
+        XCTAssertEqual(try harness.answer("results", ["date": "2026-09-06", "competitive": true])["competition"], "Treningskamp",
+                       "a match asked for by date is given either way")
+    }
+
     func testFixturesRefuseBadDates() throws {
         let harness = Harness()
         XCTAssertEqual(try harness.refusal("fixtures", ["from": "27/09/2026"]), "from must be a date, as YYYY-MM-DD.")

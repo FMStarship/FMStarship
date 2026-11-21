@@ -54,6 +54,9 @@ extension Toolbox {
                                              description: "The user's club if left out. Or a club in the user's league, or one the user's "
                                                 + "club plays, by its full name as FM shows it.")
     private static let matchNames = "Competitions, stages and clubs are named as FM names them, in the game's language. "
+    private static let competitiveText = "True leaves friendlies out (pre-season and other club friendlies, testimonials, "
+        + "international friendlies), by FM's own type of competition, not its name. Everything if left out. A match whose "
+        + "competition's type FM Starship couldn't read is kept, and a note says so."
     private static let limit = Parameter(name: "limit", type: "integer", description: "How many rows, 1-100. 25 if left out.")
     private static let sort = Parameter(name: "sort", type: "string",
                                         description: "A column to order by, by its name as in person, such as \"Value\", \"Age\", \"Finishing\" "
@@ -102,11 +105,13 @@ extension Toolbox {
              run: { $0.staff }),
         Tool(name: "person", title: "Person",
              description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats in total and "
-                + "by competition (league, cup, continental), form, his recent matches with competition, opponent, minutes, rating, "
+                + "by competition (league, cup, continental), form, his recent matches (friendlies too, unless competitive is set) with competition, opponent, minutes, rating, "
                 + "goals and assists, or why he didn't play (unused substitute, not in the matchday squad, suspended, injured), his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, his yellow cards toward a ban under each rule set, home-grown status, contract, "
                 + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
                           Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out."),
+                          Parameter(name: "competitive", type: "boolean",
+                                    description: competitiveText),
                           Parameter(name: "kind", type: "string",
                                     description: "For a uid that's a player and a member of staff, as a player/manager is: which side. The player if left out.",
                                     choices: ["player", "staff"])],
@@ -256,7 +261,7 @@ extension Toolbox {
              parameters: [club],
              run: { $0.staffOverview }),
         Tool(name: "fixtures", title: "Fixtures",
-             description: Toolbox.matchNames + "A club's matches, oldest first, from today unless from or to is given: date, kick-off, "
+             description: Toolbox.matchNames + "A club's matches, oldest first, from today unless from or to is given, friendlies too unless competitive is set: date, kick-off, "
                 + "competition, stage, league round, home or away (H/A), opponent, and for played matches the score (home team "
                 + "first), the result for the club, the aggregate of a two-legged tie with the teams' names (\"Apoel Nikosia 2-4 Molde "
                 + "FK\"), attendance, and the goals with their minutes and assists. Scores are checked against the league table; for a "
@@ -266,10 +271,12 @@ extension Toolbox {
              parameters: [matchClub,
                           Parameter(name: "from", type: "string", description: "First date, YYYY-MM-DD. Today if neither from nor to is given."),
                           Parameter(name: "to", type: "string", description: "Last date, YYYY-MM-DD."),
+                          Parameter(name: "competitive", type: "boolean",
+                                    description: competitiveText),
                           limit],
              run: { $0.fixtures }),
         Tool(name: "results", title: "Results",
-             description: Toolbox.matchNames + "A club's played matches, newest first, with score, result, aggregate (with the teams' "
+             description: Toolbox.matchNames + "A club's played matches, newest first, friendlies too unless competitive is set, with score, result, aggregate (with the teams' "
                 + "names), attendance and goals, and for the user's club its xG and shots where known. With date, one match, with each "
                 + "of the club's players who played: minutes, rating, goals, assists, cards and xG, and those who didn't with why "
                 + "(unused substitute, not in the matchday squad, suspended, injured); and for the user's club, both sides' team stats "
@@ -280,7 +287,9 @@ extension Toolbox {
                 + "that was checked.",
              parameters: [matchClub,
                           Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),
-                          Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out.")],
+                          Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out."),
+                          Parameter(name: "competitive", type: "boolean",
+                                    description: competitiveText)],
              run: { $0.results }),
         Tool(name: "league_table", title: "League table",
              description: Toolbox.matchNames + "The table of a club's league, as FM has it now: position, played, won, drawn, lost, "

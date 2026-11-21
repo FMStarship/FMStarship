@@ -67,6 +67,13 @@ extension Toolbox {
     /// A club with no league table to check its scores against gets them anyway, marked not checked.
     static func marksUnchecked(_ check: TeamMatches.Check) -> Bool { check == .noTable }
 
+    /// What `competitive` couldn't leave out: matches whose competition's type FM Starship couldn't read. Nil when there are none.
+    static func competitiveSentence(unknown: Int) -> String? {
+        guard unknown > 0 else { return nil }
+        return (unknown == 1 ? "One match is" : "\(unknown) matches are") + " kept in although competitive is set, because FM "
+            + "Starship couldn't read whether " + (unknown == 1 ? "it's a friendly." : "they're friendlies.")
+    }
+
     /// Why there's no league table to give.
     static func noTableSentence(_ club: String) -> String {
         "There's no league table FM Starship can read for \(club)'s competition."
@@ -81,7 +88,10 @@ extension Toolbox {
         let from = try Self.date(args, "from") ?? (to == nil ? context.db.gameDate : nil)
         let limit = try args.int("limit", in: 1...100) ?? 25
         if let from, let to, to < from { throw ToolError("to is before from.") }
-        let found = matches.fixtures.filter { match in (from.map { match.date >= $0 } ?? true) && (to.map { match.date <= $0 } ?? true) }
+        let competitive = try args.bool("competitive") ?? false
+        let found = matches.fixtures.filter { match in
+            (from.map { match.date >= $0 } ?? true) && (to.map { match.date <= $0 } ?? true) && !(competitive && match.friendly == true)
+        }
         let checked = matches.check == .passed, unchecked = Self.marksUnchecked(matches.check)
         let columns = Self.fixtureColumns
         let rows = found.prefix(limit).map {
@@ -91,7 +101,10 @@ extension Toolbox {
                                         ("to", to.map { .string(Output.iso($0)) }), ("found", .int(found.count))]
         if found.count > limit { pairs.append(("shown", .int(limit))) }
         pairs += [("columns", .array(columns.map { .string($0) })), ("rows", .array(rows))]
-        if !checked, found.contains(where: \.played) { pairs.append(("note", .string(Self.uncheckedSentence(club, matches.check)))) }
+        var notes: [String] = []
+        if !checked, found.contains(where: \.played) { notes.append(Self.uncheckedSentence(club, matches.check)) }
+        if competitive, let unknown = Self.competitiveSentence(unknown: found.filter { $0.friendly == nil }.count) { notes.append(unknown) }
+        if !notes.isEmpty { pairs.append(("note", .string(notes.joined(separator: " ")))) }
         return .object(dropping: pairs)
     }
 
@@ -115,13 +128,15 @@ extension Toolbox {
             return try oneResult(match, club: club, matches: matches, context)
         }
         let limit = try args.int("limit", in: 1...50) ?? 10
+        let competitive = try args.bool("competitive") ?? false
+        let listed = competitive ? played.filter { $0.friendly != true } : Array(played)
         // Both sides' xG and shots, where FM still has the match's team stats: only for the user's club.
         let checked = checkedStats(club: club, matches: matches, context)
         let withStats = checked.off == nil
         let base = Self.resultColumns
         var columns = base
         if withStats { columns += ["xg", "shots", "opponent_xg", "opponent_shots"] }
-        let rows: [JSON] = played.prefix(limit).map { match in
+        let rows: [JSON] = listed.prefix(limit).map { match in
             var cells = row(match, team: matches.team, columns: base, scores: true, check: matches.check, context).array ?? []
             if withStats {
                 let stats = checked.stats[match.date]
@@ -130,13 +145,14 @@ extension Toolbox {
             }
             return .array(cells)
         }
-        var pairs: [(String, JSON)] = [("club", .string(club)), ("found", .int(played.count))]
-        if played.count > limit { pairs.append(("shown", .int(limit))) }
+        var pairs: [(String, JSON)] = [("club", .string(club)), ("found", .int(listed.count))]
+        if listed.count > limit { pairs.append(("shown", .int(limit))) }
         var note = "Newest first. Ask with date for one match's players"
         note += withStats ? " and both sides' team stats. xg and shots are the club's and opponent_xg and opponent_shots the opponent's, where FM still "
             + "has the match's team stats "
             + "and FM Starship's check of them passed: " + Self.statsKept(club, checked, today: context.db.gameDate) : "."
         if unchecked { note += " " + Self.uncheckedSentence(club, matches.check) }
+        if competitive, let unknown = Self.competitiveSentence(unknown: listed.filter { $0.friendly == nil }.count) { note += " " + unknown }
         return .object(pairs + [("columns", .array(columns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }
 

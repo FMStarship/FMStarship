@@ -77,6 +77,7 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   international matches too: date, team, competition, opponent, minutes, rating, goals, assists and cards. Use them to say
   where a goal or a rating came from. `team` is the club's name, so a reserve team's match shows its club with the reserve
   league as the competition; it's empty for a national team. An empty competition is one FM Starship couldn't name.
+  For his form, ask with `competitive` true to leave friendlies out (see Matches).
   When he didn't play, minutes and rating are empty and `didnt_play` says why, from FM's own entry: "unused substitute" (named
   on the bench, not brought on), "not in the matchday squad", "suspended" or "injured"; the first two matched FM's own bench
   for a match on the save they were checked on. "reason not known" is a reason FM keeps
@@ -120,6 +121,12 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   its league and the clubs it plays, by their full names. FM keeps each player's last 20 matches for a team, so a player's stats
   for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with
   play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
+  `fixtures`, `results` and `person`'s Recent matches include friendlies unless you ask with `competitive` true. Use it for
+  form: a pre-season win over an amateur side isn't form. It goes by FM's own type of competition, never the name, and
+  leaves out club friendlies (pre-season, testimonials, FM's tournament for free agents) and international friendlies at
+  every age, and nothing else: youth, reserve, cup and continental matches stay in. A match whose competition's type FM
+  Starship couldn't read stays in too, and the note says how many; on a build of FM that FM Starship hasn't been checked on,
+  that's every match. `results` with `date` gives the match asked for either way.
   Scores are checked against the club's league table. A club whose competition has no table FM Starship can read, such as
   one in a league FM runs in the background, gets its scores anyway with `checked` false and a note: they're read the same way
   as checked ones, but tell the user they weren't checked when you use them, such as for an opponent's recent form. `checked`

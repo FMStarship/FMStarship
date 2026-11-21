@@ -156,6 +156,15 @@ final class FakeMatches: MatchSource {
         nameSweeps += 1
         return classesFound ? names : [:]
     }
+
+    /// Whether each competition is a friendly by FM's type, as one sweep finds: the league and the cup aren't.
+    var friendlies: [UInt32: Bool] = [World.leagueIndex: false, World.cupIndex: false]
+    private(set) var friendlySweeps = 0
+
+    func friendlyByCompetition() -> [UInt32: Bool] {
+        friendlySweeps += 1
+        return classesFound ? friendlies : [:]
+    }
 }
 
 /// Players' state as `PlayerStateSource` gives it: bans worked out by hand, and what FM's memory holds now, which a test

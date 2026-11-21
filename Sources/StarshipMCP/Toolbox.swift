@@ -157,6 +157,8 @@ public final class Toolbox: ToolProvider {
     private var matchesByTeam: [Int64: (matches: TeamMatches?, at: Date)] = [:]
     private var namesRead: Int?
     private var namesByIndex: [UInt32: String] = [:]
+    private var friendlyRead: Int?
+    private var friendlyByIndex: [UInt32: Bool] = [:]
     private var reportsRead: Int?
     private var reportsFound: [ScoutReport]?
     /// The match stats sweep, with the read, team and number of played matches it was made for.
@@ -269,6 +271,17 @@ public final class Toolbox: ToolProvider {
             namesRead = read.number
         }
         return namesByIndex
+    }
+
+    /// Whether each competition is a friendly by FM's type, by database index, swept for once for each read of the save and
+    /// only when a tool asks for competitive matches. A competition missing from it isn't known.
+    func friendlyByCompetition(_ read: GameRead) -> [UInt32: Bool] {
+        guard let source = read.matches else { return [:] }
+        if friendlyRead != read.number {
+            friendlyByIndex = source.friendlyByCompetition()
+            friendlyRead = read.number
+        }
+        return friendlyByIndex
     }
 
     /// FM's opposition reports, swept for once for each read of the save: FM writes them as the days go by. Nil when they

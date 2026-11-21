@@ -39,6 +39,9 @@ public struct MatchFixture: Sendable {
     /// FM's names, in the game's language.
     public var competition = ""
     public var competitionIndex: UInt32 = 0
+    /// Whether FM's type of competition makes it a friendly: nil where the type couldn't be read, or is one FM Starship
+    /// hasn't seen. Only read on the build of game_plugin it was found on.
+    public var friendly: Bool?
     public var stage = ""
     public var homeGoals: Int?
     public var awayGoals: Int?
@@ -169,6 +172,9 @@ public struct PlayerMatch: Sendable {
     /// The competition's name when it's his team's own league, which names a reserve league's matches that no fixture in
     /// memory names. Empty otherwise: `FixturesReader.competitionNames` names the rest.
     public var competitionName = ""
+    /// Whether FM's type of competition makes it a friendly, as `MatchFixture.friendly`: only for his team's own league,
+    /// whose record the history reads. Nil otherwise: `FixturesReader.friendlyByCompetition` gives the rest.
+    public var friendly: Bool?
     /// Why a player didn't play, as FM's entry says.
     public enum Absence: String, Sendable {
         case unusedSubstitute = "unused substitute"
@@ -285,7 +291,7 @@ public final class FixturesReader {
         }
 
         var names: [Int64: String] = [:]
-        var fixtureNames: [Int64: (competition: String, index: UInt32, stage: String)] = [:]
+        var fixtureNames: [Int64: (competition: String, index: UInt32, friendly: Bool?, stage: String)] = [:]
         struct Key: Hashable { let home: Int64, away: Int64, date: Date }
         var copies: [Key: [MatchFixture]] = [:]
         for (address, result) in found.sorted(by: { $0.key < $1.key }) {
@@ -319,6 +325,26 @@ public final class FixturesReader {
             best[index] = (comp, fixtures)
         }
         return best.mapValues(\.comp)
+    }
+
+    /// Whether each competition is a friendly, by FM's type of competition, from the same sweep as `competitionRecords`: a
+    /// player's match records only hold the index. A competition whose type couldn't be read, or isn't one FM Starship has
+    /// seen, is left out.
+    public func friendlyByCompetition() -> [UInt32: Bool] {
+        competitionRecords().compactMapValues(friendly)
+    }
+
+    /// Whether FM's type of competition makes it a friendly. Nil for a type FM Starship hasn't seen.
+    static func friendly(type: UInt8) -> Bool? {
+        if MacLayout.Comp.friendlyTypes.contains(type) { return true }
+        return MacLayout.Comp.competitiveTypes.contains(type) ? false : nil
+    }
+
+    /// A competition record's type, as `friendly(type:)` reads it. Only on the checked build, as the field isn't covered by
+    /// the self-check.
+    private func friendly(_ comp: Int64) -> Bool? {
+        guard checkedBuild, comp != 0, let b = game.read(comp &+ MacLayout.Comp.type, count: 1), let type = b.first else { return nil }
+        return Self.friendly(type: type)
     }
 
     /// How many fixtures and results name each competition record, from one sweep.
@@ -379,7 +405,7 @@ public final class FixturesReader {
     }
 
     private func decode(_ address: Int64, result: Bool, names: inout [Int64: String],
-                        fixtureNames: inout [Int64: (competition: String, index: UInt32, stage: String)]) -> MatchFixture? {
+                        fixtureNames: inout [Int64: (competition: String, index: UInt32, friendly: Bool?, stage: String)]) -> MatchFixture? {
         typealias F = MacLayout.Fixture
         typealias R = MacLayout.FixtureResult
         guard let b = game.read(address, count: result ? R.size : F.size) else { return nil }
@@ -400,12 +426,13 @@ public final class FixturesReader {
                 let comp = game.readPointer(name &+ N.comp)
                 let stage = game.readPointer(name &+ N.stage)
                 fixtureNames[name] = (comp == 0 ? "" : game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName))),
-                                      comp == 0 ? 0 : compIndex(comp),
+                                      comp == 0 ? 0 : compIndex(comp), friendly(comp),
                                       stage == 0 ? "" : game.lengthPrefixedString(game.readPointer(stage &+ N.stageText)))
             }
             if let named = fixtureNames[name] {
                 fixture.competition = named.competition
                 fixture.competitionIndex = named.index
+                fixture.friendly = named.friendly
                 fixture.stage = named.stage
             }
         }
@@ -536,7 +563,8 @@ public final class FixturesReader {
     }
 
     /// A player's recent matches, from the record FM keeps for his form: plain data, so no emulation. `name` names a team.
-    public static func history(player block: Int64, in game: GameProcess, name: (Int64) -> String) -> MatchHistory {
+    /// `types` reads FM's type of competition for his team's own league, only on the checked build.
+    public static func history(player block: Int64, in game: GameProcess, types: Bool = false, name: (Int64) -> String) -> MatchHistory {
         typealias G = MacLayout.FormGroup
         typealias E = MacLayout.FormEntry
         typealias M = MacLayout.MatchRecord
@@ -554,7 +582,7 @@ public final class FixturesReader {
             let team = le64(head, G.team)
             let teamName = name(team)
             let teamType = game.read(team &+ Int64(MacLayout.Team.type), count: 1)?.first.map(Int.init)
-            let league = league(of: team, in: game)
+            let league = league(of: team, in: game, type: types)
             let count = min(Int(head[G.count]), G.kept)
             var oldest: Date?
             for i in 0..<count {
@@ -567,7 +595,10 @@ public final class FixturesReader {
                 match.teamName = teamName
                 match.teamType = teamType
                 match.competitionIndex = le32(b, E.competition)
-                if let league, league.index == match.competitionIndex { match.competitionName = league.name }
+                if let league, league.index == match.competitionIndex {
+                    match.competitionName = league.name
+                    match.friendly = league.friendly
+                }
                 let stats = le64(b, E.record)
                 if stats == 0 { match.absence = absence(b[E.reason]) }
                 if stats != 0, let r = game.read(stats, count: M.size) {
@@ -607,12 +638,13 @@ public final class FixturesReader {
         }
     }
 
-    /// A team's own league: its database index and name.
-    private static func league(of team: Int64, in game: GameProcess) -> (index: UInt32, name: String)? {
+    /// A team's own league: its database index and name, and with `type` whether FM's type of competition makes it a friendly.
+    private static func league(of team: Int64, in game: GameProcess, type: Bool) -> (index: UInt32, name: String, friendly: Bool?)? {
         let comp = game.readPointer(team &+ Int64(MacLayout.Team.competition))
         guard comp != 0, let b = game.read(comp &+ MacLayout.Comp.index, count: 4) else { return nil }
         let name = game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName)))
-        return name.isEmpty ? nil : (le32(b, 0), name)
+        let friendly = type ? game.read(comp &+ MacLayout.Comp.type, count: 1)?.first.flatMap(Self.friendly(type:)) : nil
+        return name.isEmpty ? nil : (le32(b, 0), name, friendly)
     }
 }
 

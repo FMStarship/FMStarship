@@ -398,7 +398,8 @@ public final class RulesEngine: GameRulesEngine {
     /// The player's recent matches, each with his minutes, rating, goals, assists, cards and xG. Plain data from the
     /// same record as `form`, so it's on where form is.
     public func matchHistory(player: Player) -> MatchHistory? {
-        FixturesReader.history(player: player.block, in: game) { self.teamNames.name($0, in: self.game) }
+        // The engine is only made on the checked build, so FM's type of competition can be read too.
+        FixturesReader.history(player: player.block, in: game, types: true) { self.teamNames.name($0, in: self.game) }
     }
 
     /// Condition and sharpness through FM's own getters, which first make the call FM makes to bring a player up to date.

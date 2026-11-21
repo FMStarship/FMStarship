@@ -215,6 +215,33 @@ final class CompetitionStatsTests: XCTestCase {
         XCTAssertEqual(rows[3]["opponent"], .string(World.otherTown))
     }
 
+    /// competitive leaves out his matches in competitions FM's type makes friendlies, and keeps one in a competition whose
+    /// type isn't known, saying so. FM's types are only swept for when asked.
+    func testRecentMatchesCanLeaveFriendliesOut() throws {
+        let harness = Harness()
+        let engine = try XCTUnwrap(harness.source.engine as? FakeEngine)
+        let matches = try XCTUnwrap(harness.source.matches)
+        matches.friendlies[131] = true
+        // A reserve league no fixture names, whose type the history read from the team's own league, is no friendly.
+        var reserves = Self.match(267, team: World.club, index: 55, name: "Mock Reserve League", opponent: "Reserve Town", goals: 0)
+        reserves.friendly = false
+        engine.moreMatches[9] = [
+            Self.match(269, team: World.club, index: 131, name: "", opponent: World.minnows, goals: 4),
+            Self.match(268, team: "Loan Club", index: 77, opponent: "Away Town", goals: 1),
+            reserves,
+        ]
+        let all = try XCTUnwrap(try harness.answer("person", ["uid": 9])["Recent matches"])
+        XCTAssertEqual(all.rowsByName.map { $0["date"] }, ["2026-09-26", "2026-09-25", "2026-09-24", "2026-09-20", "2026-09-13"])
+        XCTAssertEqual(matches.friendlySweeps, 0, "not swept for without competitive")
+
+        let competitive = try XCTUnwrap(try harness.answer("person", ["uid": 9, "competitive": true])["Recent matches"])
+        XCTAssertEqual(competitive.rowsByName.map { $0["date"] }, ["2026-09-25", "2026-09-24", "2026-09-20", "2026-09-13"])
+        XCTAssertTrue(competitive["note"]?.string?.contains("but no friendlies") ?? false)
+        XCTAssertTrue(competitive["note"]?.string?.contains("One match is kept in although competitive is set") ?? false)
+        XCTAssertEqual(try harness.answer("person", ["uid": 9, "competitive": true, "matches": 1])["Recent matches"]?.rowsByName.first?["date"],
+                       "2026-09-25", "friendlies are left out before the matches are counted")
+    }
+
     func testAnUnusedSubstituteHasNoMinutesOrRating() throws {
         let recent = try XCTUnwrap(try Harness().answer("person", ["uid": 12])["Recent matches"])
         let row = try XCTUnwrap(recent.rowsByName.first)

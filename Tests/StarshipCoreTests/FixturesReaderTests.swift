@@ -408,6 +408,12 @@ final class FixturesReaderTests: XCTestCase {
         let lower = try XCTUnwrap(found.matches.last)
         XCTAssertEqual(lower.teamName, "Little Minnows")
         XCTAssertEqual(lower.competitionName, "Mock Lower League")
+
+        // With types, as the rules engine asks on the checked build, his team's own league says it's no friendly; the cup,
+        // whose record the history doesn't read, isn't known. Without, nothing is.
+        XCTAssertTrue(found.matches.allSatisfy { $0.friendly == nil })
+        let typed = FixturesReader.history(player: player.address, in: world.game.process(), types: true) { _ in "" }.matches
+        XCTAssertEqual(typed.map(\.friendly), [nil, false, false] + Array(repeating: false, count: 20))
     }
 
     func testNamesEveryCompetitionAFixtureIsIn() throws {
@@ -417,6 +423,34 @@ final class FixturesReaderTests: XCTestCase {
         leg.score = (4, 2)
         world.game.match(leg)
         XCTAssertEqual(try world.reader().competitionNames(), [World.leagueIndex: "Mock League", World.cupIndex: "Mock Cup"])
+    }
+
+    /// FM's type of competition tells a friendly from the rest, whatever its name: 9 a club friendly, 24 an international one.
+    /// A type FM Starship hasn't seen, or one read on a build it wasn't checked on, isn't known.
+    func testFriendliesAreToldByFMsTypeOfCompetition() throws {
+        let world = World()
+        world.playLeague()
+        let game = world.game
+        let pairs: [(String, UInt32, UInt8, Int64)] = [("Treningskamp", 131, 9, world.town), ("vennskapskamp", 350, 24, world.united),
+                                                       ("Mock Cup Two", 646, 2, world.minnows), ("Mock Oddity", 999, 200, world.town)]
+        for (i, (name, index, type, opponent)) in pairs.enumerated() {
+            let comp = game.competition(name, index: index, type: type)
+            var match = FakeGame.MatchValues(home: world.rovers, away: opponent, name: game.fixtureName(competition: comp), day: UInt16(30 + i))
+            match.score = (1, 0)
+            game.match(match)
+        }
+        let fixtures = try world.reader().fixtures(team: world.rovers)
+        func friendly(_ name: String) -> Bool?? { fixtures.first { $0.competition == name }.map(\.friendly) }
+        XCTAssertEqual(friendly("Treningskamp"), true)
+        XCTAssertEqual(friendly("vennskapskamp"), true)
+        XCTAssertEqual(friendly("Mock League"), false)
+        XCTAssertEqual(friendly("Mock Cup Two"), false)
+        XCTAssertEqual(friendly("Mock Oddity"), .some(nil), "a type FM Starship hasn't seen isn't known")
+        XCTAssertEqual(try world.reader().friendlyByCompetition(), [World.leagueIndex: false, 131: true, 350: true, 646: false])
+
+        let unchecked = try XCTUnwrap(FixturesReader(game: game.process(), rtti: Rtti(game.process()), checkedBuild: false))
+        XCTAssertTrue(unchecked.fixtures(team: world.rovers).allSatisfy { $0.friendly == nil }, "only read on the checked build")
+        XCTAssertEqual(unchecked.friendlyByCompetition(), [:])
     }
 
     /// A copy in freed memory could point at another competition record with the same index: the name most fixtures carry wins.

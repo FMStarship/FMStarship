@@ -140,6 +140,9 @@ public protocol MatchSource: AnyObject {
     func matches(team: Int64) -> TeamMatches?
     /// Every competition with a fixture in FM's memory, by database index, which is all a player's match record holds.
     func competitionNames() -> [UInt32: String]
+    /// Whether each competition with a fixture in FM's memory is a friendly, by FM's type of competition, by database index.
+    /// A competition whose type isn't known is left out.
+    func friendlyByCompetition() -> [UInt32: Bool]
     /// The team stats of the user's club's recent matches, from FM's post-match news, before FM Starship's check. Nil on a
     /// build of FM they haven't been checked on.
     func matchStats(team: Int64) -> [MatchStats]?
@@ -147,6 +150,7 @@ public protocol MatchSource: AnyObject {
 
 extension MatchSource {
     public func matchStats(team: Int64) -> [MatchStats]? { nil }
+    public func friendlyByCompetition() -> [UInt32: Bool] { [:] }
 }
 
 /// The running game's, through `FixturesReader`, which is set up on the first question about a match.
@@ -167,6 +171,11 @@ final class LiveMatches: MatchSource {
     func competitionNames() -> [UInt32: String] {
         if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
         return (reader ?? nil)?.competitionNames() ?? [:]
+    }
+
+    func friendlyByCompetition() -> [UInt32: Bool] {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.friendlyByCompetition() ?? [:]
     }
 
     private lazy var statsReader = MatchStatsReader(game: game, rtti: Rtti(game))
