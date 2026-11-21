@@ -525,6 +525,31 @@ enum MacLayout {
             static let player: Int64 = 0x258
             static let team: Int64 = 0x270
         }
+        /// CONTRACT_ADD_ON_ACTIVATED_NEWS (one item, and its copy): a pointer to the club's CLUB and a vector (begin, end,
+        /// capacity) of pointers to the add-ons that came into force.
+        enum AddOnActivated {
+            static let record: Int64 = 0xa0
+            static let club: Int64 = 0
+            static let addOns: Int64 = 8
+            /// One add-on: the player's identity, then at `clause` the 8 bytes of the clause as his contract's list holds it
+            /// (`Contract.clausesBegin`), byte for byte: the amount, u32, in pounds; the count it needs, u16; its code, u16.
+            static let player: Int64 = 0
+            static let clause: Int64 = 0x1c
+            static let size = 0x24
+            /// The code of the clause for goals in a season. Kristian Lonebu's, at 10, came into force the day after his
+            /// 10th league goal of 2029; his 9 in Europe by then didn't count. 920 of the 1,061 players with one are strikers.
+            static let seasonGoals = 10
+        }
+        /// TRANSFER_OFFER_CONFIRMATION_NEWS (one item, and its copy): the person, the user's team (at +0x2f0 to +0x310, five
+        /// times), the other club's team and the fee.
+        enum OfferConfirmation {
+            static let person: Int64 = 0x2b0
+            static let team: Int64 = 0x2f0
+            static let otherTeam: Int64 = 0x320
+            /// u32, in pounds, four times. 122,960 for Max Urwantschky from Pisa, as in FM's transfer history entry for the
+            /// move (TRANSFER_TIMELINE_EVENT +0x54) and the offer itself (FULL_TRANSFER_OFFER +0x58). Given only when the four agree.
+            static let fees: [Int64] = [0x3a4, 0x3a8, 0x3bc, 0x3e0]
+        }
     }
 
     /// FM's injury, shared by everyone with one: its name, in the game's language, is a string this points at.

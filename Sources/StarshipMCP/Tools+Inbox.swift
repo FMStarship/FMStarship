@@ -1,6 +1,7 @@
 import Foundation
 import StarshipAnalysis
 import StarshipCore
+import StarshipSearch
 
 /// The user's inbox as FM holds it: each item's kind, date, sender and team, and what it's about for the kinds whose fields
 /// are known. FM keeps no text for an item, only what it writes it from. Nothing in it is hidden in FM: it's the user's own
@@ -80,7 +81,9 @@ extension Toolbox {
         if chosen.count > limit { notes.append("Showing the newest \(limit) of \(chosen.count).") }
         notes.append("FM keeps no text for an item, only its kind and fields, so about is given only for the kinds FM Starship has "
                      + "checked: injury reports, contracts expiring soon, transfers completed, come-and-get-me pleas, players "
-                     + "unhappy with training, fines (who, not how much) and coach feedback on a player (whom, not what).")
+                     + "unhappy with training, fines (who, not how much), coach feedback on a player (whom, not what), contract "
+                     + "add-ons activated (whose, and the clause and its sum when it's the one for goals in the season) and "
+                     + "transfer offers confirmed (the person, the other club and the fee).")
         if important == true {
             notes.append("Important means these kinds: injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, "
                          + "fines, contracts and the board. Everything else, such as staff meeting advice, press, odds, coach "
@@ -178,6 +181,29 @@ extension Toolbox {
                             ("note", "Which way the transfer went isn't read: the item names the person and the other club.")])
         case .comeAndGetMe(let player, let club)?:
             return .object([("player", person(player, people)), ("wants_to_join", .string(club))])
+        case .addOnsActivated(let addOns)?:
+            var notes: [String] = []
+            if addOns.contains(where: { $0.seasonGoals != nil }) {
+                notes.append("FM's item names the clause by a code. FM Starship knows one, goals in the season, checked on one item: "
+                             + "it came the day after the player's 10th league goal of the season, his goals in Europe didn't count, "
+                             + "and whether cup goals do isn't known. amount is the sum the clause holds, as his contract does.")
+            }
+            for addOn in addOns where addOn.seasonGoals == nil {
+                let name = person(addOn.player, people)["name"]?.string ?? someone
+                notes.append("FM Starship doesn't know the code of \(name)'s clause, so which clause it is isn't given.")
+            }
+            return .object([("activated", .array(addOns.map { addOn in
+                .object(dropping: [("player", person(addOn.player, people)),
+                                   ("clause", addOn.seasonGoals.map { .string("\($0) goals in the season") }),
+                                   ("amount", addOn.amount.flatMap { Output.text(Units.moneyText(Double($0))) })])
+            })), ("note", .string(notes.joined(separator: " ")))])
+        case .offerConfirmed(let who, let club, let fee)?:
+            var notes = ["Which way the transfer goes isn't read: the item names the person and the other club."]
+            if club == nil { notes.append("The other club isn't given: the item doesn't name it plainly.") }
+            if fee == nil { notes.append("No fee is given: the item's copies of it don't agree, or it holds none.") }
+            return .object(dropping: [("person", person(who, people)), ("other_club", club.map { .string($0) }),
+                                      ("fee", fee.flatMap { Output.text(Units.moneyText(Double($0))) }),
+                                      ("note", .string(notes.joined(separator: " ")))])
         }
     }
 }

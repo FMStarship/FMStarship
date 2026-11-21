@@ -32,6 +32,26 @@ public enum NewsSubject: Equatable {
     case fine(player: NewsPerson)
     /// A coach's feedback on a player: whom it's on, not what it says.
     case coachFeedback(player: NewsPerson)
+    /// Clauses in players' contracts that came into force, each with what's known of the clause.
+    case addOnsActivated([ActivatedAddOn])
+    /// A transfer offer FM confirmed: the person, the other club when the item names it plainly, and the fee in pounds
+    /// when the item's copies of it agree. Which way the transfer goes isn't read.
+    case offerConfirmed(person: NewsPerson, club: String?, fee: Int64?)
+}
+
+/// A clause in a player's contract that came into force.
+public struct ActivatedAddOn: Equatable {
+    public let player: NewsPerson
+    /// For the clause for goals in a season, the goals it needs; nil for a clause whose code isn't known.
+    public let seasonGoals: Int?
+    /// The clause's amount in pounds, as his contract holds it, for the clause for goals in a season only.
+    public let amount: Int64?
+
+    public init(player: NewsPerson, seasonGoals: Int? = nil, amount: Int64? = nil) {
+        self.player = player
+        self.seasonGoals = seasonGoals
+        self.amount = amount
+    }
 }
 
 /// One item in the user's inbox. FM keeps no text for it, only its class and fields.
@@ -135,14 +155,14 @@ public final class InboxReader {
             let fromAgent = sender == nil && from != 0 && className(game.readPointer(from)) == "AGENT"
             let job = sender == nil ? nil : Names.jobs[Int(b[Int(L.senderJob)])]
             items.append(InboxItem(serial: serial, date: date, className: type, team: team == L.world ? nil : team,
-                                   sender: sender, fromAgent: fromAgent, senderJob: job, subject: subject(item, type)))
+                                   sender: sender, fromAgent: fromAgent, senderJob: job, subject: subject(item, type, teams: teams)))
         }
         return .items(items)
     }
 
     /// The fields of the classes they were found on, each checked to be what it should be. Nil for any other class, or
-    /// when a field isn't.
-    private func subject(_ item: Int64, _ type: String) -> NewsSubject? {
+    /// when a field isn't. `teams` are the user's club's, by database index.
+    private func subject(_ item: Int64, _ type: String, teams: [UInt32: Int]) -> NewsSubject? {
         switch type {
         case "INJURY_REPORT_NEWS_ITEM":
             typealias I = L.InjuryReport
@@ -186,9 +206,54 @@ public final class InboxReader {
             guard let player = person(game.readPointer(item &+ P.player)), player.isPlayer,
                   let club = club(game.readPointer(item &+ P.team)) else { return nil }
             return .comeAndGetMe(player: player, club: club)
+        case "CONTRACT_ADD_ON_ACTIVATED_NEWS":
+            return addOnsActivated(item)
+        case "TRANSFER_OFFER_CONFIRMATION_NEWS":
+            typealias O = L.OfferConfirmation
+            guard let person = person(game.readPointer(item &+ O.person)), let b = game.read(item, count: Int(O.fees.max() ?? 0) + 4) else {
+                return nil
+            }
+            // The other club only when the item's team is one of the user's club's and the other team isn't.
+            let ours = teamIndex(game.readPointer(item &+ O.team)), other = game.readPointer(item &+ O.otherTeam)
+            let plain = ours.map { teams[$0] != nil } == true && teamIndex(other).map { teams[$0] == nil } == true
+            let fees = Set(O.fees.map { Self.u32(b, Int($0)) })
+            let fee = fees.count == 1 ? fees.first.flatMap { $0 > 0 && $0 != UInt32.max ? Int64($0) : nil } : nil
+            return .offerConfirmed(person: person, club: plain ? club(other) : nil, fee: fee)
         default:
             return nil
         }
+    }
+
+    /// The add-ons a CONTRACT_ADD_ON_ACTIVATED_NEWS points at, each a player and his clause. Nil unless every one reads.
+    private func addOnsActivated(_ item: Int64) -> NewsSubject? {
+        typealias A = L.AddOnActivated
+        let record = game.readPointer(item &+ A.record)
+        guard record > 0, record % 8 == 0, className(game.readPointer(game.readPointer(record &+ A.club))) == "CLUB",
+              let head = game.read(record &+ A.addOns, count: 16) else { return nil }
+        let begin = Self.i64(head, 0), end = Self.i64(head, 8)
+        guard begin > 0, end > begin, (end &- begin) % 8 == 0, (end &- begin) / 8 <= 20,
+              let pointers = game.read(begin, count: Int(end &- begin)) else { return nil }
+        var found: [ActivatedAddOn] = []
+        for at in stride(from: 0, to: pointers.count, by: 8) {
+            let addOn = Self.i64(pointers, at)
+            guard addOn > 0, addOn % 8 == 0, let b = game.read(addOn, count: A.size),
+                  let player = person(Self.i64(b, Int(A.player))), player.isPlayer else { return nil }
+            let clause = Int(A.clause)
+            let amount = Self.u32(b, clause), count = Self.u16(b, clause + 4), code = Self.u16(b, clause + 6)
+            if code == A.seasonGoals, (1...100).contains(count), amount != UInt32.max {
+                found.append(ActivatedAddOn(player: player, seasonGoals: count, amount: Int64(amount)))
+            } else {
+                found.append(ActivatedAddOn(player: player))
+            }
+        }
+        return .addOnsActivated(found)
+    }
+
+    /// A team's database index, when `team` is one of FM's teams.
+    private func teamIndex(_ team: Int64) -> UInt32? {
+        guard team != 0, className(game.readPointer(team)) == "TEAM",
+              let b = game.read(team &+ Int64(MacLayout.Team.index), count: 4) else { return nil }
+        return Self.u32(b, 0)
     }
 
     private static func u16(_ b: [UInt8], _ o: Int) -> Int { Int(b[o]) | Int(b[o + 1]) << 8 }

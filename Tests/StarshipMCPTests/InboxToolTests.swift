@@ -150,6 +150,61 @@ final class InboxToolTests: XCTestCase {
         XCTAssertNil(items[0]["about"])
     }
 
+    /// A contract add-on activated names the player, and for the clause for goals in the season how many and its sum; a
+    /// transfer offer confirmed names the person, the other club and the fee, and says what it doesn't give.
+    func testAnAddOnActivatedAndAnOfferConfirmed() throws {
+        let harness = Harness()
+        func day(_ day: Int) -> Date { GameDate.checked(year: 2026, dayOfYear: day)! }
+        let director = NewsPerson(uid: 501, index: 501, isPlayer: false, name: "Coach One")
+        let rival = NewsPerson(uid: 502, index: 502, isPlayer: false, name: "Rival Coach")
+        harness.source.inbox?.result = .items(World.inbox() + [
+            InboxItem(serial: 1005, date: day(270), className: "CONTRACT_ADD_ON_ACTIVATED_NEWS", team: World.firstTeamIndex,
+                      sender: director, senderJob: "Director of Football",
+                      subject: .addOnsActivated([ActivatedAddOn(player: NewsPerson(uid: 5, index: 5, isPlayer: true, name: "First 5"),
+                                                                seasonGoals: 10, amount: 22_310)])),
+            InboxItem(serial: 1006, date: day(271), className: "CONTRACT_ADD_ON_ACTIVATED_NEWS", team: World.firstTeamIndex,
+                      sender: director, senderJob: "Director of Football",
+                      subject: .addOnsActivated([ActivatedAddOn(player: NewsPerson(uid: 13, index: 13, isPlayer: true, name: "Hurt Player"))])),
+            InboxItem(serial: 1007, date: day(272), className: "TRANSFER_OFFER_CONFIRMATION_NEWS", team: World.firstTeamIndex,
+                      sender: director, senderJob: "Director of Football",
+                      subject: .offerConfirmed(person: rival, club: World.rivals, fee: 122_960)),
+            InboxItem(serial: 1008, date: day(273), className: "TRANSFER_OFFER_CONFIRMATION_NEWS", team: World.firstTeamIndex,
+                      sender: director, senderJob: "Director of Football", subject: .offerConfirmed(person: rival, club: nil, fee: nil)),
+        ])
+        let items = Self.items(try harness.answer("inbox", ["since": "2026-09-27"]))
+        XCTAssertEqual(items.map { $0["kind"] }, ["transfer offer confirmation", "transfer offer confirmation", "contract add on activated",
+                                                   "contract add on activated"])
+
+        let goals = try XCTUnwrap(items[3]["about"])
+        let activated = try XCTUnwrap(goals["activated"]?.array?.first)
+        XCTAssertEqual(activated["player"]?["uid"], 5)
+        XCTAssertEqual(activated["player"]?["name"], "First 5")
+        XCTAssertEqual(activated["clause"], "10 goals in the season")
+        XCTAssertEqual(activated["amount"], "£22.3K")
+        let note = goals["note"]?.string ?? ""
+        XCTAssertTrue(note.contains("checked on one item"), note)
+        XCTAssertFalse(note.contains("doesn't know the code"), note)
+
+        let unknown = try XCTUnwrap(items[2]["about"])
+        XCTAssertEqual(unknown["activated"]?.array?.first?["player"]?["uid"], 13)
+        XCTAssertNil(unknown["activated"]?.array?.first?["clause"], "a clause whose code isn't known isn't named")
+        XCTAssertNil(unknown["activated"]?.array?.first?["amount"])
+        XCTAssertEqual(unknown["note"], "FM Starship doesn't know the code of Hurt Player's clause, so which clause it is isn't given.")
+
+        let offer = try XCTUnwrap(items[1]["about"])
+        XCTAssertEqual(offer["person"]?["name"], "Rival Coach")
+        XCTAssertEqual(offer["other_club"], .string(World.rivals))
+        XCTAssertEqual(offer["fee"], "£122.9K")
+        XCTAssertEqual(offer["note"], "Which way the transfer goes isn't read: the item names the person and the other club.")
+
+        let bare = try XCTUnwrap(items[0]["about"])
+        XCTAssertNil(bare["other_club"])
+        XCTAssertNil(bare["fee"])
+        let bareNote = bare["note"]?.string ?? ""
+        XCTAssertTrue(bareNote.contains("other club isn't given") && bareNote.contains("No fee is given"), bareNote)
+        XCTAssertEqual(Self.items(try harness.answer("inbox", ["important": true, "since": "2026-09-27"])).count, 4)
+    }
+
     /// important keeps the kinds a manager acts on, false the rest, and left out all of them.
     func testImportant() throws {
         let harness = Harness()

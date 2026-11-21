@@ -29,7 +29,7 @@ chosen in FM Starship.
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
 | `results` | A club's played matches, newest first, with both sides' xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
-| `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club; for fines, unhappiness with training and coach feedback, the player. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
+| `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who and the other club; for fines, unhappiness with training and coach feedback, the player; for a contract add-on activated, the player and, for the clause for goals in the season, how many and its sum; for a transfer offer confirmed, the person, the other club and the fee. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
 | `squad_rules` | Each competition's squad rules as FM holds them, counted for the first team and for the whole club by FM's own per-player values: FM's number and both counts for each rule, a standing only where the two agree, who counts toward it with their squad, and where the squad is at or past a limit either way. Without `competition`, the club's league and the competitions in its recent and coming fixtures. With `add` or `remove` (players' uids), `if_changed` counts each rule again as if they joined the first team or left |
 | `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
 
@@ -158,8 +158,10 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   its kind and fields, so FM Starship can't quote a message and gives `about` only for injury reports (the player, FM's name for
   the injury and its length in days), contracts expiring soon (whose, and the contract FM has for them now, which may be a new
   one: the item keeps no date), transfers completed (the person and the other club, not which way it went), come-and-get-me
-  pleas (the player and the club), a player unhappy with training (the player), fines (the player, not the amount) and coach
-  feedback on a player (the player, not what it says). For any other kind, the board's confidence included, you have its kind,
+  pleas (the player and the club), a player unhappy with training (the player), fines (the player, not the amount), coach
+  feedback on a player (the player, not what it says), contract add-ons activated (the player; the clause only when it's the
+  one for goals in the season, with how many goals and the sum it holds, otherwise say which clause isn't known) and transfer
+  offers confirmed (the person, the other club and the fee, not which way it went). For any other kind, the board's confidence included, you have its kind,
   date, sender and team: say that's all you know, don't fill in what it probably said. `important: true` keeps the kinds a
   manager acts on: injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, fines, contracts and board items;
   `false` gives the rest (staff meeting advice, press, odds, previews, coach feedback, bans and the like). `window` says from when FM keeps items, about a month:

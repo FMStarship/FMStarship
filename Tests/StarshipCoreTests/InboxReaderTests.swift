@@ -94,6 +94,40 @@ final class InboxReaderTests: XCTestCase {
             item.set("people end", Int(L.ContractsExpiring.people) + 8, buffer + Int64(indexes.count * 8))
             item.set("people capacity", Int(L.ContractsExpiring.people) + 16, buffer + Int64(indexes.count * 8))
         }
+
+        /// As FM keeps them: the item points at a record of the club and a vector of pointers to the add-ons, each the
+        /// player's identity, nothing for 0x18 bytes, a date, then the clause's 8 bytes as his contract's list holds them.
+        /// `club` false puts something that isn't a club where the club should be.
+        func addOns(in item: FakeRecord, _ entries: [(player: Int64, amount: UInt32, count: UInt16, code: UInt16)], club withClub: Bool = true) {
+            typealias A = L.AddOnActivated
+            let buffer = game.allocate(max(8, entries.count * 8))
+            for (i, entry) in entries.enumerated() {
+                let addOn = game.record("add-on", size: 0x28)
+                addOn.set("player", Int(A.player), entry.player)
+                addOn.set("expiry day", 0x18, UInt16(365))
+                addOn.set("expiry year", 0x1a, UInt16(2031))
+                addOn.set("amount", Int(A.clause), entry.amount)
+                addOn.set("count", Int(A.clause) + 4, entry.count)
+                addOn.set("code", Int(A.clause) + 6, entry.code)
+                game.poke(addOn.address, at: buffer + Int64(i * 8))
+            }
+            let record = game.record("add-ons activated", size: 0x20)
+            record.set("club", Int(A.club), withClub ? club : first)
+            record.set("begin", Int(A.addOns), buffer)
+            record.set("end", Int(A.addOns) + 8, buffer + Int64(entries.count * 8))
+            record.set("capacity", Int(A.addOns) + 16, buffer + Int64(entries.count * 8))
+            item.set("record", Int(A.record), record.address)
+        }
+
+        /// The fields of a transfer offer confirmation: the person, the user's team five times, the other team and the fee
+        /// four times. `fees` overrides the four.
+        func offer(in item: FakeRecord, person: Int64, ours: Int64, other: Int64, fee: UInt32, fees: [UInt32]? = nil) {
+            typealias O = L.OfferConfirmation
+            item.set("person", Int(O.person), person)
+            for slot in 0..<5 { item.set("team \(slot)", Int(O.team) + slot * 8, ours) }
+            item.set("other team", Int(O.otherTeam), other)
+            for (slot, at) in O.fees.enumerated() { item.set("fee \(slot)", Int(at), (fees ?? Array(repeating: fee, count: 4))[slot]) }
+        }
     }
 
     private func items(_ inbox: Inbox, file: StaticString = #filePath, line: UInt = #line) throws -> [InboxItem] {
@@ -185,6 +219,82 @@ final class InboxReaderTests: XCTestCase {
         world.contracts(in: one, indexes: [7141])
         let items = try items(world.inbox())
         XCTAssertEqual(items.map(\.subject), [.contractsExpiring(indexes: [35080, 37369]), .contractsExpiring(indexes: [7141])])
+    }
+
+    /// A contract add-on activated gives the player, and for the clause for goals in a season, the goals and the amount
+    /// from the clause's own bytes, as on Molde's save. Any other clause gives the player alone.
+    func testAContractAddOnActivatedGivesThePlayerAndTheClauseForGoals() throws {
+        let world = Club()
+        let one = world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 1, day: 266, from: world.identity(world.director), job: 10)
+        world.addOns(in: one, [(world.identity(world.player), 22310, 10, 10)])
+        let two = world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 2, day: 267)
+        world.addOns(in: two, [(world.identity(world.player), 5577, 15, 10), (world.identity(world.player), 12880, 15, 40)])
+        // The code for goals in a season with no count, or no amount, as FM writes a clause that has none: no clause.
+        let noCount = world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 3, day: 268)
+        world.addOns(in: noCount, [(world.identity(world.player), 22310, 0xffff, 10)])
+        let noAmount = world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 4, day: 268)
+        world.addOns(in: noAmount, [(world.identity(world.player), UInt32.max, 10, 10)])
+
+        let items = try items(world.inbox())
+        let player = NewsPerson(uid: 7003, index: 73, isPlayer: true, name: "Sam Striker")
+        XCTAssertEqual(items.map(\.kind), Array(repeating: "contract add on activated", count: 4))
+        XCTAssertTrue(items[0].isImportant)
+        XCTAssertEqual(items[0].subject, .addOnsActivated([ActivatedAddOn(player: player, seasonGoals: 10, amount: 22310)]))
+        XCTAssertEqual(items[1].subject, .addOnsActivated([ActivatedAddOn(player: player, seasonGoals: 15, amount: 5577),
+                                                           ActivatedAddOn(player: player)]), "a code not known gives the player only")
+        XCTAssertEqual(items[2].subject, .addOnsActivated([ActivatedAddOn(player: player)]))
+        XCTAssertEqual(items[3].subject, .addOnsActivated([ActivatedAddOn(player: player)]))
+    }
+
+    /// An add-on item that doesn't read as FM's leaves its subject out: no club where the club should be, staff where the
+    /// player should be, or a pointer to nothing readable.
+    func testAContractAddOnThatDoesntReadSaysNothing() throws {
+        let world = Club()
+        let noClub = world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 1, day: 266)
+        world.addOns(in: noClub, [(world.identity(world.player), 22310, 10, 10)], club: false)
+        let staff = world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 2, day: 266)
+        world.addOns(in: staff, [(world.identity(world.player), 22310, 10, 10), (world.identity(world.director), 22310, 10, 10)])
+        let nothing = world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 3, day: 266)
+        nothing.set("record", Int(L.AddOnActivated.record), Int64.max - 7)
+        world.item("CONTRACT_ADD_ON_ACTIVATED_NEWS", serial: 4, day: 266)
+        let items = try items(world.inbox())
+        XCTAssertEqual(items.count, 4)
+        XCTAssertEqual(items.map(\.subject), [nil, nil, nil, nil])
+    }
+
+    /// A transfer offer confirmation gives the person, the other club when the item's team is the user's and the other
+    /// isn't, and the fee when its four copies agree.
+    func testATransferOfferConfirmationGivesThePersonTheOtherClubAndTheFee() throws {
+        let world = Club()
+        let physio = NewsPerson(uid: 7001, index: 71, isPlayer: false, name: "Pat Physio")
+        let confirmed = world.item("TRANSFER_OFFER_CONFIRMATION_NEWS", serial: 1, day: 268, from: world.identity(world.director), job: 10)
+        world.offer(in: confirmed, person: world.identity(world.physio), ours: world.first, other: world.rivalsFirst, fee: 122_960)
+        let disagree = world.item("TRANSFER_OFFER_CONFIRMATION_NEWS", serial: 2, day: 268)
+        world.offer(in: disagree, person: world.identity(world.physio), ours: world.first, other: world.rivalsFirst, fee: 0,
+                    fees: [122_960, 100_000, 122_960, 122_960])
+        let free = world.item("TRANSFER_OFFER_CONFIRMATION_NEWS", serial: 3, day: 268)
+        world.offer(in: free, person: world.identity(world.player), ours: world.first, other: world.rivalsFirst, fee: 0)
+        // The other way round, the user's team where the other club's should be: no club, as which is which isn't known.
+        let reversed = world.item("TRANSFER_OFFER_CONFIRMATION_NEWS", serial: 4, day: 268)
+        world.offer(in: reversed, person: world.identity(world.physio), ours: world.rivalsFirst, other: world.first, fee: 122_960)
+        let ownTeams = world.item("TRANSFER_OFFER_CONFIRMATION_NEWS", serial: 5, day: 268)
+        world.offer(in: ownTeams, person: world.identity(world.physio), ours: world.first, other: world.first, fee: 122_960)
+        let noTeam = world.item("TRANSFER_OFFER_CONFIRMATION_NEWS", serial: 6, day: 268)
+        world.offer(in: noTeam, person: world.identity(world.physio), ours: world.first, other: world.club, fee: UInt32.max)
+        let nobody = world.item("TRANSFER_OFFER_CONFIRMATION_NEWS", serial: 7, day: 268)
+        world.offer(in: nobody, person: world.club, ours: world.first, other: world.rivalsFirst, fee: 122_960)
+
+        let items = try items(world.inbox())
+        XCTAssertEqual(items.map(\.kind), Array(repeating: "transfer offer confirmation", count: 7))
+        XCTAssertTrue(items[0].isImportant)
+        XCTAssertEqual(items[0].subject, .offerConfirmed(person: physio, club: "Fixture Town AFC", fee: 122_960))
+        XCTAssertEqual(items[1].subject, .offerConfirmed(person: physio, club: "Fixture Town AFC", fee: nil), "copies that disagree")
+        XCTAssertEqual(items[2].subject, .offerConfirmed(person: NewsPerson(uid: 7003, index: 73, isPlayer: true, name: "Sam Striker"),
+                                                         club: "Fixture Town AFC", fee: nil), "no fee")
+        XCTAssertEqual(items[3].subject, .offerConfirmed(person: physio, club: nil, fee: 122_960))
+        XCTAssertEqual(items[4].subject, .offerConfirmed(person: physio, club: nil, fee: 122_960))
+        XCTAssertEqual(items[5].subject, .offerConfirmed(person: physio, club: nil, fee: nil), "a club where a team should be")
+        XCTAssertNil(items[6].subject, "no person, nothing")
     }
 
     /// A field that isn't what it should be leaves the item's subject out, never a guess, and the item stays.

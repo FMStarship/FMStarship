@@ -139,7 +139,7 @@ shortlists, your fixtures, results and league table with each player's minutes, 
 and why the others didn't play, both sides' possession, xG, shots, shots on target and fouls in your recent matches, the
 starting eleven and bench you've picked for the next match with a warning for anyone banned
 or injured for it, FM's scout's predicted line-up of your next opponent, what's come into your inbox in about the last month
-(injuries and how long, contracts running out, transfers, fines, unhappiness, and each item's kind, date and sender), each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
+(injuries and how long, contracts running out, transfers and the fees agreed, contract clauses that came into force, fines, unhappiness, and each item's kind, date and sender), each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
 each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, each
 competition's squad rules counted against your squad by FM's own rules, how your players have developed
 between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
@@ -432,7 +432,13 @@ FM Starship's own parts, and how to check them after a patch:
   team's index (+0x8c) and FM's rising counter (+0x90). Past the header each class has its own fields, and FM Starship reads them
   only for the classes in `MacLayout.Inbox` whose fields were the same on every item of them on Molde's save; the others go out by
   kind, date and sender. A contracts-expiring item's people are a vector of pointers to small records, each starting with the
-  person's club and holding their database index at +0x28, with no date; the tool gives the contract the person has now. An
+  person's club and holding their database index at +0x28, with no date; the tool gives the contract the person has now. A
+  contract add-on activated points at a record of the club and a vector of add-ons, each the player's identity and, at +0x1c, the
+  8 bytes of the clause exactly as his contract's clause list holds them (amount, count, code). Only code 10 is named: goals in
+  the season, from one item that came the day after the player's 10th league goal of the season. A transfer offer confirmation
+  holds the person at +0x2b0, the user's team at +0x2f0, the other club's team at +0x320, and the fee four times from +0x3a4,
+  the amount FM's transfer history (`TRANSFER_TIMELINE_EVENT` +0x54) keeps for the move; the fee is given only when all four
+  agree, and the club only when the teams are the user's and another's. An
   item for no team (+0x8c all ones) is FM's own news item copied in, and on Molde's save every one named the club's team or a
   player (bans, call-ups, scouting). The list is checked as a whole, and switched off with the reason when it fails: every item
   one of FM's objects, the counter rising, dates never going back or past the game date, and every item for one of the club's
