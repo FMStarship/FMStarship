@@ -157,6 +157,16 @@ final class FakeMatches: MatchSource {
         return classesFound ? names : [:]
     }
 
+    /// The table of a competition's league stage, by database index, as one sweep finds it for a club in it.
+    var tables: [UInt32: CompetitionTable] = [:]
+    private(set) var tableSweeps = 0
+
+    func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable? {
+        tableSweeps += 1
+        guard let found = tables[competitionIndex], found.table.rows.contains(where: { $0.team == team }) else { return nil }
+        return found
+    }
+
     /// Whether each competition is a friendly by FM's type, as one sweep finds: the league and the cup aren't.
     var friendlies: [UInt32: Bool] = [World.leagueIndex: false, World.cupIndex: false]
     private(set) var friendlySweeps = 0

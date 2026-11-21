@@ -207,23 +207,105 @@ extension Toolbox {
 
     func leagueTable(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let (club, matches) = try matchTeam(try args.string("club"), context)
+        if let named = try args.string("competition") { return try competitionTable(named, club: club, matches: matches, context) }
         if case .failed(let why) = matches.check { throw ToolError(Self.failedSentence(club, why)) }
         guard let table = matches.table, table.rows.contains(where: { $0.team == matches.team }) else {
             throw ToolError(Self.noTableSentence(club))
         }
+        var pairs: [(String, JSON?)] = [("competition", Output.text(table.competition)), ("club", .string(club)),
+                                        ("position", table.rows.first { $0.team == matches.team }.map { .int($0.position) }),
+                                        ("columns", .array(Self.tableColumns.map { .string($0) })), ("rows", .array(Self.tableRows(table)))]
+        if matches.check == .nothingPlayed { pairs.append(("note", .string("\(club) hasn't played a league match yet this season."))) }
+        return .object(dropping: pairs)
+    }
+
+    static func tableRows(_ table: LeagueTable) -> [JSON] {
         func record(_ r: TableRecord) -> JSON {
             .string("P\(r.played) W\(r.won) D\(r.drawn) L\(r.lost) \(r.goalsFor)-\(r.goalsAgainst) \(r.points)pts")
         }
-        let rows: [JSON] = table.rows.map { row in
+        return table.rows.map { row in
             let o = row.overall
             return .array([.int(row.position), .string(row.name), .int(o.played), .int(o.won), .int(o.drawn), .int(o.lost),
                            .int(o.goalsFor), .int(o.goalsAgainst), .int(o.goalsFor - o.goalsAgainst), .int(o.points),
                            record(row.home), record(row.away)])
         }
-        var pairs: [(String, JSON?)] = [("competition", Output.text(table.competition)), ("club", .string(club)),
-                                        ("position", table.rows.first { $0.team == matches.team }.map { .int($0.position) }),
-                                        ("columns", .array(Self.tableColumns.map { .string($0) })), ("rows", .array(rows))]
-        if matches.check == .nothingPlayed { pairs.append(("note", .string("\(club) hasn't played a league match yet this season."))) }
+    }
+
+    static let remainingColumns = ["date", "kick_off", "venue", "opponent"]
+
+    /// The table of the league stage the club is in of a competition its fixtures name, such as the Champions League's
+    /// league phase: checked club by club against every result of the stage, with where FM's places lead and the club's
+    /// matches in the stage still to play from today.
+    private func competitionTable(_ named: String, club: String, matches: TeamMatches, _ context: CallContext) throws -> JSON {
+        let byName = Dictionary(grouping: matches.fixtures.filter { !$0.competition.isEmpty }, by: \.competition)
+        guard let (name, theirs) = byName.first(where: { $0.key.caseInsensitiveCompare(named) == .orderedSame }).map({ ($0.key, $0.value) }),
+              let source = context.read.matches else {
+            throw ToolError("\(named) isn't a competition \(club)'s fixtures name. They name, as FM does in the game's language: "
+                            + byName.keys.sorted().joined(separator: ", ") + ".")
+        }
+        // Two competitions can share a name, as two countries' second tiers can: the one more of the club's matches are in first.
+        let indexes = Dictionary(grouping: theirs, by: \.competitionIndex)
+            .sorted { ($0.value.count, $1.key) > ($1.value.count, $0.key) }.map(\.key)
+        var found: CompetitionTable?
+        for index in indexes where found == nil {
+            found = cachedTable(context.read, team: matches.team, competitionIndex: index, source: source)
+        }
+        guard let found, let row = found.table.rows.first(where: { $0.team == matches.team }) else {
+            throw ToolError("There's no league table FM Starship can read for \(club) in \(name): none of its stages FM holds is a "
+                            + "league with \(club) in it.")
+        }
+        let stage = found.stage.isEmpty ? name : "\(name)'s \(found.stage)"
+        if case .failed(let why) = found.check {
+            throw ToolError("FM Starship's check of \(stage) table failed: \(why). Every row must add up to its club's results in "
+                            + "the stage, and FM doesn't keep every result of every competition, so the table is switched off rather "
+                            + "than guessed.")
+        }
+        let rows = found.table.rows
+        var pairs: [(String, JSON?)] = [("competition", Output.text(found.table.competition)), ("stage", Output.text(found.stage)),
+                                        ("club", .string(club)), ("position", .int(row.position)),
+                                        ("points", .int(row.overall.points))]
+        var notes: [String] = []
+        if let lines = found.lines {
+            // Each of FM's places that leads somewhere, with the club on its place nearest the middle of the table.
+            // The reader only gives lines whose places fit in the table, so first ≤ last.
+            let n = rows.count, top = lines.through, bottom = n - lines.relegated
+            let zones: [(kind: String, first: Int, last: Int, count: Int)] = [
+                ("through", 1, top, lines.through), ("play_off", top + 1, top + lines.playOff, lines.playOff),
+                ("relegation_play_off", bottom - lines.relegationPlayOff + 1, bottom, lines.relegationPlayOff),
+                ("relegated", bottom + 1, n, lines.relegated),
+            ]
+            let given: [JSON] = zones.compactMap { zone in
+                guard zone.count > 0 else { return nil }
+                let edge = zone.kind.hasPrefix("relegat") ? zone.first : zone.last
+                guard let at = rows.first(where: { $0.position == edge }) else { return nil }
+                return .object([("places", .string(zone.first == zone.last ? "\(edge)" : "\(zone.first)-\(zone.last)")),
+                                ("to", .string(zone.kind)), ("line_position", .int(edge)), ("line_club", .string(at.name)),
+                                ("line_points", .int(at.overall.points))])
+            }
+            if given.isEmpty {
+                notes.append("FM's settings for this stage give no places that lead anywhere, so there are no lines to give.")
+            } else {
+                pairs.append(("lines", .array(given)))
+            }
+        } else {
+            notes.append("FM's places for this stage couldn't be read on this build of FM, so where they lead isn't given.")
+        }
+        pairs += [("columns", .array(Self.tableColumns.map { .string($0) })), ("rows", .array(Self.tableRows(found.table)))]
+        // From today, as `fixtures` gives them: FM keeps a moved match's old fixture too, under its old date.
+        let today = context.db.gameDate
+        let left = found.fixtures.filter { match in
+            !match.played && (match.home == matches.team || match.away == matches.team) && today.map { match.date >= $0 } ?? true
+        }
+        pairs.append(("still_to_play", .object([
+            ("columns", .array(Self.remainingColumns.map { .string($0) })),
+            ("rows", .array(left.map { match in
+                let home = match.home == matches.team
+                return .array([.string(Output.iso(match.date)), match.kickOff.map { .string(Self.time($0)) } ?? .null,
+                               .string(home ? "H" : "A"), Output.text(home ? match.awayName : match.homeName) ?? .null])
+            })),
+        ])))
+        if found.check == .nothingPlayed { notes.append("No match of the stage has been played yet this season.") }
+        if !notes.isEmpty { pairs.append(("note", .string(notes.joined(separator: " ")))) }
         return .object(dropping: pairs)
     }
 

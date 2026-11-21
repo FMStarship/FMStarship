@@ -381,6 +381,25 @@ enum MacLayout {
     enum LeagueStage {
         /// A vector of `TableRow` pointers, in table order.
         static let rows: Int64 = 0xc0
+        /// The stage's `LeagueSettings`.
+        static let settings: Int64 = 0xf0
+    }
+
+    /// `sicomps::LEAGUE_SETTINGS`, a league stage's settings. Read on FM 27.1.0's Molde save on 21 Nov 2026 for the league
+    /// stages of the competitions its fixtures name.
+    enum LeagueSettings {
+        /// The `db::STAGE_NAME` the stage's fixtures name at `FixtureName.stage`: the Champions League's, Europa League's and
+        /// Conference League's league phases share one ("ligafase"). Null for a league whose fixtures name no stage, such as
+        /// Eliteserien.
+        static let stageName: Int64 = 0x28
+        /// u8, how many clubs the stage has: 36 for each league phase, 16 for Eliteserien.
+        static let clubs: Int64 = 0x87
+        /// Four u8 counts of places: from the top, straight on (promotion, or the next stage) and a play-off for it; from the
+        /// bottom, a relegation play-off and relegation. Eliteserien 0 0 1 2, 1. divisjon 2 4 1 2, Ligue 2 2 3 1 2, League One
+        /// 2 4 0 4, League Two 3 4 0 2, all as their rules have it. The Champions, Europa and Conference League's league
+        /// phases 8 16 0 0 (1-8 to the round of 16, 9-24 to the knockout play-offs), the women's Champions League's 4 8 0 0.
+        /// Some competitions run a play-off FM doesn't count here: Serie B's six-club play-off reads 0.
+        static let places: Int64 = 0x90
     }
 
     /// One club's row in a league table, 0x100 bytes. Each record is 0x18 bytes: u16 goals for, u16 against,

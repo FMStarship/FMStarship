@@ -237,6 +237,108 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("league_table", ["club": "other town"])["position"], 2)
     }
 
+    // MARK: A competition's league stage
+
+    /// The cup's league phase, as the reader gives it: Testing FC and Minnows FC each played once, Testing FC at home to Minnows
+    /// FC to come. FM's places: the top one through, the next two to a play-off.
+    private func cupPhase(lines: LeagueLines? = LeagueLines(through: 1, playOff: 2, relegationPlayOff: 0, relegated: 0),
+                          check: TeamMatches.Check = .passed) -> CompetitionTable {
+        func record(_ p: Int, _ w: Int, _ d: Int, _ l: Int, _ f: Int, _ a: Int) -> TableRecord {
+            TableRecord(played: p, won: w, drawn: d, lost: l, goalsFor: f, goalsAgainst: a, points: 3 * w + d)
+        }
+        let none = record(0, 0, 0, 0, 0, 0)
+        var played = World.fixture(World.cupMatch, home: World.minnowsTeam, away: World.team, score: (2, 4), cup: true)
+        var toCome = World.fixture(World.laterMatch, home: World.team, away: World.minnowsTeam, cup: true)
+        // FM's old fixture of a match since moved, under a date before today.
+        var moved = World.fixture(World.firstMatch, home: World.team, away: World.minnowsTeam, cup: true)
+        played.stage = "ligafase"
+        toCome.stage = "ligafase"
+        moved.stage = "ligafase"
+        toCome.kickOff = 20 * 60 + 45
+        let table = LeagueTable(competition: "Mock Cup", competitionIndex: World.cupIndex, rows: [
+            LeagueTableRow(team: World.rivalsTeam, name: World.rivals, position: 1, overall: record(1, 1, 0, 0, 5, 0), home: record(1, 1, 0, 0, 5, 0), away: none),
+            LeagueTableRow(team: World.team, name: World.club, position: 2, overall: record(1, 1, 0, 0, 4, 2), home: none, away: record(1, 1, 0, 0, 4, 2)),
+            LeagueTableRow(team: World.minnowsTeam, name: World.minnows, position: 3, overall: record(1, 0, 0, 1, 2, 4), home: record(1, 0, 0, 1, 2, 4), away: none),
+            LeagueTableRow(team: World.otherTeam, name: World.otherTown, position: 4, overall: record(1, 0, 0, 1, 0, 5), home: none, away: record(1, 0, 0, 1, 0, 5)),
+        ])
+        return CompetitionTable(table: table, stage: "ligafase", season: 2026, fixtures: [moved, played, toCome], lines: lines, check: check)
+    }
+
+    /// Each line's places, where they lead, and the place, club and points on it.
+    private func lines(_ answer: JSON) -> [[JSON?]] {
+        (answer["lines"]?.array ?? []).map { line in ["places", "to", "line_position", "line_club", "line_points"].map { line[$0] } }
+    }
+
+    func testACompetitionsLeagueStageTable() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        matches.tables[World.cupIndex] = cupPhase()
+        let table = try harness.answer("league_table", ["competition": "mock cup"])
+        XCTAssertEqual(table["competition"], "Mock Cup")
+        XCTAssertEqual(table["stage"], "ligafase")
+        XCTAssertEqual(table["club"], .string(World.club))
+        XCTAssertEqual(table["position"], 2)
+        XCTAssertEqual(table["points"], 3)
+        XCTAssertEqual(table.columnNames, Toolbox.tableColumns)
+        XCTAssertEqual(rows(table).map { $0["club"] }, [.string(World.rivals), .string(World.club), .string(World.minnows), .string(World.otherTown)])
+        XCTAssertEqual(rows(table)[1]["away"], "P1 W1 D0 L0 4-2 3pts")
+        XCTAssertEqual(lines(table), [["1", "through", 1, .string(World.rivals), 3], ["2-3", "play_off", 3, .string(World.minnows), 0]])
+        let left = try XCTUnwrap(table["still_to_play"])
+        XCTAssertEqual(left.rowsByName, [["date": "2026-10-11", "kick_off": "20:45", "venue": "H", "opponent": .string(World.minnows)]])
+        XCTAssertNil(table["note"])
+        // Swept for once for the read.
+        _ = try harness.answer("league_table", ["competition": "Mock Cup"])
+        XCTAssertEqual(matches.tableSweeps, 1)
+        // Without competition, the club's league as before.
+        XCTAssertEqual(try harness.answer("league_table")["competition"], "Mock League")
+    }
+
+    func testACompetitionTheFixturesDontNameIsAnsweredWithTheirs() throws {
+        let harness = Harness()
+        let sentence = try harness.refusal("league_table", ["competition": "UEFA Champions League"])
+        XCTAssertEqual(sentence, "UEFA Champions League isn't a competition \(World.club)'s fixtures name. They name, as FM does in the "
+                       + "game's language: Mock Cup, Mock League.")
+        XCTAssertEqual(harness.source.matches?.tableSweeps, 0)
+    }
+
+    func testACompetitionWithoutALeagueStageSaysSo() throws {
+        let harness = Harness()
+        let sentence = try harness.refusal("league_table", ["competition": "Mock Cup"])
+        XCTAssertTrue(sentence.hasPrefix("There's no league table FM Starship can read for \(World.club) in Mock Cup"), sentence)
+    }
+
+    /// Every row must add up to its club's results: when one doesn't, there's no table, and the answer says why.
+    func testAFailedStageCheckGivesNoTable() throws {
+        let harness = Harness()
+        harness.source.matches?.tables[World.cupIndex] = cupPhase(check: .failed("Minnows FC's home results in the stage add up to P0"))
+        let sentence = try harness.refusal("league_table", ["competition": "Mock Cup"])
+        XCTAssertTrue(sentence.hasPrefix("FM Starship's check of Mock Cup's ligafase table failed: Minnows FC's home results"), sentence)
+        XCTAssertTrue(sentence.contains("switched off rather than guessed"), sentence)
+        // A failed sweep isn't kept: the next question sweeps again.
+        _ = try harness.refusal("league_table", ["competition": "Mock Cup"])
+        XCTAssertEqual(harness.source.matches?.tableSweeps, 2)
+    }
+
+    /// Where FM's places couldn't be read, they're left out and the note says so, rather than filled in from the rules.
+    func testLinesFMsSettingsDontGiveAreLeftOut() throws {
+        let harness = Harness()
+        harness.source.matches?.tables[World.cupIndex] = cupPhase(lines: nil)
+        let unread = try harness.answer("league_table", ["competition": "Mock Cup"])
+        XCTAssertNil(unread["lines"])
+        XCTAssertTrue(unread["note"]?.string?.contains("couldn't be read") ?? false)
+
+        let other = Harness()
+        other.source.matches?.tables[World.cupIndex] = cupPhase(lines: LeagueLines(through: 0, playOff: 0, relegationPlayOff: 0, relegated: 0))
+        let none = try other.answer("league_table", ["competition": "Mock Cup"])
+        XCTAssertNil(none["lines"])
+        XCTAssertTrue(none["note"]?.string?.contains("no places that lead anywhere") ?? false)
+
+        let bottom = Harness()
+        bottom.source.matches?.tables[World.cupIndex] = cupPhase(lines: LeagueLines(through: 0, playOff: 0, relegationPlayOff: 1, relegated: 1))
+        XCTAssertEqual(lines(try bottom.answer("league_table", ["competition": "Mock Cup"])),
+                       [["3", "relegation_play_off", 3, .string(World.minnows), 0], ["4", "relegated", 4, .string(World.otherTown), 0]])
+    }
+
     // MARK: Other clubs
 
     func testAnotherClubFromTheLeagueOrTheFixtures() throws {

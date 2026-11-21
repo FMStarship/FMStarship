@@ -155,6 +155,8 @@ public final class Toolbox: ToolProvider {
     private var peopleByIndex: [UInt32: Player] = [:]
     private var matchesRead: Int?
     private var matchesByTeam: [Int64: (matches: TeamMatches?, at: Date)] = [:]
+    private var tablesRead: Int?
+    private var tablesByKey: [[UInt64]: (table: CompetitionTable?, at: Date)] = [:]
     private var namesRead: Int?
     private var namesByIndex: [UInt32: String] = [:]
     private var friendlyRead: Int?
@@ -259,6 +261,28 @@ public final class Toolbox: ToolProvider {
             matchesByTeam[team] = nil
         } else {
             matchesByTeam[team] = (found, now)
+        }
+        return found
+    }
+
+    /// A competition's table for a team, swept for as `cachedMatches` sweeps for a team's matches.
+    func cachedTable(_ read: GameRead, team: Int64, competitionIndex: UInt32, source: MatchSource) -> CompetitionTable? {
+        if tablesRead != read.number {
+            tablesByKey = [:]
+            tablesRead = read.number
+        }
+        let key = [UInt64(bitPattern: team), UInt64(competitionIndex)]
+        let now = clock()
+        if let known = tablesByKey[key],
+           Self.stillStands(known.table.map { TeamMatches(team: team, fixtures: $0.fixtures, table: $0.table, check: $0.check) },
+                            today: read.database.gameDate, age: now.timeIntervalSince(known.at)) {
+            return known.table
+        }
+        let found = source.competitionTable(team: team, competitionIndex: competitionIndex)
+        if case .failed = found?.check {
+            tablesByKey[key] = nil
+        } else {
+            tablesByKey[key] = (found, now)
         }
         return found
     }

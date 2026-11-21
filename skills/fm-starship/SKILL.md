@@ -31,7 +31,7 @@ chosen in FM Starship.
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
 | `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who, the other club and which way it went when FM's transfer timeline has it; for fines, unhappiness with training and coach feedback, the player; for a contract add-on activated, the player and, for the clause for goals in the season, how many and its sum; for a transfer offer confirmed, the person, the other club, the fee and which way it goes when the timeline has it. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
 | `squad_rules` | Each competition's squad rules as FM holds them, counted for the first team and for the whole club by FM's own per-player values: FM's number and both counts for each rule, a standing only where the two agree, who counts toward it with their squad, and where the squad is at or past a limit either way. Without `competition`, the club's league and the competitions in its recent and coming fixtures. With `add` or `remove` (players' uids), `if_changed` counts each rule again as if they joined the first team or left |
-| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
+| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read. With `competition`, a name the club's fixtures give, such as "UEFA Champions League", the table of that competition's league stage the club is in, such as the league phase, with `lines` (where FM's own places for the stage lead, and the club and points on each line) and `still_to_play`, its matches in the stage from today |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
 YYYY-MM-DD. Money is text in the user's own currency, such as "£4.2M", and wages are per the period `wages` names, such as "p/w".
@@ -142,6 +142,13 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   have no league matches in its list (on the save this was checked on, Leverkusen's had only Champions League matches and
   friendlies), so don't read a short list as its whole season.
   Kick-off, attendance and aggregate are only there on builds of FM that FM Starship has been checked on.
+  `league_table` with `competition` gives a stage's table only when every club's row adds up to its results in the stage,
+  overall, home and away. FM doesn't keep every result of every competition (on the save this was checked on, the Champions
+  League's league phase added up and the Europa and Conference League's didn't), so when it says the check failed, there's
+  no table: don't rebuild one from `fixtures`. Its `lines` are FM's own places for the stage: for the Champions League's
+  league phase, 1-8 `through` to the round of 16 and 9-24 to the knockout `play_off`. Where it gives none, don't fill them in
+  from UEFA's or a league's rules. Its `still_to_play` is the club's matches in the stage from today, not what will happen
+  in them: points a club could still reach are your arithmetic, so say so, and don't predict results.
 - **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked from FM's own
   entry: "(unused substitute)", "(not in the matchday squad)", "(suspended)" or "(injured)", and "(injured)" too when FM's reason
   isn't one FM Starship knows but one of his injuries covered the day. A name with no mark is a reason FM Starship can't read, so

@@ -60,11 +60,27 @@ extension FakeGame {
         return row.address
     }
 
-    /// A league stage whose table is these rows, in order.
-    func leagueStage(rows: [Int64]) -> Int64 {
-        let stage = record("League stage", size: Int(MacLayout.LeagueStage.rows) + 24, vtable: "LEAGUE_STAGE")
+    /// A league stage whose table is these rows, in order, with its settings if it has them.
+    func leagueStage(rows: [Int64], settings: Int64? = nil) -> Int64 {
+        let stage = record("League stage", size: Int(MacLayout.LeagueStage.settings) + 8, vtable: "LEAGUE_STAGE")
         stage.set("rows", Int(MacLayout.LeagueStage.rows), bytes: vectorBytes(rows))
+        if let settings { stage.set("settings", Int(MacLayout.LeagueStage.settings), settings) }
         return stage.address
+    }
+
+    /// A league stage's settings: the stage its fixtures name (none if empty), how many clubs it has, and its four counts
+    /// of places.
+    func leagueSettings(stage: String, clubs: UInt8, places: [UInt8]) -> Int64 {
+        typealias S = MacLayout.LeagueSettings
+        let settings = record("League settings", size: Int(S.places) + 8, vtable: "LEAGUE_SETTINGS")
+        if !stage.isEmpty {
+            let text = record("Stage name", size: Int(MacLayout.FixtureName.stageText) + 8)
+            text.set("text", Int(MacLayout.FixtureName.stageText), string(stage))
+            settings.set("stage", Int(S.stageName), text.address)
+        }
+        settings.set("clubs", Int(S.clubs), clubs)
+        settings.set("places", Int(S.places), bytes: places)
+        return settings.address
     }
 
     /// What a fixture's name points at: its competition and, if it has one, its stage.

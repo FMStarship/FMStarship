@@ -13,7 +13,7 @@ final class FakeGame {
                           "PLAYER_UNHAPPINESS_TRAINING_NEWS", "FINE_NEWS", "COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM",
                           "CONTRACT_ADD_ON_ACTIVATED_NEWS", "TRANSFER_OFFER_CONFIRMATION_NEWS", "TRANSFER_TIMELINE_EVENT"]
     /// `FixturesReader`'s, which RTTI spells in the sicomps namespace.
-    static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE"]
+    static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE", "LEAGUE_SETTINGS"]
     /// Classes of the reader's names in the sicomps namespace, which FM doesn't have, laid out ahead of the real ones: the
     /// reader must still pick its own.
     static let decoys = ["TEAM", "ACTUAL_PLAYER"]

@@ -300,9 +300,18 @@ extension Toolbox {
              description: Toolbox.matchNames + "The table of a club's league, as FM has it now: position, played, won, drawn, lost, "
                 + "goals for and against, goal difference, points, and the home and away records. Leagues with several stages, "
                 + "such as play-offs, a split or groups, aren't checked yet. It says when a club's competition has no table "
-                + "FM Starship can read.",
+                + "FM Starship can read. With competition, the table of that competition's league stage the club is in, such as "
+                + "the Champions League's league phase, given only when every club's row adds up to its results in the stage, "
+                + "overall, home and away; otherwise it says why it isn't given. It adds the club's position and points, lines: "
+                + "where FM's own places for the stage lead (through: straight on, promotion or the next round; play_off: a play-off "
+                + "for it; relegation_play_off; relegated), each with the club and points on its place nearest the middle of the "
+                + "table, where FM's settings give them; and still_to_play: the club's matches in the stage from today not played yet.",
              parameters: [Parameter(name: "club", type: "string",
-                                    description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league.")],
+                                    description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league."),
+                          Parameter(name: "competition", type: "string",
+                                    description: "A competition the club's fixtures name, as fixtures gives it, in the game's language: "
+                                        + "\"UEFA Champions League\" for its league phase. The club's league if left out. A name its "
+                                        + "fixtures don't give is answered with the ones they do.")],
              run: { $0.leagueTable }),
         Tool(name: "compare", title: "Compare",
              description: "Two to four players, or two to four staff, side by side.",

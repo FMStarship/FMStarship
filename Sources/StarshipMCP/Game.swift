@@ -155,10 +155,14 @@ public protocol MatchSource: AnyObject {
     /// The team stats of the user's club's recent matches, from FM's post-match news, before FM Starship's check. Nil on a
     /// build of FM they haven't been checked on.
     func matchStats(team: Int64) -> [MatchStats]?
+    /// The table of the league stage the team is in of one competition, by database index, such as the Champions League's
+    /// league phase, with every club's matches in that stage and the check of one against the other. Nil when there's none.
+    func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable?
 }
 
 extension MatchSource {
     public func matchStats(team: Int64) -> [MatchStats]? { nil }
+    public func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable? { nil }
     public func friendlyByCompetition() -> [UInt32: Bool] { [:] }
 }
 
@@ -185,6 +189,11 @@ final class LiveMatches: MatchSource {
     func friendlyByCompetition() -> [UInt32: Bool] {
         if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
         return (reader ?? nil)?.friendlyByCompetition() ?? [:]
+    }
+
+    func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable? {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.competitionTable(team: team, competitionIndex: competitionIndex)
     }
 
     private lazy var statsReader = MatchStatsReader(game: game, rtti: Rtti(game))

@@ -128,6 +128,50 @@ public struct LeagueTable: Sendable {
     }
 }
 
+/// Where a league stage's places lead, as FM's settings for the stage count them: from the top and from the bottom.
+public struct LeagueLines: Sendable, Equatable {
+    /// Straight on: promotion, or for a league phase the next stage.
+    public var through: Int
+    /// The places after those, to a play-off for promotion or the next stage.
+    public var playOff: Int
+    /// The places above the relegated ones, to a relegation play-off.
+    public var relegationPlayOff: Int
+    /// The bottom places.
+    public var relegated: Int
+
+    public init(through: Int, playOff: Int, relegationPlayOff: Int, relegated: Int) {
+        self.through = through
+        self.playOff = playOff
+        self.relegationPlayOff = relegationPlayOff
+        self.relegated = relegated
+    }
+}
+
+/// The table of one league stage of a competition, such as the Champions League's league phase, with every club's
+/// matches in it, and whether the two agree.
+public struct CompetitionTable: Sendable {
+    public var table: LeagueTable
+    /// The name the stage's fixtures give it, in the game's language: "" for a league whose fixtures name none.
+    public var stage: String
+    /// The season the stage's matches are of, as `MatchFixture.season`.
+    public var season: Int
+    /// The stage's matches this season, of every club in the table, oldest first.
+    public var fixtures: [MatchFixture]
+    /// Nil where FM's settings for the stage couldn't be read, or on a build of game_plugin they weren't read on.
+    public var lines: LeagueLines?
+    /// `TeamMatches.Check.noTable` doesn't come up: there's no `CompetitionTable` without a table.
+    public var check: TeamMatches.Check
+
+    public init(table: LeagueTable, stage: String, season: Int, fixtures: [MatchFixture], lines: LeagueLines?, check: TeamMatches.Check) {
+        self.table = table
+        self.stage = stage
+        self.season = season
+        self.fixtures = fixtures
+        self.lines = lines
+        self.check = check
+    }
+}
+
 /// A team's fixtures and results, its league's table, and whether the two agree.
 public struct TeamMatches: Sendable {
     public enum Check: Sendable, Equatable {
@@ -232,6 +276,7 @@ public final class FixturesReader {
     private let fixtureVt: Int64
     private let resultVt: Int64
     private let leagueStageVt: Int64
+    private let leagueSettingsVt: Int64
     /// Attendance, kick-off and aggregate aren't covered by the self-check, so they're only read on the build of
     /// game_plugin they were found on, as FM's rules are.
     private let checkedBuild: Bool
@@ -247,6 +292,7 @@ public final class FixturesReader {
         fixtureVt = vt("FIXTURE")
         resultVt = vt("FIXTURE_RESULT")
         leagueStageVt = vt("LEAGUE_STAGE")
+        leagueSettingsVt = vt("LEAGUE_SETTINGS")
         guard fixtureVt != 0, resultVt != 0 else { return nil }
     }
 
@@ -484,9 +530,13 @@ public final class FixturesReader {
     /// The table of the team's league, in FM's order: TEAM → COMP → ACTUAL_COMP → its LEAGUE_STAGE → that stage's rows.
     /// Nil for a competition with no league stage.
     public func leagueTable(team: Int64) -> LeagueTable? {
-        guard leagueStageVt != 0 else { return nil }
-        let comp = game.readPointer(team &+ Int64(MacLayout.Team.competition))
-        guard comp != 0 else { return nil }
+        leagueStage(comp: game.readPointer(team &+ Int64(MacLayout.Team.competition)), team: team)?.table
+    }
+
+    /// The league stage of a competition that the team is in, and its table in FM's order: COMP → ACTUAL_COMP → its
+    /// LEAGUE_STAGEs → the one whose rows have the team.
+    private func leagueStage(comp: Int64, team: Int64) -> (stage: Int64, table: LeagueTable)? {
+        guard leagueStageVt != 0, comp != 0 else { return nil }
         let actual = game.readPointer(comp &+ MacLayout.Comp.actual)
         guard actual != 0 else { return nil }
         let stages = actual &+ MacLayout.ActualComp.stages
@@ -497,10 +547,103 @@ public final class FixturesReader {
             let stage = game.readPointer(slot)
             guard stage != 0, game.readPointer(stage) == leagueStageVt, let rows = tableRows(stage),
                   rows.contains(where: { $0.team == team }) else { continue }
-            return LeagueTable(competition: game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName))),
-                               competitionIndex: compIndex(comp), rows: rows)
+            return (stage, LeagueTable(competition: game.lengthPrefixedString(game.readPointer(comp &+ Int64(MacLayout.competitionName))),
+                                       competitionIndex: compIndex(comp), rows: rows))
         }
         return nil
+    }
+
+    /// The table of the league stage the team is in of one competition, by database index, such as the Champions League's
+    /// league phase, with every club's matches in that stage this season and the check of one against the other. One sweep
+    /// for the competition's fixtures. Nil when FM holds no fixture of the competition, or none of its league stages has the
+    /// team.
+    ///
+    /// The stage's matches are the ones whose fixtures name the stage FM's settings for it name, so a competition's
+    /// qualifying rounds, play-offs and knockouts are left out. Where the settings can't be read, the stage most of its
+    /// clubs' matches name stands in.
+    public func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable? {
+        var byName: [Int64: [Int64: Bool]] = [:]
+        var votes: [Int64: Int] = [:]
+        for (name, found) in fixtureAddressesByName() {
+            let comp = game.readPointer(name &+ MacLayout.FixtureName.comp)
+            guard comp != 0, compIndex(comp) == competitionIndex else { continue }
+            byName[name] = found
+            votes[comp, default: 0] += found.count
+        }
+        // Of two records with the index, as a copy in freed memory could give, the one more fixtures name first.
+        let records = votes.sorted { ($0.value, $0.key) > ($1.value, $1.key) }.map(\.key)
+        guard let found = records.lazy.compactMap({ self.leagueStage(comp: $0, team: team) }).first else { return nil }
+        let (stage, table) = found
+
+        var names: [Int64: String] = [:]
+        var fixtureNames: [Int64: (competition: String, index: UInt32, friendly: Bool?, stage: String)] = [:]
+        struct Key: Hashable { let home: Int64, away: Int64, date: Date }
+        var copies: [Key: [MatchFixture]] = [:]
+        for (address, result) in byName.values.flatMap({ $0 }).sorted(by: { $0.key < $1.key }) {
+            guard let fixture = decode(address, result: result, names: &names, fixtureNames: &fixtureNames) else { continue }
+            copies[Key(home: fixture.home, away: fixture.away, date: fixture.date), default: []].append(fixture)
+        }
+        let clubs = Set(table.rows.map(\.team))
+        let theirs = copies.values.compactMap(Self.choose).filter { clubs.contains($0.home) || clubs.contains($0.away) }
+
+        typealias S = MacLayout.LeagueSettings
+        let settings = game.readPointer(stage &+ MacLayout.LeagueStage.settings)
+        let settingsRead = leagueSettingsVt != 0 && settings != 0 && game.readPointer(settings) == leagueSettingsVt
+        let stageName: String
+        if settingsRead {
+            let name = game.readPointer(settings &+ S.stageName)
+            stageName = name == 0 ? "" : game.lengthPrefixedString(game.readPointer(name &+ MacLayout.FixtureName.stageText))
+        } else {
+            let latest = theirs.map(\.season).max() ?? 0
+            let stages = Dictionary(grouping: theirs.filter { $0.season == latest }, by: \.stage)
+            stageName = stages.max { ($0.value.count, $1.key) < ($1.value.count, $0.key) }?.key ?? ""
+        }
+        let inStage = theirs.filter { $0.stage == stageName }
+        let season = inStage.map(\.season).max() ?? 0
+        let fixtures = inStage.filter { $0.season == season }.sorted { ($0.date, $0.kickOff ?? 0) < ($1.date, $1.kickOff ?? 0) }
+        return CompetitionTable(table: table, stage: stageName, season: season, fixtures: fixtures,
+                                lines: settingsRead && checkedBuild ? lines(settings, clubs: table.rows.count) : nil,
+                                check: Self.check(stage: fixtures, table: table))
+    }
+
+    /// Where a league stage's places lead, from its settings: nil unless the settings' count of clubs is the table's and the
+    /// places fit in it. Only on the checked build, as the self-check doesn't cover them.
+    private func lines(_ settings: Int64, clubs: Int) -> LeagueLines? {
+        typealias S = MacLayout.LeagueSettings
+        guard let count = game.read(settings &+ S.clubs, count: 1)?.first, Int(count) == clubs,
+              let b = game.read(settings &+ S.places, count: 4), b.reduce(0, { $0 + Int($1) }) <= clubs else { return nil }
+        return LeagueLines(through: Int(b[0]), playOff: Int(b[1]), relegationPlayOff: Int(b[2]), relegated: Int(b[3]))
+    }
+
+    /// Every fixture and result FM holds that names a fixture name, by that name, from one sweep.
+    private func fixtureAddressesByName() -> [Int64: [Int64: Bool]] {
+        typealias F = MacLayout.Fixture
+        let lock = NSLock()
+        var byName: [Int64: [Int64: Bool]] = [:]
+        let pieces = game.pieces(size: 1 << 23, overlap: 0x100, writableOnly: true)
+        let fixtureVt = fixtureVt, resultVt = resultVt
+        DispatchQueue.concurrentPerform(iterations: pieces.count) { i in
+            let (address, count) = pieces[i]
+            let hits: [(name: Int64, at: Int64, result: Bool)] = game.withBytes(address, count: count) { raw in
+                var hits: [(name: Int64, at: Int64, result: Bool)] = []
+                var o = Int((8 - address % 8) % 8)
+                while o + F.name + 8 <= count {
+                    let word = raw.loadUnaligned(fromByteOffset: o, as: Int64.self)
+                    if word == fixtureVt || word == resultVt {
+                        let name = raw.loadUnaligned(fromByteOffset: o + F.name, as: Int64.self)
+                        if name != 0 { hits.append((name, address + Int64(o), word == resultVt)) }
+                    }
+                    o += 8
+                }
+                return hits
+            } ?? []
+            guard !hits.isEmpty else { return }
+            lock.lock()
+            // The pieces overlap, so a fixture in an overlap is found twice, at the same address.
+            for hit in hits { byName[hit.name, default: [:]][hit.at] = hit.result }
+            lock.unlock()
+        }
+        return byName
     }
 
     /// A league stage's rows, in FM's order.
@@ -535,12 +678,7 @@ public final class FixturesReader {
     /// have are counted.
     public static func check(_ fixtures: [MatchFixture], team: Int64, table: LeagueTable?) -> TeamMatches.Check {
         guard let table, let row = table.rows.first(where: { $0.team == team }) else { return .noTable }
-        for other in table.rows where !(other.home + other.away).sameMatches(as: other.overall) {
-            return .failed("\(other.name)'s home and away records, \((other.home + other.away).text), don't add up to its overall \(other.overall.text)")
-        }
-        for other in table.rows where other.overall.points > 3 * other.overall.won + other.overall.drawn {
-            return .failed("\(other.name) has \(other.overall.points) points from \(other.overall.won) wins and \(other.overall.drawn) draws")
-        }
+        if let why = rowsProblem(table) { return .failed(why) }
         guard row.overall.played > 0 else { return .nothingPlayed }
         let competition = fixtures.filter { $0.competitionIndex == table.competitionIndex }
         let season = competition.filter(\.played).map(\.season).max() ?? 0
@@ -560,6 +698,57 @@ public final class FixturesReader {
             return .failed("\(row.name)'s league results add up to \(sum.text), and the table says \(row.overall.text)")
         }
         return .passed
+    }
+
+    /// The self-check of a competition's table, stronger than `check`'s of one team: every club's results in the stage this
+    /// season must add up to its row, overall, home and away, and the rows' matches to twice the matches played. A result
+    /// with a club the table doesn't have fails it, as does one whose score isn't known. Points as in `check`.
+    ///
+    /// `fixtures` are the stage's this season, of the clubs in the table, as `competitionTable` gives them.
+    public static func check(stage fixtures: [MatchFixture], table: LeagueTable) -> TeamMatches.Check {
+        if let why = rowsProblem(table) { return .failed(why) }
+        let clubs = Set(table.rows.map(\.team))
+        var home: [Int64: TableRecord] = [:], away: [Int64: TableRecord] = [:]
+        var played = 0
+        func record(_ us: Int, _ them: Int) -> TableRecord {
+            TableRecord(played: 1, won: us > them ? 1 : 0, drawn: us == them ? 1 : 0, lost: us < them ? 1 : 0, goalsFor: us, goalsAgainst: them)
+        }
+        for match in fixtures where match.played {
+            guard let h = match.homeGoals, let a = match.awayGoals else {
+                return .failed("the copies of \(match.homeName) v \(match.awayName) disagree on the score")
+            }
+            guard clubs.contains(match.home), clubs.contains(match.away) else {
+                return .failed("\(match.homeName) v \(match.awayName) is a result of the stage with a club its table doesn't have")
+            }
+            played += 1
+            home[match.home] = (home[match.home] ?? TableRecord()) + record(h, a)
+            away[match.away] = (away[match.away] ?? TableRecord()) + record(a, h)
+        }
+        guard played > 0 || table.rows.contains(where: { $0.overall.played > 0 }) else { return .nothingPlayed }
+        for row in table.rows {
+            let (h, a) = (home[row.team] ?? TableRecord(), away[row.team] ?? TableRecord())
+            for (what, sum, says) in [("home", h, row.home), ("away", a, row.away), ("overall", h + a, row.overall)]
+            where !sum.sameMatches(as: says) {
+                return .failed("\(row.name)'s \(what) results in the stage add up to \(sum.text), and the table says \(says.text)")
+            }
+        }
+        let rowsPlayed = table.rows.reduce(0) { $0 + $1.overall.played }
+        guard rowsPlayed == 2 * played else {
+            return .failed("the table's rows have \(rowsPlayed) matches between them, not twice the \(played) results of the stage")
+        }
+        return .passed
+    }
+
+    /// What's wrong with a table on its own: a row whose home and away don't add up to its overall, or with more points
+    /// than its wins and draws give. Nil when nothing is.
+    private static func rowsProblem(_ table: LeagueTable) -> String? {
+        for other in table.rows where !(other.home + other.away).sameMatches(as: other.overall) {
+            return "\(other.name)'s home and away records, \((other.home + other.away).text), don't add up to its overall \(other.overall.text)"
+        }
+        for other in table.rows where other.overall.points > 3 * other.overall.won + other.overall.drawn {
+            return "\(other.name) has \(other.overall.points) points from \(other.overall.won) wins and \(other.overall.drawn) draws"
+        }
+        return nil
     }
 
     /// A player's recent matches, from the record FM keeps for his form: plain data, so no emulation. `name` names a team.
