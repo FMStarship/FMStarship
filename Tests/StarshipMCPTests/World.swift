@@ -40,21 +40,26 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
     var staffAsked: Set<UInt32> { lock.withLock { askedStaff } }
     func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool? {
         lock.withLock { _ = askedStaff.insert(staff.uid) }
-        return staffAnswers && !staffUnanswered.contains(staff.uid) ? level == 1 && !staffWontJoin.contains(staff.uid) : nil
+        return staffAnswers && !staffUnanswered.contains(staff.uid) ? staffJoinLevels.contains(level) && !staffWontJoin.contains(staff.uid) : nil
     }
-    /// False for a build where FM can't be asked about one job; staff FM says wouldn't take the job they're asked about, and
-    /// staff FM gives no answer about a job for.
+    /// FM's staff-rule levels at which people would join: the first team only, unless a test says otherwise.
+    var staffJoinLevels: Set<Int> = [1]
+    /// False for a build where FM can't be asked about one job; staff FM says wouldn't take the job they're asked about,
+    /// staff FM gives no answer about a job for, and true for FM answering without weighing the job up, as it does for a
+    /// whole club in some game modes.
     var staffJobAnswers = true
     var staffWontTake: Set<UInt32> = []
     var staffJobUnanswered: Set<UInt32> = []
+    var staffJobNotAsked = false
     /// Each job question: who, the job and FM's level.
     private var askedJobs: [(uid: UInt32, job: Int, level: Int)] = []
     var staffJobsAsked: [(uid: UInt32, job: Int, level: Int)] { lock.withLock { askedJobs } }
     var supportsStaffJobInterest: Bool { staffJobAnswers }
-    func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool? {
+    func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> StaffJobAnswer? {
         lock.withLock { askedJobs.append((staff.uid, job, level)) }
         guard staffJobAnswers, !staffJobUnanswered.contains(staff.uid) else { return nil }
-        return !staffWontTake.contains(staff.uid)
+        if staffJobNotAsked { return .notAsked }
+        return staffWontTake.contains(staff.uid) ? .refuses : .takes
     }
     func preferredJob(staff: Staff) -> Int? { nil }
     func jobPreferences(staff: Staff) -> [UInt8]? { nil }

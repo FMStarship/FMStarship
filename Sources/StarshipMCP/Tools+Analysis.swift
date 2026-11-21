@@ -270,21 +270,31 @@ extension Toolbox {
                     table.rows[index].cells[column] = checks.staffText(person)
                 }
             }
+            // Only those FM says would join at this level are asked about the job: the question skips FM's own job pick, which
+            // can turn someone down whatever the job, so a yes for anyone else wouldn't be FM's.
+            let joining = shown.filter { checks.staffKnown($0)?.wouldJoin(level: options.level) == true }
+            var jobAsked = question != nil
             if let question {
-                checks.checkStaffJob(shown, job: question.job, level: question.level)
-                if let column = table.columns.firstIndex(where: { $0.title == "Takes job" }) {
+                checks.checkStaffJob(joining, job: question.job, level: question.level)
+                jobAsked = !joining.contains { checks.staffJobKnown($0, job: question.job, level: question.level) == .notAsked }
+                if jobAsked, let column = table.columns.firstIndex(where: { $0.title == "Takes job" }) {
+                    let askedUIDs = Set(joining.map(\.uid))
                     for index in table.rows.indices.prefix(limit) {
                         guard let person = table.rows[index].person as? Staff, column < table.rows[index].cells.count else { continue }
-                        table.rows[index].cells[column] = checks.staffJobText(person, job: question.job, level: question.level)
+                        table.rows[index].cells[column] = askedUIDs.contains(person.uid)
+                            ? checks.staffJobText(person, job: question.job, level: question.level) : ""
                     }
                 }
             }
             let unanswered = shown.filter { checks.staffKnown($0) == nil }.count
             interest = "Not narrowed to who'd join. Would join is FM's answer for each one listed, for the first team, reserves and youth"
                 + (unanswered == 0 ? "." : "; FM didn't answer for \(unanswered) of them, whose Would join is empty.")
-            if let question {
-                let noJob = shown.filter { checks.staffJobKnown($0, job: question.job, level: question.level) == nil }.count
-                interest += asked + (noJob == 0 ? "" : " FM didn't answer that for \(noJob) of them, whose Takes job is empty.")
+            if let question, jobAsked {
+                let noJob = joining.filter { checks.staffJobKnown($0, job: question.job, level: question.level) == nil }.count
+                interest += asked + " Takes job is only asked for those FM says would join your \(teamText), and left empty for the rest: "
+                    + "the question skips the first step of FM's rule, which can turn someone down whatever the job, so a Yes for "
+                    + "them wouldn't be FM's." + (noJob == 0 ? "" : " FM didn't answer about the job for \(noJob) of those it was "
+                    + "asked about, whose Takes job is empty.")
             } else {
                 interest += noJobAnswer
             }

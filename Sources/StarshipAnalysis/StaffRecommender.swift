@@ -41,6 +41,8 @@ public struct StaffRecommender {
     private static let wanted = 25
     private static let unfiltered = 50
     private static let batchSize = 48
+    /// How many of a batch's joiners are asked about the job at once.
+    private static let jobChunk = 8
     private static let boardJobs: Set<String> = ["Chairperson", "Owner", "Director", "Managing Director", "President"]
 
     private let session: AnalysisSession
@@ -309,7 +311,9 @@ public struct StaffRecommender {
             return (people, !options.onlyJoin || onlyJoinEnabled, false, cut && people.count < count)
         }
         let question = checks.canCheckStaffJob ? StaffRecommender.jobQuestion(role: role, level: level) : nil
-        var shown: [Staff] = []
+        // False once FM answers without weighing the job up, which it does for a whole club: then it's who'd join alone.
+        var asksJob = question != nil
+        var shown: [Staff] = [], joiners: [Staff] = []
         for batch in keen.chunked(StaffRecommender.batchSize) {
             if isCancelled() { return nil }
             guard checks.checkStaff(batch: batch, isCancelled: isCancelled) else {
@@ -317,14 +321,29 @@ public struct StaffRecommender {
                 return (people, false, false, cut && people.count < StaffRecommender.unfiltered)
             }
             let joining = batch.filter { checks.staffKnown($0)?.wouldJoin(level: level) == true }
-            // Someone FM didn't answer for about the job is left out, as for who'd join: no answer is never a yes.
-            if let question { checks.checkStaffJob(joining, job: question.job, level: question.level, isCancelled: isCancelled) }
-            for person in joining where question.map({ checks.staffJobKnown(person, job: $0.job, level: $0.level) == true }) ?? true {
-                shown.append(person)
-                if shown.count >= wanted { return (shown, true, question != nil, false) }
+            joiners += joining
+            if let question, asksJob {
+                // In rank order, a few at a time, stopping at `wanted`: each question is one more of FM's rules. Someone FM
+                // didn't answer for about the job is left out, as for who'd join: no answer is never a yes.
+                for chunk in joining.chunked(StaffRecommender.jobChunk) {
+                    checks.checkStaffJob(Array(chunk), job: question.job, level: question.level, isCancelled: isCancelled)
+                    let answers = chunk.map { checks.staffJobKnown($0, job: question.job, level: question.level) }
+                    if answers.contains(.notAsked) {
+                        asksJob = false
+                        break
+                    }
+                    for (person, answer) in zip(chunk, answers) where answer == .takes {
+                        shown.append(person)
+                        if shown.count >= wanted { return (shown, true, true, false) }
+                    }
+                }
+            }
+            if !asksJob {
+                shown = Array(joiners.prefix(wanted))
+                if shown.count >= wanted { return (shown, true, false, false) }
             }
         }
-        return isCancelled() ? nil : (shown, true, question != nil, cut)
+        return isCancelled() ? nil : (shown, true, asksJob, cut)
     }
 
     /// The options Recommended staff opens with, so an overview's pick is that screen's top row.

@@ -15,8 +15,8 @@ final class JobPickTests: XCTestCase {
         let pick = UInt64(A64_SCRATCH) + 0x300, out = UInt64(A64_SCRATCH) + 0x400
         let team: Int64 = 0x7cca_3d49_08
         RulesEngine.writeJobPick(cpu, at: pick, job: 58, team: team)
-        // As the staff rule leaves its answer before the call: zeroed, here with a marker after it.
-        for offset in stride(from: UInt64(0), to: 24, by: 8) { a64_write(cpu, out + offset, 0, 8) }
+        // Filled with ones, so every byte of the answer the routine leaves is its own, with a marker after it.
+        for offset in stride(from: UInt64(0), to: 24, by: 8) { a64_write(cpu, out + offset, UInt64.max, 8) }
         a64_write(cpu, out + 24, 0xabcd, 8)
         a64_set_x(cpu, 3, out)
         a64_set_x(cpu, 31, UInt64(A64_STACK_TOP) - 0x1000)

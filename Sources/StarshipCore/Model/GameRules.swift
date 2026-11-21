@@ -55,6 +55,12 @@ public enum JoinInterest: Int, Comparable, Sendable {
     public static func < (lhs: JoinInterest, rhs: JoinInterest) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
+/// FM's staff rule asked about one job: it takes it, it turns it down, or it answered without weighing the job up at all,
+/// which it does for a whole club in some game modes. Not asked is no answer about the job, and asking again gives the same.
+public enum StaffJobAnswer: Equatable {
+    case takes, refuses, notAsked
+}
+
 /// The features that FM Starship gets by running the game's own code on a copy of its memory.
 /// Everything here is optional: a nil engine or a nil answer means "not available on this build",
 /// and the app must show that rather than a guess.
@@ -65,8 +71,8 @@ public protocol GameRulesEngine: AnyObject {
     /// Whether `staffJobInterest` can be asked on this build.
     var supportsStaffJobInterest: Bool { get }
     /// `staffInterest` asked about one job, `job` from `Names.jobs`, instead of the job FM picks for the person itself.
-    /// Nil when FM didn't answer or didn't weigh the job up.
-    func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool?
+    /// Nil when the call failed.
+    func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> StaffJobAnswer?
     func preferredJob(staff: Staff) -> Int?
     func jobPreferences(staff: Staff) -> [UInt8]?
     func roleRows(player: Player, team: Int64) -> [RoleRow]?
@@ -97,7 +103,7 @@ public protocol GameRulesEngine: AnyObject {
 
 extension GameRulesEngine {
     public var supportsStaffJobInterest: Bool { false }
-    public func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool? { nil }
+    public func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> StaffJobAnswer? { nil }
     public func matchHistory(player: Player) -> MatchHistory? { nil }
     public func fitness(player: Player) -> Fitness? { nil }
     public func homeGrown(player: Player) -> HomeGrown? { nil }

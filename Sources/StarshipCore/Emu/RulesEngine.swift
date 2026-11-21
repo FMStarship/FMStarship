@@ -91,6 +91,9 @@ public final class RulesEngine: GameRulesEngine {
     private let tablesLock = NSLock()
     private var tables: (types: [Int: [String]]?, directions: [Int: String]?)?
     private var roleMasks: [Int: UInt64] = [:]
+    private struct TeamLevelKey: Hashable { var club: Int64, level: Int }
+    private let teamLevelLock = NSLock()
+    private var teamsAtLevel: [TeamLevelKey: Int64] = [:]
     private let failureLock = NSLock()
     private var failure: String?
     public var lastFailure: String? {
@@ -175,36 +178,47 @@ public final class RulesEngine: GameRulesEngine {
     }
 
     /// What stands in for `GAME_PERSON`'s job pick, called as FM calls it with the answer's address in x3: it writes `job` as
-    /// the answer's job byte and `team` as its team, returns 1, and sets the word at `jobPickAsked`. In order: x10 = team,
-    /// w9 = job, out.job = w9, out.team = x10, w0 = 1, x11 = &asked, asked = w0, return; then the team, the job and asked.
-    package static let jobPickCode: [UInt32] = [0x5800_010a, 0x1800_0129, 0x3900_0069, 0xf900_046a, 0x5280_0020, 0x1000_00cb,
-                                                0xb900_0160, 0xd65f_03c0]
-    package static let jobPickAsked: UInt64 = 44
+    /// the answer's job byte and `team` as its team, no second job or second team, returns 1, and sets the word at
+    /// `jobPickAsked`. In order: x10 = team, w9 = job, out.job = w9, out.job2 = 0, out.team = x10, out.team2 = 0, w0 = 1,
+    /// x11 = &asked, asked = w0, return; then the team, the job and asked.
+    package static let jobPickCode: [UInt32] = [0x5800_014a, 0x1800_0169, 0x3900_0069, 0x3900_047f, 0xf900_046a, 0xf900_087f,
+                                                0x5280_0020, 0x1000_00cb, 0xb900_0160, 0xd65f_03c0]
+    package static let jobPickAsked: UInt64 = 52
 
     package static func writeJobPick(_ cpu: OpaquePointer, at address: UInt64, job: Int, team: Int64) {
         for (i, word) in jobPickCode.enumerated() { a64_write(cpu, address + UInt64(i * 4), UInt64(word), 4) }
-        a64_write(cpu, address + 32, UInt64(bitPattern: team), 8)
-        a64_write(cpu, address + 40, UInt64(job), 4)
+        a64_write(cpu, address + 40, UInt64(bitPattern: team), 8)
+        a64_write(cpu, address + 48, UInt64(job), 4)
         a64_write(cpu, address + jobPickAsked, 0, 4)
     }
 
     public var supportsStaffJobInterest: Bool { staffFunction != 0 && jobPickEntry != 0 }
 
+    /// FM's team at a staff-rule level for a club, which depends only on the club and the level: asked once each.
+    private func teamAtLevel(club: Int64, level: Int) -> Int64? {
+        let key = TeamLevelKey(club: club, level: level)
+        if let known = teamLevelLock.withLock({ teamsAtLevel[key] }) { return known }
+        guard let found: Int64 = try? sandbox.call(game.pluginBase + Mac27.teamAtLevel, [UInt64(bitPattern: club), UInt64(level)],
+                                                    result: { Int64(bitPattern: a64_get_x($0, 0)) }) else { return nil }
+        teamLevelLock.withLock { teamsAtLevel[key] = found }
+        return found
+    }
+
     /// The staff rule asked about one job. The rule asks `GAME_PERSON` which job, and at which team, to weigh a person up for,
     /// then runs FM's own checks and its own score for that job against its own bar. Here that one call, in the sandbox's
     /// private copy of FM's memory, answers `job` at the club's team at `level` instead, so every check and the score are
-    /// still FM's. It only counts as an answer when the rule got as far as asking: FM's yes without asking says nothing about
-    /// the job.
-    public func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> Bool? {
+    /// still FM's. It only counts as an answer when the rule got as far as asking: FM's yes or no without asking says nothing
+    /// about the job, and is `.notAsked`. The decisions here (no answer without asking, no team at the level, a failed call)
+    /// need FM to run, so they have no test: they were checked live against FM 27.1.0 on a Molde save, 21 Nov 2026.
+    public func staffJobInterest(staff: Staff, team: Int64, job: Int, level: Int) -> StaffJobAnswer? {
         guard staffFunction != 0, jobPickEntry != 0, let manager = managers[team], manager != 0, (2...254).contains(job) else { return nil }
         // The team the job is at, as FM's own pick gives it: the rule looks for a manager there before offering a manager's job.
         let club = game.readPointer(team &+ Int64(MacLayout.Team.club))
         var at = team
         if level != RulesEngine.staffLevels[0] {
-            guard club != 0, let found: Int64 = try? sandbox.call(game.pluginBase + Mac27.teamAtLevel, [UInt64(bitPattern: club), UInt64(level)],
-                                                                   result: { Int64(bitPattern: a64_get_x($0, 0)) }) else { return nil }
+            guard club != 0, let found = teamAtLevel(club: club, level: level) else { return nil }
             // No such team at the club: the rule says no without asking.
-            if found == 0 { return false }
+            if found == 0 { return .refuses }
             at = found
         }
         let rule = UInt64(A64_SCRATCH), person = rule + 0x100, context = rule + 0x200, pick = rule + 0x300
@@ -219,7 +233,7 @@ public final class RulesEngine: GameRulesEngine {
                 RulesEngine.writeJobPick(cpu, at: pick, job: job, team: at)
                 a64_write(cpu, UInt64(bitPattern: self.jobPickEntry), pick, 8)
             }, result: { cpu in (a64_get_x(cpu, 0) & 255 != 0, a64_read(cpu, pick + RulesEngine.jobPickAsked, 4) != 0) })
-            return answer && !asked ? nil : answer
+            return asked ? answer ? .takes : .refuses : .notAsked
         } catch {
             failureLock.lock()
             failure = "\(error)"
