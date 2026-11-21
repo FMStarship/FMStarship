@@ -54,6 +54,8 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **Position ratings** are 1 to 20. 18 and up is a natural position, 15 to 17 accomplished (can play there), lower is a stretch.
 - **CA and PA** (current and potential ability) are 1 to 200. With Ability set to Stars they come as stars, such as "3.5★", out
   of 5. PA is a ceiling most players never reach.
+  Growth room is PA minus CA. For a player past his peak (into his thirties), FM keeps PA as his old ceiling while CA falls, so
+  Growth room isn't room to grow: a 37-year-old with CA 53 and PA 122 won't get back up. Don't present it as potential then.
 - **Coaching stars** are out of 5, as FM shows them.
 - **Season stats** are FM's club total for this season: league, cup and continental matches added up, at the club he plays
   for now (a loanee's are his loan club's). FM keeps the three apart, and so do `squad`'s `League stats`, `Cup stats` and
