@@ -226,7 +226,8 @@ public final class GameProcess: @unchecked Sendable {
 
     /// False when the address is not mapped, like ReadProcessMemory. Larger reads are split.
     public func read(_ address: Int64, into buffer: UnsafeMutableRawPointer, count: Int) -> Bool {
-        guard address > 0x10000, address < 0x7fff_ffff_ffff else { return false }
+        // A negative count would trap as a size for mach_vm_read_overwrite.
+        guard address > 0x10000, address < 0x7fff_ffff_ffff, count >= 0 else { return false }
         if inside {
             // Like the agent: a bad address comes back as an error rather than a crash.
             var got: mach_vm_size_t = 0

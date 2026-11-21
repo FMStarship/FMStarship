@@ -93,7 +93,7 @@ final class InterfaceDump {
         if let ui = FMElements(il2cpp) { line += colours(element, ui) }
         lines.append(line)
         let count = il2cpp.unbox(try il2cpp.call(element, "get_childCount"), as: Int32.self) ?? 0
-        for index in 0..<count {
+        for index in 0..<max(0, count) {
             var position = index
             let child = try withUnsafeMutablePointer(to: &position) { try il2cpp.call(element, "ElementAt", [Pointer($0)]) }
             if let child { try walk(child, depth: depth + 1, into: &lines, budget: &budget, il2cpp: il2cpp) }

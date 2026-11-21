@@ -121,6 +121,14 @@ final class EditSearchTests: XCTestCase {
         XCTAssertEqual(kroner.values.last, "2000")
     }
 
+    /// A fee no choice could hold, too large or infinite, isn't offered as a choice, and nothing stops FM over it.
+    func testAFeeTooLargeForAnyChoiceIsLeftOut() {
+        XCTAssertEqual(FeeChoices(units: pounds, current: "1e300").values.count, 12)
+        XCTAssertEqual(FeeChoices(units: pounds, current: "inf").values.count, 12)
+        XCTAssertEqual(FeeChoices.text(2), "2")
+        XCTAssertEqual(FeeChoices.text(9.1), "9.1")
+    }
+
     func testThePitchHasFMsPositionsAndNoSweeper() {
         let spots = PitchSpot.spots
         XCTAssertEqual(spots.count, 14)
