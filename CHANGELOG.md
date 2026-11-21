@@ -9,6 +9,14 @@ What's new in each version of FM Starship. Versions up to 27.0.5 are on the
   choose Remove … from "<shortlist>", or right-click a shortlist and choose Move to Trash. The previous version is kept as a
   backup, as when you add people. A change made to a shortlist inside FM reaches FM Starship once you save that shortlist again
   from FM, because FM Starship shows FM's shortlist files.
+- **Staff Adaptability shows with the other staff attributes,** as in FM: on the profile, as a column and a filter rule, in exports
+  and in Compare, with Hidden attributes on or off. A player's Adaptability stays hidden.
+- **Add a rule in the search filters.** The Attributes tab of the player and staff searches has an Add a rule button, so you can
+  filter on up to 20 attributes instead of 8.
+- **Inside FM, FM Starship no longer looks for shortlists outside FM's own folder**, such as Documents or iCloud Drive, where
+  macOS could ask whether FM may.
+- **Inside FM, cancelling the filter window no longer brings back filters on hidden attributes** after Hidden attributes was
+  switched off in FM Starship's tab.
 
 ## 27.0.8
 
