@@ -46,6 +46,10 @@ KINDS = {
     'statusFunction': ('function',),
     'interestSlot': ('slot', 'GAME_ACTUAL_PLAYER', 0),
     'staffRuleSlot': ('slot', 'PERSON_NON_PLAYER_INTERESTED_FILTER_RULE', 0),
+    'personGlobal': ('global',),
+    'jobPickSlot': ('slot', 'GAME_PERSON', 0),
+    'teamAtLevel': ('function',),
+    'jobAtTeam': ('function',),
     'statFunction': ('function',),
     'statsContainerSlot': ('slot', 'GAME_ACTUAL_PLAYER', 0),
     'personStatsSlot': ('slot', 'ACTUAL_PLAYER', -0x388),  # the player's identity part, MacLayout.Player.identity
