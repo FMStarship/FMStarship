@@ -124,12 +124,17 @@ public final class InboxReader {
     private let game: GameProcess
     private let rtti: Rtti
     private var classes: [Int64: String?] = [:]
+    /// The transfer timeline isn't covered by a self-check, and its teams swapped would read as a move the other way, so
+    /// it's only read on the build of game_plugin it was found on, as FixturesReader's unchecked fields are.
+    private let checkedBuild: Bool
     /// The most items it reads: FM held 150.
     static let most = 4096
 
-    public init(game: GameProcess, rtti: Rtti) {
+    /// `checkedBuild` stands in for the fingerprint, for tests.
+    public init(game: GameProcess, rtti: Rtti, checkedBuild: Bool? = nil) {
         self.game = game
         self.rtti = rtti
+        self.checkedBuild = checkedBuild ?? (GameBuild.fingerprint(pluginPath: game.pluginPath) == RulesEngine.Mac27.fingerprint)
     }
 
     /// The inbox of the human manager whose HUMAN_NON_PLAYER is at `manager`. `teams` are the club's teams by database
@@ -275,10 +280,11 @@ public final class InboxReader {
     /// Every entry of FM's transfer timeline in memory, each once: the timeline of the human manager's notable moves, which
     /// FM shows on the manager's profile. It's a sweep for the class, as nothing found holds the list: on Molde's save it held
     /// 10 of the club's moves, not its free and smaller ones. A copy FM has let go of reads the same as the entry, so copies
-    /// count once; one that doesn't read as an entry is left out. Nil when this build of FM has no such class.
+    /// count once; one that doesn't read as an entry is left out. Nil when this build of FM has no such class, or on a
+    /// build of game_plugin it wasn't found on.
     public func transferEvents() -> [TransferEvent]? {
         typealias T = MacLayout.TransferTimeline
-        guard let table = rtti.vtables(T.className).first(where: { $0.offsetToTop == 0 }) else { return nil }
+        guard checkedBuild, let table = rtti.vtables(T.className).first(where: { $0.offsetToTop == 0 }) else { return nil }
         let vtable = game.pluginBase &+ Int64(table.addressPoint)
         let lock = NSLock()
         var found: [Int64] = []

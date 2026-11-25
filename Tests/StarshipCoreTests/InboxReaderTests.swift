@@ -328,7 +328,7 @@ final class InboxReaderTests: XCTestCase {
         let notAMove = world.game.record("something else", size: 0x60, vtable: "TRANSFER_COMPLETED_NEWS")
         notAMove.set("person", T.person, player)
 
-        let events = try XCTUnwrap(InboxReader(game: world.game.process(), rtti: Rtti(world.game.process())).transferEvents())
+        let events = try XCTUnwrap(InboxReader(game: world.game.process(), rtti: Rtti(world.game.process()), checkedBuild: true).transferEvents())
         let day = { (day: Int) in GameDate.checked(year: 2029, dayOfYear: day)! }
         XCTAssertEqual(events, [
             TransferEvent(person: NewsPerson(uid: 7003, index: 73, isPlayer: true, name: "Sam Striker"), date: day(229),
@@ -336,6 +336,23 @@ final class InboxReaderTests: XCTestCase {
             TransferEvent(person: NewsPerson(uid: 7001, index: 71, isPlayer: false, name: "Pat Physio"), date: day(268),
                           fromTeam: 0x900, from: "Fixture Town AFC", toTeam: 0x438, to: "Mockport Rovers FC", fee: nil),
         ])
+    }
+
+    /// On a build of game_plugin the timeline wasn't found on there's none, so no direction is given, rather than one that
+    /// could be the wrong way round.
+    func testTransferTimelineNeedsTheCheckedBuild() throws {
+        let world = Club()
+        typealias T = MacLayout.TransferTimeline
+        let event = world.game.record("timeline event", size: 0x60, vtable: T.className)
+        event.set("day", T.day, UInt16(229) | 0x1600)
+        event.set("year", T.year, UInt16(2029))
+        event.set("from", T.fromTeam, world.first)
+        event.set("to", T.toTeam, world.rivalsFirst)
+        event.set("person", T.person, world.identity(world.player))
+        let process = world.game.process()
+        XCTAssertEqual(InboxReader(game: process, rtti: Rtti(process), checkedBuild: true).transferEvents()?.count, 1)
+        XCTAssertNil(InboxReader(game: process, rtti: Rtti(process), checkedBuild: false).transferEvents())
+        XCTAssertNil(InboxReader(game: process, rtti: Rtti(process)).transferEvents(), "FakeGame's plugin isn't the checked build")
     }
 
     /// A field that isn't what it should be leaves the item's subject out, never a guess, and the item stays.
