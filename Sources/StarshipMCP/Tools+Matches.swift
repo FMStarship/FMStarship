@@ -316,10 +316,19 @@ extension Toolbox {
         }
         pairs += [("columns", .array(Self.tableColumns.map { .string($0) })), ("rows", .array(Self.tableRows(found.table)))]
         // From today, as `fixtures` gives them: a moved match once, and one whose date couldn't be told with no date and a
-        // note. Its `date` is the latest it could be on, so it's in while any of them is.
+        // note. Its `date` is the latest it could be on, so it's in while any of them is. The stage alone knows a day is past
+        // only by the club's matches in the stage, so where `fixtures`, which goes by every match the club has played, knows
+        // the day of a match the stage couldn't tell, its copy is given.
         let today = context.db.gameDate
-        let left = found.fixtures.filter { match in
-            !match.played && (match.home == matches.team || match.away == matches.team) && today.map { match.date >= $0 } ?? true
+        let left: [MatchFixture] = found.fixtures.compactMap { match in
+            guard !match.played, match.home == matches.team || match.away == matches.team else { return nil }
+            let known = !match.dateUnknown ? nil : matches.fixtures.first {
+                !$0.played && !$0.dateUnknown && $0.competitionIndex == match.competitionIndex && $0.season == match.season
+                    && $0.round == match.round && $0.home == match.home && $0.away == match.away
+            }
+            let given = known ?? match
+            if let today, given.date < today { return nil }
+            return given
         }
         pairs.append(("still_to_play", .object([
             ("columns", .array(Self.remainingColumns.map { .string($0) })),

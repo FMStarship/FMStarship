@@ -325,13 +325,32 @@ final class MatchToolTests: XCTestCase {
         let harness = Harness()
         var phase = cupPhase()
         let at = try XCTUnwrap(phase.fixtures.firstIndex { !$0.played && $0.date == GameDate.date(year: 2026, dayOfYear: World.laterMatch) })
-        phase.fixtures[at].possibleDates = [World.nextMatch, World.laterMatch].compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+        let days = [World.nextMatch, World.laterMatch].compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+        phase.fixtures[at].possibleDates = days
         harness.source.matches?.tables[World.cupIndex] = phase
+        // `fixtures` can't tell either.
+        let ours = try XCTUnwrap(harness.source.matches?.teams[World.team]?.fixtures.firstIndex { $0.date == phase.fixtures[at].date })
+        harness.source.matches?.teams[World.team]?.fixtures[ours].possibleDates = days
         let table = try harness.answer("league_table", ["competition": "Mock Cup"])
         let left = try XCTUnwrap(table["still_to_play"])
         XCTAssertEqual(left.rowsByName, [["date": .null, "kick_off": .null, "venue": "H", "opponent": .string(World.minnows)]])
         XCTAssertEqual(table["note"], .string(Toolbox.dateUnknownSentence(phase.fixtures[at])))
         XCTAssertTrue(table["note"]?.string?.contains("2026-10-04 and 2026-10-11") ?? false)
+    }
+
+    /// The stage alone knows a day is past only by the club's matches in the stage. Where `fixtures`, which goes by every
+    /// match the club played, knows the day of the same match, `still_to_play` gives it.
+    func testAStageMatchsDayComesFromFixturesWhereTheyKnowIt() throws {
+        let harness = Harness()
+        var phase = cupPhase()
+        let at = try XCTUnwrap(phase.fixtures.firstIndex { !$0.played && $0.date == GameDate.date(year: 2026, dayOfYear: World.laterMatch) })
+        phase.fixtures[at].possibleDates = [World.nextMatch, World.laterMatch].compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+        harness.source.matches?.tables[World.cupIndex] = phase
+        let table = try harness.answer("league_table", ["competition": "Mock Cup"])
+        let left = try XCTUnwrap(table["still_to_play"])
+        XCTAssertEqual(left.rowsByName, [["date": "2026-10-11", "kick_off": .null, "venue": "H", "opponent": .string(World.minnows)]],
+                       "the club's fixtures list it on its day, with no kick-off yet")
+        XCTAssertFalse(table["note"]?.string?.contains("2026-10-04") ?? false)
     }
 
     /// Where FM's places couldn't be read, they're left out and the note says so, rather than filled in from the rules.

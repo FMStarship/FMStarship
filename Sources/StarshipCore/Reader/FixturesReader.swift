@@ -648,7 +648,8 @@ public final class FixturesReader {
         let inStage = theirs.filter { $0.stage == stageName }
         let season = inStage.map(\.season).max() ?? 0
         // The club's own matches are listed once, as `fixtures(team:)` lists them: a moved match turns up on each day FM's
-        // screens kept a copy for. Per club, as `oneDay` goes by the last day the club played.
+        // screens kept a copy for. Per club. Here `oneDay` knows a day is past only by the club's matches in the stage, where
+        // `fixtures(team:)` goes by every match the club played, so it can leave a match's day unknown that `fixtures` knows.
         let ours = inStage.filter { $0.season == season && ($0.home == team || $0.away == team) }
         let others = inStage.filter { $0.season == season && $0.home != team && $0.away != team }
         let fixtures = (others + Self.oneDay(ours)).sorted { ($0.date, $0.kickOff ?? 0) < ($1.date, $1.kickOff ?? 0) }
