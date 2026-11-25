@@ -44,6 +44,8 @@ Updates are the only thing the app goes online for, and the plugin never goes on
 | `Sources/StarshipPlugin` | The plugin: the IL2CPP bridge, FM's tables, and the screens inside FM |
 | `Sources/StarshipPluginStart` | The plugin's constructor, which starts it only inside FM |
 | `Sources/fmprobe` | Developer probe, for finding things after a patch |
+| `Sources/StarshipMCP` | The MCP server for AI agents, read only, over stdio. `Sources/fmstarship-mcp` starts it |
+| `skills/fm-starship` | The skill the app carries for AI agents that use the MCP server |
 
 [README.md](README.md) explains how it works and what to do after an FM patch. [PRODUCT.md](PRODUCT.md) says who it's for, and
 [DESIGN.md](DESIGN.md) is the visual reference. Read them before you change a screen.
