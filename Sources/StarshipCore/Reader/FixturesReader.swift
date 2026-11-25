@@ -163,7 +163,8 @@ public struct CompetitionTable: Sendable {
     public var stage: String
     /// The season the stage's matches are of, as `MatchFixture.season`.
     public var season: Int
-    /// The stage's matches this season, of every club in the table, oldest first.
+    /// The stage's matches this season, of every club in the table, oldest first. The asked club's are each listed once, as
+    /// `FixturesReader.oneDay` lists a moved match.
     public var fixtures: [MatchFixture]
     /// Nil where FM's settings for the stage couldn't be read, or on a build of game_plugin they weren't read on.
     public var lines: LeagueLines?
@@ -646,7 +647,11 @@ public final class FixturesReader {
         }
         let inStage = theirs.filter { $0.stage == stageName }
         let season = inStage.map(\.season).max() ?? 0
-        let fixtures = inStage.filter { $0.season == season }.sorted { ($0.date, $0.kickOff ?? 0) < ($1.date, $1.kickOff ?? 0) }
+        // The club's own matches are listed once, as `fixtures(team:)` lists them: a moved match turns up on each day FM's
+        // screens kept a copy for. Per club, as `oneDay` goes by the last day the club played.
+        let ours = inStage.filter { $0.season == season && ($0.home == team || $0.away == team) }
+        let others = inStage.filter { $0.season == season && $0.home != team && $0.away != team }
+        let fixtures = (others + Self.oneDay(ours)).sorted { ($0.date, $0.kickOff ?? 0) < ($1.date, $1.kickOff ?? 0) }
         return CompetitionTable(table: table, stage: stageName, season: season, fixtures: fixtures,
                                 lines: settingsRead && checkedBuild ? lines(settings, clubs: table.rows.count) : nil,
                                 check: Self.check(stage: fixtures, table: table))

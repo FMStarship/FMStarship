@@ -315,7 +315,8 @@ extension Toolbox {
             notes.append("FM's places for this stage couldn't be read on this build of FM, so where they lead isn't given.")
         }
         pairs += [("columns", .array(Self.tableColumns.map { .string($0) })), ("rows", .array(Self.tableRows(found.table)))]
-        // From today, as `fixtures` gives them: FM keeps a moved match's old fixture too, under its old date.
+        // From today, as `fixtures` gives them: a moved match once, and one whose date couldn't be told with no date and a
+        // note. Its `date` is the latest it could be on, so it's in while any of them is.
         let today = context.db.gameDate
         let left = found.fixtures.filter { match in
             !match.played && (match.home == matches.team || match.away == matches.team) && today.map { match.date >= $0 } ?? true
@@ -324,10 +325,12 @@ extension Toolbox {
             ("columns", .array(Self.remainingColumns.map { .string($0) })),
             ("rows", .array(left.map { match in
                 let home = match.home == matches.team
-                return .array([.string(Output.iso(match.date)), match.kickOff.map { .string(Self.time($0)) } ?? .null,
+                return .array([match.dateUnknown ? .null : .string(Output.iso(match.date)),
+                               match.dateUnknown ? .null : match.kickOff.map { .string(Self.time($0)) } ?? .null,
                                .string(home ? "H" : "A"), Output.text(home ? match.awayName : match.homeName) ?? .null])
             })),
         ])))
+        notes += left.filter(\.dateUnknown).map(Self.dateUnknownSentence)
         if found.check == .nothingPlayed { notes.append("No match of the stage has been played yet this season.") }
         if !notes.isEmpty { pairs.append(("note", .string(notes.joined(separator: " ")))) }
         return .object(dropping: pairs)

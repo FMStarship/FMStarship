@@ -319,6 +319,21 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(harness.source.matches?.tableSweeps, 2)
     }
 
+    /// A match of the stage whose date couldn't be told is in still_to_play once, with no date or kick-off, and the note says
+    /// why, as fixtures does.
+    func testAStageMatchWhoseDateCantBeToldHasNone() throws {
+        let harness = Harness()
+        var phase = cupPhase()
+        let at = try XCTUnwrap(phase.fixtures.firstIndex { !$0.played && $0.date == GameDate.date(year: 2026, dayOfYear: World.laterMatch) })
+        phase.fixtures[at].possibleDates = [World.nextMatch, World.laterMatch].compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+        harness.source.matches?.tables[World.cupIndex] = phase
+        let table = try harness.answer("league_table", ["competition": "Mock Cup"])
+        let left = try XCTUnwrap(table["still_to_play"])
+        XCTAssertEqual(left.rowsByName, [["date": .null, "kick_off": .null, "venue": "H", "opponent": .string(World.minnows)]])
+        XCTAssertEqual(table["note"], .string(Toolbox.dateUnknownSentence(phase.fixtures[at])))
+        XCTAssertTrue(table["note"]?.string?.contains("2026-10-04 and 2026-10-11") ?? false)
+    }
+
     /// Where FM's places couldn't be read, they're left out and the note says so, rather than filled in from the rules.
     func testLinesFMsSettingsDontGiveAreLeftOut() throws {
         let harness = Harness()
