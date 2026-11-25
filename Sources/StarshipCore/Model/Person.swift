@@ -227,6 +227,9 @@ public final class Database {
     public var knowsSides = false
     /// The human managers' tactics by team. Live games only.
     public var tactics: [Int64: Tactic] = [:]
+    /// Where the read found the game date, so it can be looked at again without reading everything. Only means
+    /// something in the game it was read from, so it isn't kept in snapshots.
+    public var dateRecords: [Int64] = []
     public init() {}
 
     /// What the self-checks found wrong, or nil when there's nothing to say.

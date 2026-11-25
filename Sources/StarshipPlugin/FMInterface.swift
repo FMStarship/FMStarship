@@ -268,7 +268,7 @@ final class FMInterface {
     private func writeCosts() {
         guard Date().timeIntervalSince(costsWritten) >= 60 else { return }
         costsWritten = Date()
-        let costs = [("tick", tickCost), ("refreshRows", rowsCost), ("checkGame", model?.checkGameCost)]
+        let costs = [("tick", tickCost), ("refreshRows", rowsCost), ("checkGame", model?.checkGameCost), ("heldRead", model?.heldReadCost)]
             .compactMap { name, cost in cost?.take().map { "\(name) \($0)" } }
         if !costs.isEmpty { PluginLog.write("FM's main thread, last minute: " + costs.joined(separator: "; ")) }
     }

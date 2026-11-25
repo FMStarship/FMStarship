@@ -73,6 +73,7 @@ final class Plugin: NSObject, NSWindowDelegate {
     @objc func toggle() {
         if let main = windows[.main], main.isVisible {
             windows.values.forEach { $0.orderOut(nil) }
+            model?.windowHidden()
         } else {
             show(.main)
             FMInterface.shared.loadSaveIfNeeded()
@@ -102,6 +103,7 @@ final class Plugin: NSObject, NSWindowDelegate {
         window.level = NSWindow.Level(rawValue: max(NSWindow.Level.floating.rawValue, gameLevel + 1))
         window.makeKeyAndOrderFront(nil)
         PluginLog.write("Showing \(model.title(of: kind))")
+        if kind == .main { model.windowShown() }
     }
 
     private func makeWindow(_ kind: StarshipWindow, model: AppModel) -> NSWindow {
@@ -124,7 +126,11 @@ final class Plugin: NSObject, NSWindowDelegate {
     nonisolated func windowWillClose(_ notification: Notification) {
         MainActor.assumeIsolated {
             guard let closing = notification.object as? NSWindow,
-                  let kind = windows.first(where: { $0.value === closing })?.key, kind != .main else { return }
+                  let kind = windows.first(where: { $0.value === closing })?.key else { return }
+            guard kind != .main else {
+                model?.windowHidden()
+                return
+            }
             // Profiles and comparisons are made again for the next person; the main window keeps its place.
             windows[kind] = nil
         }

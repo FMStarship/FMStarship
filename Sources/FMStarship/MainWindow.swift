@@ -14,6 +14,14 @@ struct MainWindow: View {
         } detail: {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if model.database != nil, let progress = model.saveMovedOn {
+                        SaveMovedOnNotice(progress: progress)
+                            .padding([.horizontal, .top], Metric.gutter)
+                            // Opaque, so what scrolls under it doesn't show through.
+                            .background(colors.ui.ground)
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     VStack(spacing: 0) {
                         JobOverlay(job: model.fileJob)
@@ -49,7 +57,19 @@ struct MainWindow: View {
         .onAppear {
             model.openWindow = openWindow
             model.applyAppearance()
+            // Reopening the window while the app is already in front. Inside FM the plugin says when it's shown.
+            if !AppModel.isInsideGame { model.windowShown() }
         }
+        // Inside FM that's FM coming to the front; the plugin says when this window is shown instead.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if !AppModel.isInsideGame { model.windowShown() }
+        }
+        // The app, or FM with this window, going to the back, or the window closing: a read it was waiting to start for
+        // being shown isn't wanted any more.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            model.windowHidden()
+        }
+        .onDisappear { model.windowHidden() }
     }
 
     @ViewBuilder
@@ -124,6 +144,26 @@ struct MainWindow: View {
                     .frame(width: 150)
             }
         }
+    }
+}
+
+/// Over every screen while FM's save is on a later day than the one read.
+private struct SaveMovedOnNotice: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.appColors) private var colors
+    let progress: SaveProgress
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "clock.arrow.circlepath").foregroundStyle(colors.ui.fair)
+            Text(progress.notice)
+            Spacer(minLength: 0)
+            Button("Load Save") { model.loadSave() }.disabled(model.loading)
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(colors.ui.fair.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

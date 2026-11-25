@@ -68,6 +68,17 @@ final class EmptyListTests: XCTestCase {
         XCTAssertNil(section(table).inPlaceOfTable)
     }
 
+    func testAListNobodyCouldBeAskedAboutSaysSoUnderItsHeading() {
+        let warning = "FM couldn't be asked who would join, so nobody in this list is known to want to come."
+        let rows = [TableRow(cells: ["Abel"], person: player(1, age: 20, at: "Brann"))]
+        var table = AnalysisTable(columns: [TableColumn("Name", 5)], rows: rows, head: "Best first.", interestChecked: false)
+        XCTAssertEqual(section(table).headingNote, "Best first. " + warning)
+        table.head = ""
+        XCTAssertEqual(section(table).headingNote, warning)
+        let nobody = AnalysisTable(columns: [TableColumn("Name", 5)], interestChecked: false)
+        XCTAssertEqual(section(nobody).headingNote, "", "Nobody in it to misread")
+    }
+
     func testTheLinesUnderAListWithNobodySayWhyThemselves() {
         // Shown under it already: its status line, its rows about nobody, and its notes.
         let nobodyFound = AnalysisTable(columns: [TableColumn("Name", 5)],

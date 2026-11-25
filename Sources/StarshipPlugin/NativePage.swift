@@ -1,3 +1,4 @@
+import FMStarshipUI
 import Foundation
 @preconcurrency import StarshipAnalysis
 
@@ -63,8 +64,14 @@ extension TableSection {
     /// Whether anybody in the list is for a table. FM's table with nobody in it would stand empty, with no word of why.
     var hasPeople: Bool { table.rows.contains { $0.person != nil } }
 
-    /// The small print under the list's heading: the engine's line over the list, while there's a table under it.
-    var headingNote: String { hasPeople ? table.head : "" }
+    /// The small print under the list's heading: the engine's line over the list, while there's a table under it, and
+    /// the app's warning when the game couldn't narrow it by who'd join, so the list isn't read as people who'd come.
+    /// The tab has no Load Save, so the warning doesn't send the player to one.
+    var headingNote: String {
+        guard hasPeople else { return "" }
+        guard !table.interestChecked else { return table.head }
+        return [table.head, SaveProgress.joinWarning(nil, canReload: false)].filter { !$0.isEmpty }.joined(separator: " ")
+    }
 
     /// What a list with nobody in it says where its table would be, in the screen's own size of text: the engine's
     /// line over the list, such as why youngsters need Hidden attributes. Without one, the lines under the list say

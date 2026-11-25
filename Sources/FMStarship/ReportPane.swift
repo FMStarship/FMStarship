@@ -69,7 +69,7 @@ struct ReportGrid: View {
             VStack(alignment: .leading, spacing: Metric.gap) {
                 if !table.head.isEmpty { LeadLine(text: table.head) }
                 if !table.interestChecked {
-                    NotNarrowedBanner(text: "Whether they would join could not be checked here, so the game has not narrowed this list. Treat it as a list of candidates, not of people who would come.")
+                    NotNarrowedBanner(text: model.joinWarning)
                 }
                 Panel(title: title) { grid }
             }
