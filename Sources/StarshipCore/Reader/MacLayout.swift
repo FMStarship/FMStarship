@@ -297,7 +297,7 @@ enum MacLayout {
         static let type: Int64 = 0xf8
         static let friendlyTypes: Set<UInt8> = [9, 24]
         /// Every other type seen on that save: 0 and 1 leagues, 2 to 5 cups and super cups, 6, 7, 10, 11, 12 and 15 to 20
-        /// international competitions, 21 and 22 continental, 25, 27 and 35 to 41 youth. A type not in either set isn't known.
+        /// international competitions, 21 and 22 continental, 25, 27, 35 to 39 and 41 youth. A type not in either set isn't known.
         static let competitiveTypes: Set<UInt8> = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 22, 25, 27,
                                                    35, 36, 37, 38, 39, 41]
     }
