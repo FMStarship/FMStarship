@@ -194,6 +194,8 @@ package final class AppModel: ObservableObject {
     private var searchToken: CancelToken?
     private var seasonToken: CancelToken?
     private var poll: Timer?
+    /// While `followSettingsFile` sets what it took from the file, which saves nothing.
+    private var following = false
     private var playersByUID: [UInt32: Player] = [:]
     private var staffByUID: [UInt32: Staff] = [:]
     private var laterChecks = LaterChecks()
@@ -244,6 +246,22 @@ package final class AppModel: ObservableObject {
     }
 
     func persist() { Settings.save() }
+
+    /// Hidden attributes and Ability as last set in the other window, the app's or FM Starship's tab inside FM, once the
+    /// settings file changes. Through the setters, so the screens follow and Off means gone in both. A follow saves nothing:
+    /// what's taken from the file isn't this window's change, and capturing the columns would write this window's layout
+    /// over the other's. Then a change a failed save left behind is saved, so the other window follows it too. The follow
+    /// comes first, so a later choice in the other window isn't written over.
+    func followSettingsFile() {
+        if Settings.followFile() {
+            following = true
+            defer { following = false }
+            if showHidden != Settings.current.showHidden { showHidden = Settings.current.showHidden }
+            let wanted = Reveal(setting: Settings.current.reveal)
+            if reveal != wanted { reveal = wanted }
+        }
+        Settings.saveIfPending()
+    }
 
     private func updateMenuState() {
         let state = MenuState.Values(hasData: database != nil, isList: screen.isList, canCompare: canCompare, loading: loading)
@@ -514,7 +532,10 @@ package final class AppModel: ObservableObject {
     /// Every 2 s. A read held for the player is installed after the poll's own cost is measured, since that's a search
     /// and more, and has its own. The plugin logs both. `checkGame` has dropped it if FM has closed.
     func pollGame() {
-        checkGameCost.measure { checkGame() }
+        checkGameCost.measure {
+            followSettingsFile()
+            checkGame()
+        }
         if heldReadReady { heldReadCost.measure { useHeldRead() } }
     }
 
@@ -766,10 +787,10 @@ package final class AppModel: ObservableObject {
     }
 
     private func visibilityChanged() {
-        persist()
+        if !following { persist() }
         tellFilters()
         rebuildShownColumns()
-        captureColumns()
+        if !following { captureColumns() }
         displayChanged()
         search()
     }
