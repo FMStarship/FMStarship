@@ -109,6 +109,13 @@ public final class AnalysisSession {
     /// Whether the player is on the same side as this club. Men's clubs only sign men, and women's clubs only women.
     public func canSign(_ player: Player) -> Bool { player.isWoman == db.womensTeams.contains(club.team) }
 
+    /// `canSign`'s side, for the player search's "Your club's side": true for a women's club, false for a men's.
+    /// Nil when there's no club or the save doesn't say which side anyone is on, so the search keeps both.
+    public var clubSignsWomen: Bool? {
+        guard db.knowsSides, club.team != 0 else { return nil }
+        return db.womensTeams.contains(club.team)
+    }
+
     /// `db.Budgets[Team]`.
     public var budget: (transfer: Int64, wageRoom: Int)? { db.budgets[club.team] }
 

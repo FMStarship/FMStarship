@@ -118,7 +118,8 @@ extension AppModel {
     /// `version` goes up each time the rows change.
     package func listInsideGame(staff: Bool) -> (people: [Person], searching: Bool, filter: String, version: Int)? {
         guard screen == (staff ? .staff : .players) else { return nil }
-        return (staff ? self.staff : players, searching, filterSummary, rowsVersion)
+        // The tab says "No filters." for an empty line, so it names the side the Players search keeps by default.
+        return (staff ? self.staff : players, searching, summary(sayingSide: true), rowsVersion)
     }
 
     /// The app's window on the Players or Staff screen, with its filters open, over FM.

@@ -108,8 +108,9 @@ package final class AppModel: ObservableObject {
     var showsAbility: Bool { shownReveal != .hidden }
 
     // Each kind of list keeps its own filters, so opening a squad doesn't disturb a search.
-    // They start with hidden values off, and `init` gives them the real setting.
-    @Published var playerFilter = PlayerFilter(showHidden: false, showAbility: false)
+    // They start with hidden values off, and `init` gives them the real setting. The Players search starts on the
+    // chosen club's side; a squad or a shortlist shows everyone in it.
+    @Published var playerFilter = PlayerFilter(showHidden: false, showAbility: false, gender: PlayerFilter.ownSide)
     @Published var staffFilter = StaffFilter(showHidden: false, showAbility: false)
     @Published var squadPlayerFilter = PlayerFilter(showHidden: false, showAbility: false)
     @Published var squadStaffFilter = StaffFilter(showHidden: false, showAbility: false)
@@ -331,8 +332,13 @@ package final class AppModel: ObservableObject {
         }
     }
 
-    var filterSummary: String {
-        listIsStaff ? activeStaffFilter.describe() : activePlayerFilter.describe()
+    var filterSummary: String { summary(sayingSide: false) }
+
+    /// `filterSummary`, and with `sayingSide`, the Players search's default side as well, for a line that would
+    /// otherwise say there are no filters while one side is left out.
+    func summary(sayingSide: Bool) -> String {
+        listIsStaff ? activeStaffFilter.describe()
+            : activePlayerFilter.describe(clubSignsWomen: session?.clubSignsWomen, sayingSide: sayingSide)
     }
 
     func resetFilters() {
@@ -717,6 +723,8 @@ package final class AppModel: ObservableObject {
         persist()
         RulesState.shared.pickClub(name)
         syncSession()
+        // The Players search keeps the chosen club's side, so its rows follow the club.
+        search()
     }
 
     /// The filter window can change the club too, so every search makes sure the session still matches.
@@ -943,7 +951,8 @@ package final class AppModel: ObservableObject {
                 answered: { RulesState.shared.known($0) != nil })
         }
         let shortlist = openShortlistFilter(isStaff: false)
-        return PeopleSearch(people: database.players, match: { filter.criteria().filter($0) },
+        let clubSignsWomen = session?.clubSignsWomen
+        return PeopleSearch(people: database.players, match: { filter.criteria(clubSignsWomen: clubSignsWomen).filter($0) },
                             columnFilters: parsedFilters(playerColumns, playerColumnFilters), shortlist: shortlist,
                             interest: interest, sortBy: sortBy, descending: descending,
                             ordered: { Columns.ordered(players: $0, sortBy: sortBy, descending: descending, byAbility: byAbility) })
