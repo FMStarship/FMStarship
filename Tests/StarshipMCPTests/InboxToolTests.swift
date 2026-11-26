@@ -117,6 +117,44 @@ final class InboxToolTests: XCTestCase {
         record.length = 30
         let refusal = try harness.refusal("inbox")
         XCTAssertTrue(refusal.contains("gives Hurt Player 21 days, and his own injury record 30"), refusal)
+        XCTAssertTrue(refusal.contains("no injury report agrees with its player's record"), refusal)
+    }
+
+    /// Where another report agrees with its record, the lengths are read right, and a report whose record FM holds another
+    /// length for now gives both: FM's on 27.1.1 gave one player 34 days and his record 30, and another 2 and 2.
+    func testOneReportAgreeingPassesAndADifferentRecordIsGivenBeside() throws {
+        let harness = Harness()
+        func day(_ day: Int) -> Date { GameDate.checked(year: 2026, dayOfYear: day)! }
+        let hurt = try XCTUnwrap(harness.source.database.players.first { $0.uid == 13 })
+        let prospect = try XCTUnwrap(harness.source.database.players.first { $0.uid == 12 })
+        func record(_ name: String, _ on: Int, _ length: Int) -> Injury {
+            let injury = Injury()
+            injury.name = name
+            injury.date = day(on)
+            injury.length = length
+            return injury
+        }
+        hurt.injuries = [record("Hamstring strain", 256, 30)]
+        prospect.injuries = [record("Twisted ankle", 266, 2)]
+        let coach = NewsPerson(uid: 501, index: 501, isPlayer: false, name: "Coach One")
+        let young = NewsPerson(uid: 12, index: 12, isPlayer: true, name: "Young Prospect")
+        harness.source.inbox?.result = .items(World.inbox() + [
+            InboxItem(serial: 1005, date: day(266), className: "INJURY_REPORT_NEWS_ITEM", team: World.firstTeamIndex, sender: coach,
+                      senderJob: "Head Physio", subject: .injury(player: young, injury: "Twisted ankle", on: day(266), days: 2)),
+        ])
+        let answer = try harness.answer("inbox", ["kind": "injury"])
+        let items = Self.items(answer)
+        XCTAssertEqual(items.map { $0["about"]?["player"]?["uid"] }, [12, 13])
+        XCTAssertEqual(items[0]["about"]?["days"], 2)
+        XCTAssertNil(items[0]["about"]?["record_days"], "the record agrees")
+        XCTAssertEqual(items[1]["about"]?["days"], 21, "as FM's report gave it")
+        XCTAssertEqual(items[1]["about"]?["record_days"], 30)
+        let notes = answer["notes"]?.array?.compactMap(\.string) ?? []
+        XCTAssertTrue(notes.contains { $0.contains("record_days") }, "\(notes)")
+
+        let other = try harness.answer("inbox", ["kind": "contract"])
+        XCTAssertFalse((other["notes"]?.array?.compactMap(\.string) ?? []).contains { $0.contains("record_days") },
+                       "only said when an injury shown has one")
     }
 
     /// Someone whose contract was running out and who has since left has no contract given, only where they are now.

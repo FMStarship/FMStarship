@@ -83,6 +83,14 @@ extension Toolbox {
             ])
         }
         if chosen.count > limit { notes.append("Showing the newest \(limit) of \(chosen.count).") }
+        let revised = shown.contains { item in
+            guard case .injury(let player, let injury, let on, let days)? = item.subject else { return false }
+            return Self.recordDays(player, injury: injury, on: on, days: days, people.players) != nil
+        }
+        if revised {
+            notes.append("An injury's days are the length FM's report gave. Where the player's own record of that injury holds "
+                         + "another length now, that's record_days, and it's the one FM's days out goes by.")
+        }
         notes.append("FM keeps no text for an item, only its kind and fields, so about is given only for the kinds FM Starship has "
                      + "checked: injury reports, contracts expiring soon, transfers completed, come-and-get-me pleas, players "
                      + "unhappy with training, fines (who, not how much), coach feedback on a player (whom, not what), contract "
@@ -109,19 +117,31 @@ extension Toolbox {
         ])
     }
 
-    /// What's wrong with the inbox against the rest of the save: an injury report whose length isn't the player's own record
-    /// of that injury, the same injury on the same day. Nil when it passes.
+    /// What's wrong with the inbox against the rest of the save: its injury reports' lengths against the players' own
+    /// records of the same injury on the same day. FM can hold another length in the record than its report gave, as for one
+    /// of the two reports on the save checked on 27.1.1, so one report that agrees shows the lengths are read right; with
+    /// none agreeing, a misread can't be told from that, and the check fails. Nil when it passes.
     func inboxProblem(_ items: [InboxItem], _ context: CallContext) -> String? {
         let players = people(context.read).players
+        var differs: String?
         for item in items {
             guard case .injury(let who, let injury, let on?, let days) = item.subject, let player = players[who.uid],
                   let record = player.injuries?.first(where: { $0.date == on && $0.name == injury }), record.length > 0 else { continue }
-            if record.length != days {
-                return "FM's injury report of \(Output.iso(item.date)) gives \(player.name) \(days) days, and his own injury record "
-                    + "\(record.length)"
+            if record.length == days { return nil }
+            if differs == nil {
+                differs = "FM's injury report of \(Output.iso(item.date)) gives \(player.name) \(days) days, and his own injury "
+                    + "record \(record.length), and no injury report agrees with its player's record"
             }
         }
-        return nil
+        return differs
+    }
+
+    /// The length the player's own record of a reported injury holds, the same injury on the same day, where it isn't the
+    /// report's.
+    static func recordDays(_ player: NewsPerson, injury: String, on: Date?, days: Int, _ players: [UInt32: Player]) -> Int? {
+        guard let on, let record = players[player.uid]?.injuries?.first(where: { $0.date == on && $0.name == injury }),
+              record.length > 0, record.length != days else { return nil }
+        return record.length
     }
 
     /// The names of the people the items name only by database index, from FM Starship's read.
@@ -201,8 +221,10 @@ extension Toolbox {
         case nil:
             return nil
         case .injury(let player, let injury, let on, let days)?:
+            let record = recordDays(player, injury: injury, on: on, days: days, people.players)
             return .object(dropping: [("player", person(player, people)), ("injury", Output.text(injury)),
-                                      ("injured_on", on.map { .string(Output.iso($0)) }), ("days", .int(days))])
+                                      ("injured_on", on.map { .string(Output.iso($0)) }), ("days", .int(days)),
+                                      ("record_days", record.map { .int($0) })])
         case .contractsExpiring(let indexes)?:
             // The item holds no date: what's given is the contract FM has for them now, while they're still at the club.
             return .object([("contracts_expiring", .array(indexes.map { index in
