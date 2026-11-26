@@ -3,11 +3,33 @@
 What's new in each version of FM Starship. Versions up to 27.0.5 are on the
 [Releases](https://github.com/FMStarship/FMStarship/releases) page.
 
-## Unreleased
+## 27.0.9
 
 - **Works with FM's 27.1.1 update (27.1.1.2511875, 25 November).** FM's rules (role stars, "would join you" and the other
   answers FM gives) are back on, and FM Starship's tab inside FM comes back. The tab has been checked on this build, and is listed
   for it.
+- **New: your AI agent can read your save.** FM Starship now comes with a local, read-only MCP server and a skill for AI agents
+  such as Hermes Agent, Claude Desktop and Claude Code. It follows Hidden attributes, and the README explains how to connect one.
+  Through it, an agent can follow your matches and your players' fitness: your fixtures, results and league table, each
+  player's rating, goals, assists, cards and xG in a recent match, condition, match sharpness, morale, happiness with his
+  playing time, bans, yellow cards toward a ban and home-grown status, his season split by competition, his match load over the
+  last 14 days, the team you've picked for the next match with warnings for anyone banned or injured, your scout's predicted
+  line-up for the opponent, recommended staff, and how your players have developed since FM Starship first recorded them. It
+  also sees what came into your FM inbox in about the last month, who and what each item is about; your squad counted against
+  each competition's registration rules, also as if a player joined or left; each played match's team stats and xG for both
+  sides; the Champions League's league-phase table; and goals clauses with the goals so far. It can leave friendlies out, and a
+  postponed match is listed once, on its new date.
+- **Recommended staff shows whether each person would take the job you're filling (Takes job),** from Football Manager's own
+  answer, and "Only staff who'd join" now leaves out people who'd join only in a bigger job, such as a director of football
+  offered recruitment analyst. Would join names the team Football Manager was asked about, such as "First team, U19", and for a
+  second team such as Molde 2, Recommended staff goes by whether they'd take the job there. The Staff search's "Interested in
+  joining you" filter is named after those teams too.
+- **FM Starship tells you when your save has moved on since it was read,** reads it again when you open its window, and says
+  plainly when a list couldn't be narrowed to people who'd join.
+- **With the app and FM open together, Hidden attributes and Ability follow each other within two seconds,** and changing a
+  setting in one no longer puts back settings you'd since changed in the other.
+- **The Players search starts on your club's side of men's and women's football,** so a men's club's search shows men's players
+  and a women's club's women's. Choose Any under Men or women in the filters to see both.
 - **Take people off a shortlist, and delete shortlists.** On the Shortlists screen, right-click people in an open shortlist and
   choose Remove … from "<shortlist>", or right-click a shortlist and choose Move to Trash. The previous version is kept as a
   backup, as when you add people. A change made to a shortlist inside FM reaches FM Starship once you save that shortlist again
