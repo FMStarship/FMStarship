@@ -7,30 +7,30 @@ public final class RulesEngine: GameRulesEngine {
     /// Only valid for one build of game_plugin: the engine refuses to start on any other. fmprobe takes its
     /// addresses from here too, so a patch only changes them here.
     package enum Mac27 {
-        package static let fingerprint = "a5689b315dafe80a"
-        package static let interestManagerGlobal: Int64 = 0x57a2eb8
-        package static let statusFunction: Int64 = 0xd64450
+        package static let fingerprint = "2deadc731af61095"
+        package static let interestManagerGlobal: Int64 = 0x57b2ea8
+        package static let statusFunction: Int64 = 0xd64e80
         package static let interestSlot = 30
         package static let staffRuleSlot = 20
-        package static let statFunction: Int64 = 0xf96998
+        package static let statFunction: Int64 = 0xf973c8
         package static let statsContainerSlot = 65
         package static let personStatsSlot = 0x668 / 8
         package static let statFallback = 0.0
-        package static let roleInPossession: Int64 = 0x1509c48
-        package static let roleOutOfPossession: Int64 = 0x151da74
-        package static let roleBand: Int64 = 0x150a440
-        package static let roleListInPossession: Int64 = 0x4a4be6c
-        package static let roleListOutOfPossession: Int64 = 0x4a4dd44
-        package static let preferredJob: Int64 = 0x4a348a8
-        package static let staffNumbersGlobal: Int64 = 0x57a2d30
+        package static let roleInPossession: Int64 = 0x150a680
+        package static let roleOutOfPossession: Int64 = 0x151e4ac
+        package static let roleBand: Int64 = 0x150ae78
+        package static let roleListInPossession: Int64 = 0x4a5acc0
+        package static let roleListOutOfPossession: Int64 = 0x4a5cb98
+        package static let preferredJob: Int64 = 0x4a436f8
+        package static let staffNumbersGlobal: Int64 = 0x57b2d20
         package static let staffAllowedSlot = 8
         package static let staffCurrentSlot = 7
-        package static let staffModeFlags: Int64 = 0x57a4b28
-        package static let injuryInfo: Int64 = 0x156b628
-        package static let bagSet: Int64 = 0x44474d0
-        package static let bagClear: Int64 = 0x4447760
+        package static let staffModeFlags: Int64 = 0x57b4b18
+        package static let injuryInfo: Int64 = 0x156c068
+        package static let bagSet: Int64 = 0x4447b98
+        package static let bagClear: Int64 = 0x4447e28
         package static let injuryDaysKey: UInt64 = 0x5050_4d69  // "PPMi" in the bag FM fills for its injury text
-        package static let shapeName: Int64 = 0x4aa38ac
+        package static let shapeName: Int64 = 0x4ab2570
     }
 
     public static let transfer: UInt64 = 4
