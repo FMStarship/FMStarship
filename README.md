@@ -12,6 +12,23 @@ interface elements and player tables.
 
 ![The club dashboard](Assets/Screenshots/01-dashboard.jpg)
 
+## FM Starship gives you three choices
+
+**[The app](#using-it)**
+- A Mac app that reads your running save: every player and member of staff in the game, searchable.
+- FM's own role stars and "would join you" answers, with squad and staff overviews, a squad planner, bargains and shortlists.
+- Hidden attributes off hides what FM hides.
+
+**[The plugin](#inside-fm-preview)** (preview)
+- FM Starship inside FM, as its own tab in FM's navigation bar.
+- Built from FM's own tables, so its numbers sit next to FM's and right-click works as in FM.
+- Added from the app's menu, with one launch option to paste into Steam.
+
+**[The MCP server](#connecting-an-ai-agent)**
+- Your AI agent asks FM Starship about your save itself: your squads and staff, fixtures, league table, inbox, or anyone in the game.
+- No more CSV exports or screenshots, because it keeps up as you play.
+- It runs on your Mac and only reads, with Hermes Agent, Claude or any other MCP client.
+
 ## Origins and credit
 
 FM Starship is an unofficial Mac port of [FM Moleman](https://sortitoutsi.net/content/78068/fm-moleman-27), the free Windows tool.
@@ -31,9 +48,9 @@ to run, come from FM Moleman, whose emulator runs x86-64.
 
 - A Mac with Apple Silicon, on macOS 14 or later
 - The Steam version of Football Manager 27. Other stores aren't supported.
-- FM27 build 27.0.1 (the full release) for everything to work. When SI patches the game, features that run FM's own code switch
-  off until FM Starship catches up. They switch off rather than show wrong numbers, and Help > Compatibility shows what's working on
-  your build.
+- FM27 build 27.1.1.2511875 (25 November's update) for everything to work. When SI patches the game, features that run FM's own
+  code switch off until FM Starship catches up. They switch off rather than show wrong numbers, and Help > Compatibility shows
+  what's working on your build.
 
 ## Using it
 
