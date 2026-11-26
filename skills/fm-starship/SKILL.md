@@ -13,11 +13,11 @@ chosen in FM Starship.
 
 | Tool | Use it for |
 | --- | --- |
-| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status can be read (`player_state`), the money units. `refresh: true` reads the save again |
+| `game_status` | First, every conversation. Is FM running, the game date, the user's club, its budget and wage room, its next fixture, whether Hidden attributes and Ability are on, which of condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status can be read (`player_state`), whether squad rules can (`squad_rules`), the money units. `refresh: true` reads the save again |
 | `squad` | One squad of a club: the first team (the default), reserves or B team, a youth team, those out on loan, or `all`. Each row has his season in the league, the cup and continental matches apart, his last match (competition, opponent, minutes, rating), and his condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status |
 | `staff` | A club's staff, with jobs and their best coaching areas. For an AI club whose read has no coaching or medical staff, `note` says the rest isn't known |
-| `person` | One player or member of staff in full, by `uid`. For a player, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension and each rule set's bookings in full |
-| `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows |
+| `person` | One player or member of staff in full, by `uid`. For a player, `Contract` has his clauses for goals in the season with his league goals so far, `Season stats by competition` keeps league, cup and continental apart, `Recent matches` has his latest matches with competition and opponent (`matches` for more), and `Fitness and morale` has each suspension and each rule set's bookings in full |
+| `search_players`, `search_staff` | Anyone in the save, with FM Starship's filters. They say how many matched and show the top rows. `search_players` keeps to the side of FM's men's and women's football the user's club can sign from, and says so in `side`; `other_side` true lists both |
 | `shortlists`, `shortlist` | The user's FM shortlists, and the people on one |
 | `club_overview` | FM Starship's dashboard: facts, budget, who needs action now, the best prospects |
 | `squad_overview` | Each place in the user's tactic, who plays there and how they stand against the league |
@@ -27,9 +27,11 @@ chosen in FM Starship.
 | `recommend_signings`, `find_bargains` | FM Starship's own recommendations, from FM's answer on who would join |
 | `recommend_staff` | The best people for one backroom job (`role`, at `level` first_team, reserves or youth), as FM Starship's Recommended staff, and only those FM says would join unless `only_join` is false. Use it to find staff who'd come, not `person` one at a time |
 | `fixtures` | A club's matches, from today unless you give `from` or `to`: date, kick-off, competition, stage, round, home or away, opponent, and for played ones the score, aggregate, attendance and goals |
-| `results` | A club's played matches, newest first. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't |
+| `results` | A club's played matches, newest first, with both sides' xG and shots where known. With `date`, one match with each of the club's players who played: minutes, rating, goals, assists, cards and xG, and why the others didn't, and for the user's club `team_stats` for both sides |
 | `selection` | The user's starting eleven and bench for the next match, as saved in FM's tactics now: places and roles, each player's condition, sharpness, suspensions and injury, warnings for anyone banned or injured for the match, and FM's scout's predicted line-up of the opponent when FM has a report on them |
-| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read |
+| `inbox` | What happened at the user's club, from FM's inbox, newest first: each item's kind, date, sender with job, and team. For injury reports, the player and the length; for contracts expiring, whose; for transfers completed, who, the other club and which way it went when FM's transfer timeline has it; for fines, unhappiness with training and coach feedback, the player; for a contract add-on activated, the player and, for the clause for goals in the season, how many and its sum; for a transfer offer confirmed, the person, the other club, the fee and which way it goes when the timeline has it. `since`, `kind`, `important` and `limit` narrow it. FM keeps only about the last month |
+| `squad_rules` | Each competition's squad rules as FM holds them, counted for the first team and for the whole club by FM's own per-player values: FM's number and both counts for each rule, a standing only where the two agree, who counts toward it with their squad, and where the squad is at or past a limit either way. Without `competition`, the club's league and the competitions in its recent and coming fixtures. With `add` or `remove` (players' uids), `if_changed` counts each rule again as if they joined the first team or left |
+| `league_table` | The table of the user's league, or of a named club's league: position, P W D L, goals, points, and the home and away records. It says when a club's competition has no table FM Starship can read. With `competition`, a name the club's fixtures give, such as "UEFA Champions League", the table of that competition's league stage the club is in, such as the league phase, with `lines` (where FM's own places for the stage lead, and the club and points on each line) and `still_to_play`, its matches in the stage from today |
 
 Lists give one compact row per person: `columns` once, then `rows`, with the `uid` first. Use the uid to ask for more. Dates are
 YYYY-MM-DD. Money is text in the user's own currency, such as "£4.2M", and wages are per the period `wages` names, such as "p/w".
@@ -75,9 +77,19 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   international matches too: date, team, competition, opponent, minutes, rating, goals, assists and cards. Use them to say
   where a goal or a rating came from. `team` is the club's name, so a reserve team's match shows its club with the reserve
   league as the competition; it's empty for a national team. An empty competition is one FM Starship couldn't name.
+  For his form, ask with `competitive` true to leave friendlies out (see Matches).
   When he didn't play, minutes and rating are empty and `didnt_play` says why, from FM's own entry: "unused substitute" (named
-  on the bench, not brought on), "not in the matchday squad", "suspended" or "injured". "reason not known" is a reason FM keeps
+  on the bench, not brought on), "not in the matchday squad", "suspended" or "injured"; the first two matched FM's own bench
+  for a match on the save they were checked on. "reason not known" is a reason FM keeps
   that FM Starship can't read yet, so don't guess which.
+- **Clauses for goals in the season** in `person`'s `Contract` are the clauses in his contract that pay a sum once he has
+  scored so many goals in the season: `goals`, the `sum`, his `league_goals` this season at his club (as League stats gives
+  them) and whether they've `reached` it. That they count league goals was checked on one player: FM's item for his came the
+  day after his 10th league goal, his 9 in Europe not counting; whether cup goals count isn't known, so for a player near one
+  with cup goals, say so. A clause stays in his contract after it has paid, so `reached` doesn't say when it paid, and whether
+  it pays again next season isn't known. `league_goals` is "not available" for a player on loan (whether goals on loan count
+  isn't known) or when FM's stats didn't answer. `Other clauses` counts clauses FM Starship doesn't know the code of: say
+  there are others, never guess what they are.
 - **Players FM keeps no match record for**: FM keeps a record of each match only for some players. At AI clubs many have
   none, even in the user's own league (on the save it was checked on, Strømsgodset's Ardraa had 21 league matches and no
   record, and FM's own form had nothing for him either), and in a league FM runs in the background it may be every player.
@@ -117,13 +129,45 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
   its league and the clubs it plays, by their full names. FM keeps each player's last 20 matches for a team, so a player's stats
   for an older match can be missing; `results` says when. Only players at the club now are listed for a match. Leagues with
   play-offs, a split or groups aren't checked yet, so the tools may switch matches off there; say so rather than guess.
+  A match FM has moved, such as one postponed, is listed once, on the date FM has for it now. Where FM Starship can't tell
+  which of a moved match's dates is current, the match has no `date` or `kick_off` and the note gives the dates FM holds for
+  it: don't pick one. While such a match could come first, `game_status`'s `next_fixture` and `selection`'s next match say
+  so instead of naming a match.
+  `fixtures`, `results` and `person`'s Recent matches include friendlies unless you ask with `competitive` true. Use it for
+  form: a pre-season win over an amateur side isn't form. It goes by FM's own type of competition, never the name, and
+  leaves out club friendlies (pre-season, testimonials, FM's tournament for free agents) and international friendlies at
+  every age, and nothing else: youth, reserve, cup and continental matches stay in. A match whose competition's type FM
+  Starship couldn't read stays in too, and the note says how many; on a build of FM that FM Starship hasn't been checked on,
+  that's every match. `results` with `date` gives the match asked for either way.
+  Scores are checked against the club's league table. A club whose competition has no table FM Starship can read, such as
+  one in a league FM runs in the background, gets its scores anyway with `checked` false and a note: they're read the same way
+  as checked ones, but tell the user they weren't checked when you use them, such as for an opponent's recent form. `checked`
+  is true for a checked score, and null only where there's no score. A club in a league FM runs in the background may
+  have no league matches in its list (on the save this was checked on, Leverkusen's had only Champions League matches and
+  friendlies), so don't read a short list as its whole season.
   Kick-off, attendance and aggregate are only there on builds of FM that FM Starship has been checked on.
+  `league_table` with `competition` gives a stage's table only when every club's row adds up to its results in the stage,
+  overall, home and away. FM doesn't keep every result of every competition (on the save this was checked on, the Champions
+  League's league phase added up and the Europa and Conference League's didn't), so when it says the check failed, there's
+  no table: don't rebuild one from `fixtures`. Its `lines` are FM's own places for the stage: for the Champions League's
+  league phase, 1-8 `through` to the round of 16 and 9-24 to the knockout `play_off`. Where it gives none, don't fill them in
+  from UEFA's or a league's rules. Its `still_to_play` is the club's matches in the stage from today, not what will happen
+  in them: points a club could still reach are your arithmetic, so say so, and don't predict results.
 - **A result's** `didnt_play` lists everyone at the club FM's record has for the match without minutes, marked from FM's own
   entry: "(unused substitute)", "(not in the matchday squad)", "(suspended)" or "(injured)", and "(injured)" too when FM's reason
   isn't one FM Starship knows but one of his injuries covered the day. A name with no mark is a reason FM Starship can't read, so
-  don't guess it. The matchday squad is the players who played and the unused substitutes. FM keeps these entries for
+  don't guess it. "(unused substitute)" and "(not in the matchday squad)" matched FM's own bench for a match on the save they
+  were checked on. The matchday squad is the players who played and the unused substitutes. FM keeps these entries for
   first-team players; a reserve or youth player who wasn't involved may have none. Scorers marked "(own goal)" play for the side
-  that conceded.
+  that conceded: FM marks the goal as one, and he doesn't play for the side it counts for now.
+- **Team stats** (`team_stats` in a result, the club's side first): possession %, xG, shots, shots on target, fouls and goals
+  for both sides, as FM's match stats screen has them. FM keeps them only in its post-match news about the user's club, so only
+  for the user's club and only while that news is kept: about the last few weeks, and not for every match even then. When
+  there are none, `team_stats` says why and how far back FM has them now; don't fill the gap from the players' figures. Before
+  they're given, the club's shots, on target, fouls, goals and xG must be what its players' match records add up to, both
+  goals the score, and the opponent's xG what the club's goalkeepers faced; a match that fails is left out with the reason. The
+  results list's `xg` and `shots` are the club's own and `opponent_xg` and `opponent_shots` the opponent's, from the same
+  stats: xG for and against per match, for 'were we lucky or good' over a run.
 - **The matchday squad** (`selection`) is the line-up as saved in FM's tactics when you ask: the user may still change it, so
   say it's what's picked now, not the team that will play. `starting_eleven` has each place's position and role with and without
   the ball; `bench` is the substitutes in FM's order, `place` numbered from 1 with the user's gaps kept. FM names only as many
@@ -136,11 +180,53 @@ is "Norge" and Spain "Spania", and Spain's second division is "1. divisjon", the
 - **The opponent's predicted line-up** (`selection`'s `opponent_prediction`) is FM's scout's prediction from FM's opposition
   report, with its date: a prediction, not the team they'll pick, and it can be days old. It's only there when FM has a report
   on that opponent made since the last match against them; with none, say FM has no scout report on them, don't make one up.
+- **The inbox** (`inbox`) is FM's own list of the user's news items, as FM keeps it now. FM stores no text for an item, only
+  its kind and fields, so FM Starship can't quote a message and gives `about` only for injury reports (the player, FM's name for
+  the injury and its length in days), contracts expiring soon (whose, and the contract FM has for them now, which may be a new
+  one: the item keeps no date), transfers completed (the person, the other club, and `direction` when FM's transfer timeline
+  has it), come-and-get-me
+  pleas (the player and the club), a player unhappy with training (the player), fines (the player, not the amount), coach
+  feedback on a player (the player, not what it says), contract add-ons activated (the player; the clause only when it's the
+  one for goals in the season, with how many goals and the sum it holds, otherwise say which clause isn't known) and transfer
+  offers confirmed (the person, the other club, the fee, and `direction` when the timeline has it). `direction`, such as "to
+  Molde FK from Pisa Sporting Club", comes from FM's transfer timeline only when exactly one move in it is that person's on the
+  item's day between the user's club and another, with the same fee when both have one. That timeline keeps only the manager's
+  notable moves (on the save checked, 10 of the club's moves over three seasons, not its free or smaller signings), so most
+  transfer items have no `direction`: then say which way it went isn't known from the inbox; don't work it out from where the
+  person is now, which can be a later move. For any other kind, the board's confidence included, you have its kind,
+  date, sender and team: say that's all you know, don't fill in what it probably said. `important: true` keeps the kinds a
+  manager acts on: injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, fines, contracts and board items;
+  `false` gives the rest (staff meeting advice, press, odds, previews, coach feedback, bans and the like). `window` says from when FM keeps items, about a month:
+  anything older isn't there, so for something before then, such as a member of staff who left, say the inbox no longer has it,
+  never that it didn't happen, and look elsewhere (`staff`, `person`). Read and unread aren't known. `kinds` counts the kinds in
+  the answer; use `kind` with part of one, such as "injury", "contract" or "transfer", to narrow to it. `team` is "not
+  addressed to one team" for FM's own news item copied in; on the save this was checked on, each was still about the club,
+  such as a ban or a call-up for one of its players.
+- **Squad rules** (`squad_rules`) are each competition's squad rules as FM holds them, counted by FM's own per-player values.
+  FM keeps no registration list for the user's club, so which players FM counts toward a competition isn't known: each rule
+  is counted for the first team (`first_team`) and for the whole club (`whole_club`, everyone at the club now, not those out on
+  loan), and has a `standing` only where the two agree, such as "not home-grown: 9 of at most 9 (at the limit)". Where they
+  don't, `text` says "depends on which players FM counts: first team 22, whole club 45" and there's no standing: tell the user
+  it depends on who FM counts, give both numbers, and don't call it a breach or say it's fine. Never tell the user a player is
+  registered or not, or that the squad is legal or breaks a rule, unless the standing says so. `players` is who at the club
+  counts toward a rule, each with their squad, so those in the First team make the first team's count.
+  `at_or_past_a_limit` lists the rules the squad is on or past both ways, and `depends_on_which_players_fm_counts` the rest
+  that aren't settled. In the competitions checked, the limits on foreign players are home-grown status (trained at the club or
+  in the nation), not nationality. A rule FM names for a matchday squad, the team on the pitch, a season or wages comes with
+  FM's number and no count. `no_squad_rules` names competitions FM holds none for, such as a cup. If `game_status` says squad
+  rules are on without counts, give FM's numbers and say the counts aren't available.
+- **A signing or a sale against the squad rules**: `squad_rules` with `add` (players' uids joining the first team: from another
+  club, back from a loan, or from the club's other squads) and `remove` (players at the club leaving it). Each counted rule
+  then has `if_changed`, such as "not home-grown: 9 → 10 of at most 9 (over the maximum by 1)", with the same agree-or-depends
+  rule as the counts now, and `if_changed` at the top lists the rules then at or past a limit. FM works out a player at
+  another club's home-grown status, nationality and position as if he were at the user's club, from his own history, so he's
+  trained at the club only if he was. A rule FM can't answer for him, such as one on contracts, says `not_known`: tell the user
+  it isn't known, don't guess it. Say "would be over the limit", never that the signing is illegal or can't be registered.
 - **Match load (14 days)** in `squad` and `person` is FM's match load: the matches he played in the 14 days up to today, his
   minutes in them, and 90 a match. "3 matches, 212 of 270 min" is FM's "3 kamper (212/270 minutter) siste 14 dager", and it
   matched FM's figure on the save it was checked on. FM's word for it ("Intensiv" and the like) and where the words start
-  aren't known, so judge by the numbers. Every match FM keeps counts, friendlies and youth matches too; whether FM counts
-  friendlies hasn't been checked yet.
+  aren't known, so judge by the numbers. Every match FM keeps counts, friendlies and youth matches too, as FM's own figure
+  does: for a player whose only match in the 14 days was a friendly, FM showed "1 match (90/90)".
 - **Last match** in `squad` is the player's latest match in FM's record, for any team, with its competition and opponent:
   compare its date with the club's last result to see who was left out. When he didn't play, `Last match didn't play` says
   why, as in Recent matches.
@@ -219,18 +305,22 @@ When they're off, they don't exist for you. They aren't sent at all, not as blan
 
 FM Starship doesn't read these yet, so don't state them, and don't work them out from something else:
 
-- A match's team stats: shots, possession and team xG. Don't add up the players' xG and call it the team's.
+- A match's team stats for a match `results` gives none for: an older match, another club's, or one that failed the check.
+  Don't add up the players' xG and call it the team's, and the opponent's players have no match records to add up.
+- When in a match the shots came, clear-cut chances, corners, each shot's xG and an xG timeline. FM Starship has only each
+  side's totals and the goals' minutes, so don't tell a minute-by-minute xG story or say a side was on top in a spell.
 - Which goals were penalties, extra time and penalty shoot-outs, and the player of the match.
 - Fixtures and results when the tools switch them off: their check against the league table failed, or there's no league
-  match yet to check them against.
-- Condition, sharpness, morale, playing time, suspensions, bookings toward a ban or home-grown status when `game_status` says one is off.
+  match yet to check them against. Scores marked `checked` false weren't checked, so don't present them as confirmed.
+- Condition, sharpness, morale, playing time, suspensions, bookings toward a ban, home-grown status or squad rules when `game_status` says one is off.
 - FM's words for condition and morale, wear ("very little wear" and the like), match load and training load.
 - How many substitutes a competition lets a team name, and the line-up an AI club will actually pick.
 - A player's season totals for friendlies and internationals. Recent matches has those matches, but only the ones FM still
   keeps, so don't add them up and call it his season.
 - The squad screen's badges for a player on a language course or supporting an unhappy teammate.
-- Registration status: squad registration and foreign player rules. Don't count foreign players from their nations, because
-  FM's rules for this depend on more than nationality.
+- Who is registered for a competition. `squad_rules` counts the squad against FM's own rules, but FM keeps no registration
+  list for the user's club. Don't count foreign players from their nations, because FM's rules for this depend on home-grown
+  status, not nationality: use `squad_rules`.
 - Anything about other managers' plans.
 
 If the user needs one of these, say it isn't available from FM Starship and ask them to check in FM.

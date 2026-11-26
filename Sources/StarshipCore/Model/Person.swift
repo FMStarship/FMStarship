@@ -43,6 +43,10 @@ public class Person {
     public var releaseClause: Int64 = 0
     public var releaseForeign: Int64 = 0
     public var releaseDomestic: Int64 = 0
+    /// His contract's clauses for goals in the season, as it holds them. Not kept in snapshots.
+    public var seasonGoalClauses: [SeasonGoalsClause] = []
+    /// How many other clauses his contract holds, release clauses apart: ones FM Starship doesn't know the code of.
+    public var unknownClauses = 0
 
     public init() {}
 
@@ -115,6 +119,18 @@ public struct Fitness: Equatable, Sendable {
         self.sharpness = sharpness
     }
     public static let range = 0...10_000
+}
+
+/// A clause in a player's contract paying a sum once he has scored so many goals in the season: FM's code 10.
+public struct SeasonGoalsClause: Equatable, Sendable {
+    /// The goals it needs.
+    public var goals: Int
+    /// In pounds, as his contract holds it.
+    public var amount: Int64
+    public init(goals: Int, amount: Int64) {
+        self.goals = goals
+        self.amount = amount
+    }
 }
 
 /// Whether a player is home-grown for his club, by FM's own two tests: trained at the club, or trained in its nation.
@@ -329,6 +345,9 @@ public final class Database {
     public var currencies: [Currency] = []
     public var humanClubs: [(team: Int64, name: String, manager: Int64)] = []
     public var budgets: [Int64: (transfer: Int64, wageRoom: Int)] = [:]
+    /// Each human club's teams, by the human's team as in `humanClubs`: each team's database index (`Team.index`) and its
+    /// type, as `Names.squadName` names it. FM's news items name the team they're addressed to by that index.
+    public var humanTeams: [Int64: [UInt32: Int]] = [:]
     /// The human clubs that are women's sides, by team.
     public var womensTeams: Set<Int64> = []
     /// False when the game's answer isn't here, so `Person.isWoman` and `womensTeams` say nothing.

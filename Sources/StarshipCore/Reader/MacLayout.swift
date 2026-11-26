@@ -91,6 +91,12 @@ enum MacLayout {
         static let statusFlags = 87
         static let clausesBegin = 104
         static let clausesEnd = 112
+        /// The clauses are 8 bytes each: the amount, u32, in pounds (0xffffffff for none); the count it needs, u16; the
+        /// code, u16. Code 10 is goals in the season: Kristian Lonebu's at 10 came into force the day after his 10th league
+        /// goal of 2029, his 9 in Europe by then not counting, and it was still in his contract, unchanged, four weeks on.
+        static let seasonGoalsClause = 10
+        /// The release clauses: any club, foreign clubs, clubs in his own nation.
+        static let releaseClauses: Set<Int> = [0, 16, 18]
         /// How happy a player is with his playing time, −100 to 100. A signed byte.
         static let playingTime = 0x5c
         static let secondJob = 194
@@ -170,12 +176,16 @@ enum MacLayout {
     /// The player's own match record, 0x28 bytes, which `FormEntry.record` points at.
     enum MatchRecord {
         static let size = 0x28
-        /// xG × 100, for outfield players only: a goalkeeper's means something else.
+        /// xG × 100 for an outfield player. A goalkeeper's is the xG of the shots he faced, which adds up to the
+        /// opponent's in the match's summary.
         static let xG = 4
         /// 0 for a goalkeeper.
         static let position = 6
         static let goals = 7
+        static let shots = 0x09
+        static let shotsOnTarget = 0x0a
         static let assists = 0x0b
+        static let fouls = 0x0d
         static let red = 0x10
         static let minutes = 0x15
         /// Rating × 10.
@@ -192,6 +202,13 @@ enum MacLayout {
         static let name = 0x20
         /// The season it belongs to, by the year it starts in.
         static let season = 0x30
+        /// u8. 0x40 marks FM's own copy of a match, as against the copies its screens keep, which can be from before the match
+        /// was moved. Read on FM 27.1.0's Molde save on 21 Nov 2026: of the 13,962 matches of the 2029 season FM held that
+        /// weren't played yet, each had one copy with it, apart from 22 with two copies on the same day and one past youth
+        /// international with two days; and of each of the three Eliteserien matches moved from 29 September, the one copy
+        /// on its new day that FM's match-day list for that day holds.
+        static let flags = 0x37
+        static let ownCopy: UInt8 = 0x40
         /// 0-based, for league fixtures.
         static let round = 0x3b
         /// The day of the year in the low 9 bits and the kick-off code above them, then the year.
@@ -227,6 +244,38 @@ enum MacLayout {
         static let minute = 14
         static let addedMinute = 15
         static let countedKinds: Set<UInt8> = [0, 1, 2]
+        /// An own goal: its scorer plays for the other side.
+        static let ownGoalKind: UInt8 = 1
+    }
+
+    /// The summary of one of the user's club's matches that FM keeps in each post-match news item about it, such as
+    /// `MATCH_REPORT_NEWS` (at +0x1e0), 0xe0 bytes after the item's `db::SCORELINE`. Found by `MatchStatsReader`'s sweep.
+    enum MatchSummary {
+        /// The user's club's team, home or away, then the opponent's.
+        static let team = 0x10
+        static let opponent = 0x18
+        /// u32 possession %, ours then theirs, which add up to 100.
+        static let possession = 0x20
+        /// u16 xG × 100, ours then theirs.
+        static let xG = 0x28
+        /// u8 each, ours then theirs.
+        static let fouls = 0x2c
+        static let shots = 0x2d
+        static let shotsOnTarget = 0x2e
+        static let theirFouls = 0x2f
+        static let theirShots = 0x30
+        static let theirShotsOnTarget = 0x31
+        static let goals = 0x37
+        /// 0 when the user's club was at home, 1 away.
+        static let away = 0x38
+        static let theirGoals = 0x3c
+        /// The match's `GAME_MATCH_STATS`, in some copies, whose `result` is its `sicomps::FIXTURE_RESULT`.
+        static let matchStats = 0x68
+        static let matchStatsResult: Int64 = 0x18
+        static let size = 0x70
+        /// The SCORELINE's date, before the summary: u16 day of the year, then u16 year.
+        static let day = -0xc4
+        static let year = -0xc2
     }
 
     /// `db::FIXTURE_NAME`, which a fixture's `name` points at.
@@ -242,6 +291,15 @@ enum MacLayout {
         static let index: Int64 = 8
         /// The `sicomps::ACTUAL_COMP` that runs it this season.
         static let actual: Int64 = 0xb0
+        /// u8, FM's type of competition. Read on FM 27.1.0's Molde save on 21 Nov 2026 for all 257 competitions its fixtures
+        /// name: club friendlies (pre-season, testimonials, the Bosman tournament) are 9, and friendlies between national
+        /// teams of every age 24. No league, cup, continental, international or youth competition has either.
+        static let type: Int64 = 0xf8
+        static let friendlyTypes: Set<UInt8> = [9, 24]
+        /// Every other type seen on that save: 0 and 1 leagues, 2 to 5 cups and super cups, 6, 7, 10, 11, 12 and 15 to 20
+        /// international competitions, 21 and 22 continental, 25, 27, 35 to 39 and 41 youth. A type not in either set isn't known.
+        static let competitiveTypes: Set<UInt8> = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 22, 25, 27,
+                                                   35, 36, 37, 38, 39, 41]
     }
 
     enum ActualComp {
@@ -252,6 +310,9 @@ enum MacLayout {
         static let rulesSlot: Int64 = 0x48
         /// An object FM Starship doesn't name, whose `CompRules.holder` holds the list of rule sets.
         static let rulesOwner: Int64 = 0x388
+        /// i8: which entry of `CompRules.fixtureRules` holds the competition's squad rules, -1 for none. FM's import code
+        /// writes it as it adds the competition's `FixtureRules`. Eliteserien 0, the Champions League 1 in UEFA's list.
+        static let fixtureRulesSlot: Int64 = 0x49
     }
 
     /// From `ActualComp.rulesOwner` to the rule sets a competition can play under.
@@ -259,6 +320,39 @@ enum MacLayout {
         static let holder: Int64 = 0x1f0
         /// A vector of `DisciplineRules` pointers, the same objects as `Discipline.rules` holds.
         static let list: Int64 = 0x48
+        /// A vector of `FixtureRules` pointers.
+        static let fixtureRules: Int64 = 0x60
+    }
+
+    /// `sicomps::FIXTURE_RULES`, 0x138 bytes with no vtable: among other things, the squad rules of the competitions that play
+    /// under it.
+    enum FixtureRules {
+        /// A pointer to a vector of `SquadRule` pointers: the rules now. Empty for a cup with none.
+        static let squadRules: Int64 = 0x70
+        /// The `ActualComp.rulesOwner` it belongs to.
+        static let owner: Int64 = 0x88
+        /// u8, its own entry in `CompRules.fixtureRules`.
+        static let slot: Int64 = 0x120
+        /// i8, FM's squad-selection group, which FM's per-player rule value is asked with: Eliteserien 8, the Champions
+        /// League 0, -1 for none.
+        static let group: Int64 = 0x125
+    }
+
+    /// `SQUAD_SELECTION_RULE`, 0x20 bytes: one rule as a type FM's own table names, a limit and a direction.
+    enum SquadRule {
+        static let size = 0x20
+        /// 0x18 bytes of a condition, zero for every Norwegian and UEFA rule. In some American sets it holds a short tag,
+        /// which looks like it limits the rule to one kind of team.
+        static let condition = 0
+        static let conditionSize = 0x18
+        /// i32.
+        static let limit = 0x18
+        /// u16, a type in FM's table at `RulesEngine.Mac27.squadRuleNames`.
+        static let type = 0x1c
+        /// i8: -1 at most, 0 exactly, 1 at least, as FM's table at `RulesEngine.Mac27.squadRuleDirections` names them
+        /// less_than, equals and more_than. Molde's squad sits exactly at three of its maximums and minimums, which a strict
+        /// "less than" would make breaches, and FM's one text for these rules says "Maximum of".
+        static let direction = 0x1e
     }
 
     /// `GAME_DISCIPLINE`, FM's one holder of disciplinary rule sets, reached from `RulesEngine.Mac27.disciplineGlobal`.
@@ -294,6 +388,25 @@ enum MacLayout {
     enum LeagueStage {
         /// A vector of `TableRow` pointers, in table order.
         static let rows: Int64 = 0xc0
+        /// The stage's `LeagueSettings`.
+        static let settings: Int64 = 0xf0
+    }
+
+    /// `sicomps::LEAGUE_SETTINGS`, a league stage's settings. Read on FM 27.1.0's Molde save on 21 Nov 2026 for the league
+    /// stages of the competitions its fixtures name.
+    enum LeagueSettings {
+        /// The `db::STAGE_NAME` the stage's fixtures name at `FixtureName.stage`: the Champions League's, Europa League's and
+        /// Conference League's league phases share one ("ligafase"). Null for a league whose fixtures name no stage, such as
+        /// Eliteserien.
+        static let stageName: Int64 = 0x28
+        /// u8, how many clubs the stage has: 36 for each league phase, 16 for Eliteserien.
+        static let clubs: Int64 = 0x87
+        /// Four u8 counts of places: from the top, straight on (promotion, or the next stage) and a play-off for it; from the
+        /// bottom, a relegation play-off and relegation. Eliteserien 0 0 1 2, 1. divisjon 2 4 1 2, Ligue 2 2 3 1 2, League One
+        /// 2 4 0 4, League Two 3 4 0 2, all as their rules have it. The Champions, Europa and Conference League's league
+        /// phases 8 16 0 0 (1-8 to the round of 16, 9-24 to the knockout play-offs), the women's Champions League's 4 8 0 0.
+        /// Some competitions run a play-off FM doesn't count here: Serie B's six-club play-off reads 0.
+        static let places: Int64 = 0x90
     }
 
     /// One club's row in a league table, 0x100 bytes. Each record is 0x18 bytes: u16 goals for, u16 against,
@@ -391,6 +504,117 @@ enum MacLayout {
         static let year: Int64 = 0x8a
         static let tactics: [Int64] = [0xa0, 0x2198]
         static let tacticArray: Int64 = 0x1008
+    }
+
+    /// The user's inbox: FM's news items for one human manager, from Molde's save on 27.1.0 (150 items over 26 days, every
+    /// one checked). An item holds no text: FM writes it from the item's class and fields when it's shown.
+    enum Inbox {
+        /// HUMAN_NON_PLAYER: a pointer to a vector (begin, end, capacity) of pointers to the items, oldest first.
+        static let items: Int64 = 0x350
+        /// Common to every news item.
+        static let sender: Int64 = 0x78
+        /// The day of the year in the low 9 bits, then the year, both 16-bit.
+        static let day: Int64 = 0x88
+        static let year: Int64 = 0x8a
+        /// The addressed team's database index (`Team.index`), or `world` for news FM copied in from the world's.
+        static let team: Int64 = 0x8c
+        static let world: UInt32 = 0xffff_ffff
+        /// FM's counter, rising along the list, ties within a day included.
+        static let serial: Int64 = 0x90
+        /// The sender's job, as a contract's `job`: matched on eight senders.
+        static let senderJob: Int64 = 0x9a
+        static let header = 0xa0
+
+        /// Fields of one class, each seen on every item of it.
+        enum InjuryReport {
+            static let injuredOn: Int64 = 0xc0
+            /// 16-bit, in days, matching the player's own injury record.
+            static let days: Int64 = 0xc8
+            /// FM's injury, whose name is at `Injury.name`.
+            static let injury: Int64 = 0xf8
+            static let player: Int64 = 0x110
+        }
+        enum ContractsExpiring {
+            /// A vector (begin, end) of pointers to records, one for each person whose contract runs out: 2 and 21 on the
+            /// two items seen. The records hold no date.
+            static let people: Int64 = 0x3a0
+            /// What's read of a record: as far as the index. FM allocates them 0x50 apart, so each is at most that.
+            static let size = 0x30
+            /// The person's club, then a second club (unknown), the team at +0x10 for a player or +0x18 for staff, and the nation.
+            static let club = 0
+            /// The person's database index (`Identity.index`), matched to the person's name on all 23 records.
+            static let index = 0x28
+        }
+        /// PLAYER_UNHAPPINESS_TRAINING_NEWS: the player, then the coach who sent it and the team (one item, and its copy).
+        enum UnhappyWithTraining {
+            static let player: Int64 = 0xa0
+        }
+        /// FINE_NEWS: the player fined, then the user, the club and its team (two items, each with a copy). The two differ
+        /// only in the player and one byte, so no amount was found.
+        enum Fine {
+            static let player: Int64 = 0xf8
+        }
+        /// COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM: the user, then the player the coach reports on (three items, each with a copy).
+        enum CoachFeedback {
+            static let player: Int64 = 0x258
+        }
+        enum TransferCompleted {
+            static let person: Int64 = 0x140
+            static let team: Int64 = 0x148
+        }
+        enum ComeAndGetMe {
+            static let player: Int64 = 0x258
+            static let team: Int64 = 0x270
+        }
+        /// CONTRACT_ADD_ON_ACTIVATED_NEWS (one item, and its copy): a pointer to the club's CLUB and a vector (begin, end,
+        /// capacity) of pointers to the add-ons that came into force.
+        enum AddOnActivated {
+            static let record: Int64 = 0xa0
+            static let club: Int64 = 0
+            static let addOns: Int64 = 8
+            /// One add-on: the player's identity, then at `clause` the 8 bytes of the clause as his contract's list holds it
+            /// (`Contract.clausesBegin`), byte for byte: the amount, u32, in pounds; the count it needs, u16; its code, u16.
+            static let player: Int64 = 0
+            static let clause: Int64 = 0x1c
+            static let size = 0x24
+            /// The code of the clause for goals in a season. Kristian Lonebu's, at 10, came into force the day after his
+            /// 10th league goal of 2029; his 9 in Europe by then didn't count. 920 of the 1,061 players with one are strikers.
+            static let seasonGoals = 10
+        }
+        /// TRANSFER_OFFER_CONFIRMATION_NEWS (one item, and its copy): the person, the user's team (at +0x2f0 to +0x310, five
+        /// times), the other club's team and the fee.
+        enum OfferConfirmation {
+            static let person: Int64 = 0x2b0
+            static let team: Int64 = 0x2f0
+            static let otherTeam: Int64 = 0x320
+            /// u32, in pounds, four times. 122,960 for Max Urwantschky from Pisa, as in FM's transfer history entry for the
+            /// move (TRANSFER_TIMELINE_EVENT +0x54) and the offer itself (FULL_TRANSFER_OFFER +0x58). Given only when the four agree.
+            static let fees: [Int64] = [0x3a4, 0x3a8, 0x3bc, 0x3e0]
+        }
+    }
+
+    /// One entry of FM's transfer timeline, TRANSFER_TIMELINE_EVENT: the human manager's notable moves, as FM's profile of
+    /// the manager shows them. Read on Molde's save for ten moves both ways (Urwantschky from Pisa, Young from Sparta
+    /// Rotterdam, Atcheson to Monaco, Løvik to Villarreal and others): the person's identity is the live one, each player
+    /// sold is at the club he went to, and the fees are FM's (Urwantschky 122,960, as his offer confirmation gives it).
+    enum TransferTimeline {
+        static let className = "TRANSFER_TIMELINE_EVENT"
+        /// As far as the fee.
+        static let size = 0x58
+        /// The day of the year in the low 9 bits, then the year, both 16-bit, as a news item's date.
+        static let day = 0x28
+        static let year = 0x2a
+        /// The team the person left and the one they joined, and the person's identity subobject.
+        static let fromTeam = 0x38
+        static let toTeam = 0x40
+        static let person = 0x48
+        /// u32, in pounds.
+        static let fee = 0x54
+    }
+
+    /// FM's injury, shared by everyone with one: its name, in the game's language, is a string this points at.
+    enum Injury {
+        static let name: Int64 = 0x20
     }
 
     enum Currency {

@@ -15,10 +15,12 @@ extension FakeGame {
         return list.address
     }
 
-    /// A competition with its database index, and, for a league, the stages that hold its tables.
-    func competition(_ name: String, index: UInt32, tables: [Int64] = []) -> Int64 {
-        let record = self.record("Competition", size: Int(MacLayout.Comp.actual) + 8)
+    /// A competition with its database index and FM's type of competition (0 a top league), and, for a league, the stages
+    /// that hold its tables.
+    func competition(_ name: String, index: UInt32, type: UInt8 = 0, tables: [Int64] = []) -> Int64 {
+        let record = self.record("Competition", size: Int(MacLayout.Comp.type) + 8)
         record.set("index", Int(MacLayout.Comp.index), index)
+        record.set("type", Int(MacLayout.Comp.type), type)
         record.set("name", MacLayout.competitionName, string(name))
         if !tables.isEmpty {
             let actual = self.record("Actual competition", size: Int(MacLayout.ActualComp.stages) + 24)
@@ -58,11 +60,27 @@ extension FakeGame {
         return row.address
     }
 
-    /// A league stage whose table is these rows, in order.
-    func leagueStage(rows: [Int64]) -> Int64 {
-        let stage = record("League stage", size: Int(MacLayout.LeagueStage.rows) + 24, vtable: "LEAGUE_STAGE")
+    /// A league stage whose table is these rows, in order, with its settings if it has them.
+    func leagueStage(rows: [Int64], settings: Int64? = nil) -> Int64 {
+        let stage = record("League stage", size: Int(MacLayout.LeagueStage.settings) + 8, vtable: "LEAGUE_STAGE")
         stage.set("rows", Int(MacLayout.LeagueStage.rows), bytes: vectorBytes(rows))
+        if let settings { stage.set("settings", Int(MacLayout.LeagueStage.settings), settings) }
         return stage.address
+    }
+
+    /// A league stage's settings: the stage its fixtures name (none if empty), how many clubs it has, and its four counts
+    /// of places.
+    func leagueSettings(stage: String, clubs: UInt8, places: [UInt8]) -> Int64 {
+        typealias S = MacLayout.LeagueSettings
+        let settings = record("League settings", size: Int(S.places) + 8, vtable: "LEAGUE_SETTINGS")
+        if !stage.isEmpty {
+            let text = record("Stage name", size: Int(MacLayout.FixtureName.stageText) + 8)
+            text.set("text", Int(MacLayout.FixtureName.stageText), string(stage))
+            settings.set("stage", Int(S.stageName), text.address)
+        }
+        settings.set("clubs", Int(S.clubs), clubs)
+        settings.set("places", Int(S.places), bytes: places)
+        return settings.address
     }
 
     /// What a fixture's name points at: its competition and, if it has one, its stage.
@@ -88,6 +106,8 @@ extension FakeGame {
         var year: UInt16 = 2029
         /// The kick-off code, in quarter hours after 05:45: 37 is 15:00.
         var kickOff: UInt16 = 37
+        /// `MacLayout.Fixture.ownCopy` marks FM's own copy.
+        var flags: UInt8 = 0
         /// Nil for a fixture not played yet.
         var score: (home: UInt8, away: UInt8)?
         var aggregate: (home: UInt8, away: UInt8)?
@@ -112,6 +132,7 @@ extension FakeGame {
         record.set("round", F.round, values.round)
         record.set("date", F.date, values.day | values.kickOff << 9)
         record.set("year", F.year, values.year)
+        record.set("flags", F.flags, bytes: [values.flags])
         guard let score = values.score else { return record }
         record.set("matchNumber", R.matchNumber, values.matchNumber)
         record.set("attendance", R.attendance, values.attendance)
@@ -142,10 +163,13 @@ extension FakeGame {
         var assists: UInt8 = 0
         var yellow: UInt8 = 0
         var red: UInt8 = 0
-        /// xG × 100.
+        /// xG × 100, or for a goalkeeper the xG he faced.
         var xG: UInt16 = 0
         /// 0 for a goalkeeper.
         var position: UInt8 = 12
+        var shots: UInt8 = 0
+        var shotsOnTarget: UInt8 = 0
+        var fouls: UInt8 = 0
     }
 
     /// One match in a player's history. Nil `played` for a substitute who didn't come on.
@@ -185,6 +209,9 @@ extension FakeGame {
                     stats.set("minutes", M.minutes, played.minutes)
                     stats.set("rating", M.rating, played.rating)
                     stats.set("yellow", M.yellow, played.yellow)
+                    stats.set("shots", M.shots, played.shots)
+                    stats.set("shotsOnTarget", M.shotsOnTarget, played.shotsOnTarget)
+                    stats.set("fouls", M.fouls, played.fouls)
                     entry.set("record", E.record, stats.address)
                 }
                 record.set("entry \(i)", G.entries + 8 * i, entry.address)

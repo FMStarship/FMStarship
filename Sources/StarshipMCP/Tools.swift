@@ -54,6 +54,9 @@ extension Toolbox {
                                              description: "The user's club if left out. Or a club in the user's league, or one the user's "
                                                 + "club plays, by its full name as FM shows it.")
     private static let matchNames = "Competitions, stages and clubs are named as FM names them, in the game's language. "
+    private static let competitiveText = "True leaves friendlies out (pre-season and other club friendlies, testimonials, "
+        + "international friendlies), by FM's own type of competition, not its name. Everything if left out. A match whose "
+        + "competition's type FM Starship couldn't read is kept, and a note says so."
     private static let limit = Parameter(name: "limit", type: "integer", description: "How many rows, 1-100. 25 if left out.")
     private static let sort = Parameter(name: "sort", type: "string",
                                         description: "A column to order by, by its name as in person, such as \"Value\", \"Age\", \"Finishing\" "
@@ -72,7 +75,7 @@ extension Toolbox {
         Tool(name: "game_status", title: "Game status",
              description: "Whether FM is running with FM Starship, the game date, the clubs human managers run with their budgets, "
                 + "which club the other tools use and its next fixture, whether Hidden attributes and Ability are on, whether "
-                + "condition, sharpness, morale, playing time, suspensions, bookings toward a ban and home-grown status can be read, the units money is "
+                + "condition, sharpness, morale, playing time, suspensions, bookings toward a ban, home-grown status and squad rules can be read, the units money is "
                 + "in, and how old the read is. Call first. refresh reads the save again.",
              parameters: [Parameter(name: "refresh", type: "boolean", description: "Read the save again now.")],
              run: { _ in { _, _ in [:] } }),
@@ -102,11 +105,14 @@ extension Toolbox {
              run: { $0.staff }),
         Tool(name: "person", title: "Person",
              description: "One player or member of staff in full, by uid: attributes, positions, roles, season stats in total and "
-                + "by competition (league, cup, continental), form, his recent matches with competition, opponent, minutes, rating, "
+                + "by competition (league, cup, continental), form, his recent matches (friendlies too, unless competitive is set) with competition, opponent, minutes, rating, "
                 + "goals and assists, or why he didn't play (unused substitute, not in the matchday squad, suspended, injured), his match load over the last 14 days, injury, condition, sharpness, morale, playing time, each suspension, his yellow cards toward a ban under each rule set, home-grown status, contract, "
-                + "wage, value, release clauses, personality and media handling, and whether they'd join the user's club.",
+                + "wage, value, release clauses, his clauses for goals in the season with his league goals this season and whether "
+                + "they've reached each, personality and media handling, and whether they'd join the user's club.",
              parameters: [Parameter(name: "uid", type: "integer", description: "From any list's uid column.", required: true),
                           Parameter(name: "matches", type: "integer", description: "How many recent matches, 0 to 40. 10 if left out."),
+                          Parameter(name: "competitive", type: "boolean",
+                                    description: competitiveText),
                           Parameter(name: "kind", type: "string",
                                     description: "For a uid that's a player and a member of staff, as a player/manager is: which side. The player if left out.",
                                     choices: ["player", "staff"])],
@@ -141,6 +147,9 @@ extension Toolbox {
                           description: "A player trait (preferred move) by its English name, whatever the game's language. A wrong one is answered with the list."),
                 Parameter(name: "role", type: "string",
                           description: "Suits this role, by its English name with (IP) or (OOP), whatever the game's language. A wrong one is answered with the list."),
+                Parameter(name: "other_side", type: "boolean",
+                          description: "Also players from the other side of FM's men's and women's football, such as women for a men's club, "
+                            + "whom the user's club can't sign. Left out unless true."),
                 Parameter(name: "ca_min", type: "integer", description: "CA at least. Only while Ability is on."),
                 Parameter(name: "ca_max", type: "integer", description: "CA at most. Only while Ability is on."),
                 Parameter(name: "pa_min", type: "integer", description: "PA at least. Only while Ability is on."),
@@ -198,35 +207,112 @@ extension Toolbox {
                 + "opponent (eleven with roles, and substitutes) when FM has an opposition report on them; none when it hasn't.",
              parameters: [club],
              run: { $0.selection }),
+        Tool(name: "inbox", title: "Inbox",
+             description: "What happened at the user's club, from FM's inbox as FM keeps it now, newest first: each item's date, "
+                + "kind (FM's own, in plain words, such as injury report, contract expires soon, transfer completed, board "
+                + "confidence update), who sent it with their job, and the team it's for (first team, reserves, a youth team, or "
+                + "not addressed to one team: FM's own news item copied in, such as a ban or a call-up for one of the club's "
+                + "players). For injury reports, the player, FM's name for the injury and its length in days; for contracts "
+                + "expiring soon, whose, with the contract FM has for them now; for a transfer completed, the person, the other "
+                + "club and which way it went when FM's transfer timeline has it; for a come-and-get-me plea, the player and the club he wants; for a player unhappy with training, the "
+                + "player; for a fine, the player (not the amount); for coach feedback on a player, the player (not what it says); "
+                + "for a contract add-on activated, the player, and for the clause for goals in the season, how many and its sum; "
+                + "for a transfer offer confirmed, the person, the other club, the fee and which way it goes when FM's transfer "
+                + "timeline has it. FM's timeline keeps only the manager's notable moves, so most transfers have no direction. "
+                + "Other kinds say nothing more, as FM keeps no text for an item. important keeps the kinds a manager acts on: "
+                + "injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, fines, contracts and the board. FM "
+                + "keeps only about the last month, and window says from when: anything older isn't there, which doesn't mean it "
+                + "didn't happen. Read and unread aren't known. The kinds there are counted in kinds.",
+             parameters: [club,
+                          Parameter(name: "since", type: "string", description: "Only items on this date or later, YYYY-MM-DD."),
+                          Parameter(name: "kind", type: "string",
+                                    description: "Only items whose kind contains this, ignoring case, such as \"injury\" or \"contract\"."),
+                          Parameter(name: "important", type: "boolean",
+                                    description: "true: only injuries, transfers, bids and offers, come-and-get-me pleas, unhappiness, "
+                                        + "fines, contracts and board items. false: only the rest (staff meeting advice, press, "
+                                        + "odds, previews, coach feedback, bans and the like). Left out: all."),
+                          Parameter(name: "limit", type: "integer", description: "How many items, 1-200. 50 if left out.")],
+             run: { $0.inbox }),
+        Tool(name: "squad_rules", title: "Squad rules",
+             description: Toolbox.matchNames + "Each competition's squad rules as FM holds them, counted against the user's club "
+                + "by FM's own per-player values. FM keeps no registration list for the club, so which players FM counts isn't "
+                + "known: each rule is counted for the first team and for the whole club (everyone at the club now, not those "
+                + "out on loan), and has a standing (within, at the limit, under the minimum by N, over the maximum by N) only "
+                + "where the two agree, as in \"not home-grown: 9 of at most 9 (at the limit)\". Where they don't, it says "
+                + "\"depends on which players FM counts: first team N, whole club M\" and gives no standing. players lists who "
+                + "at the club counts toward each rule, with their squad. at_or_past_a_limit lists the rules the squad is on or "
+                + "past both ways, and depends_on_which_players_fm_counts the rest that aren't settled. Without competition, the "
+                + "club's league and the competitions in its fixtures from the last 120 days on, with no_squad_rules naming "
+                + "those FM holds none for, such as a cup. It isn't a registration list: it doesn't settle who FM lets play in "
+                + "a competition. Rules for a matchday squad, the team on the pitch, a season or wages are given with FM's "
+                + "number but not counted. With add or remove, if_changed counts each rule again as if those players joined "
+                + "the first team or left the club, by FM's own values and the same standing rule, as in \"not home-grown: 9 → 10 "
+                + "of at most 9 (over the maximum by 1)\", with a list of the rules then at or past a limit; a rule FM can't "
+                + "answer for a player at another club, such as a contract rule, is not_known. The first question takes a few seconds.",
+             parameters: [club,
+                          Parameter(name: "competition", type: "string",
+                                    description: "One competition, by its name as FM shows it, ignoring case, or part of it. Any "
+                                        + "competition FM holds fixtures of, such as one the club could qualify for."),
+                          Parameter(name: "add", type: "array",
+                                    description: "Players' uids to count as joining the first team: from another club or none, "
+                                        + "back from a loan, or from another of the club's squads.",
+                                    items: ["type": "integer"]),
+                          Parameter(name: "remove", type: "array",
+                                    description: "Players' uids at the club to count as leaving it.",
+                                    items: ["type": "integer"])],
+             run: { $0.squadRules }),
         Tool(name: "staff_overview", title: "Staff overview",
              description: "Each backroom job and training area at the user's club: who's in post, how they stand against the league, and empty places.",
              parameters: [club],
              run: { $0.staffOverview }),
         Tool(name: "fixtures", title: "Fixtures",
-             description: Toolbox.matchNames + "A club's matches, oldest first, from today unless from or to is given: date, kick-off, "
+             description: Toolbox.matchNames + "A club's matches, oldest first, from today unless from or to is given, friendlies too unless competitive is set: date, kick-off, "
                 + "competition, stage, league round, home or away (H/A), opponent, and for played matches the score (home team "
                 + "first), the result for the club, the aggregate of a two-legged tie with the teams' names (\"Apoel Nikosia 2-4 Molde "
-                + "FK\"), attendance, and the goals with their minutes and assists. The first question about a club takes a few seconds.",
+                + "FK\"), attendance, and the goals with their minutes and assists. Scores are checked against the league table; for a "
+                + "club whose competition has no table FM Starship can read, such as a league FM runs in the background, they're "
+                + "given with checked false and a note saying so; checked is true for a score that was checked. A match FM has moved "
+                + "is listed once, on its date now; one whose current date FM Starship can't tell has no date, and the note gives the "
+                + "dates FM holds for it. The first question about a club takes a few seconds.",
              parameters: [matchClub,
                           Parameter(name: "from", type: "string", description: "First date, YYYY-MM-DD. Today if neither from nor to is given."),
                           Parameter(name: "to", type: "string", description: "Last date, YYYY-MM-DD."),
+                          Parameter(name: "competitive", type: "boolean",
+                                    description: competitiveText),
                           limit],
              run: { $0.fixtures }),
         Tool(name: "results", title: "Results",
-             description: Toolbox.matchNames + "A club's played matches, newest first, with score, result, aggregate (with the teams' "
-                + "names), attendance and goals. With date, one match, with each of the club's players who played: minutes, rating, goals, assists, cards "
-                + "and xG, and those who didn't with why (unused substitute, not in the matchday squad, suspended, injured). FM keeps only each player's last 20 matches for a team, so an older match can miss players.",
+             description: Toolbox.matchNames + "A club's played matches, newest first, friendlies too unless competitive is set, with score, result, aggregate (with the teams' "
+                + "names), attendance and goals, and for the user's club its xG and shots where known. With date, one match, with each "
+                + "of the club's players who played: minutes, rating, goals, assists, cards and xG, and those who didn't with why "
+                + "(unused substitute, not in the matchday squad, suspended, injured); and for the user's club, both sides' team stats "
+                + "(possession, xG, shots, shots on target, fouls, goals) while FM still has the match's post-match news, about the last "
+                + "few weeks. FM keeps only each player's last 20 matches for a team, so an older match can miss players. Scores are "
+                + "checked against the league table; for a club whose competition has no table FM Starship can read, such as a league "
+                + "FM runs in the background, they're given with checked false and a note saying so; checked is true for a score "
+                + "that was checked.",
              parameters: [matchClub,
                           Parameter(name: "date", type: "string", description: "One match's date, YYYY-MM-DD, for its players."),
-                          Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out.")],
+                          Parameter(name: "limit", type: "integer", description: "How many matches, 1-50. 10 if left out."),
+                          Parameter(name: "competitive", type: "boolean",
+                                    description: competitiveText)],
              run: { $0.results }),
         Tool(name: "league_table", title: "League table",
              description: Toolbox.matchNames + "The table of a club's league, as FM has it now: position, played, won, drawn, lost, "
                 + "goals for and against, goal difference, points, and the home and away records. Leagues with several stages, "
                 + "such as play-offs, a split or groups, aren't checked yet. It says when a club's competition has no table "
-                + "FM Starship can read.",
+                + "FM Starship can read. With competition, the table of that competition's league stage the club is in, such as "
+                + "the Champions League's league phase, given only when every club's row adds up to its results in the stage, "
+                + "overall, home and away; otherwise it says why it isn't given. It adds the club's position and points, lines: "
+                + "where FM's own places for the stage lead (through: straight on, promotion or the next round; play_off: a play-off "
+                + "for it; relegation_play_off; relegated), each with the club and points on its place nearest the middle of the "
+                + "table, where FM's settings give them; and still_to_play: the club's matches in the stage from today not played yet.",
              parameters: [Parameter(name: "club", type: "string",
-                                    description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league.")],
+                                    description: "The user's club if left out, for the user's league. Or a club in it, or one the user's club plays, for that club's league."),
+                          Parameter(name: "competition", type: "string",
+                                    description: "A competition the club's fixtures name, as fixtures gives it, in the game's language: "
+                                        + "\"UEFA Champions League\" for its league phase. The club's league if left out. A name its "
+                                        + "fixtures don't give is answered with the ones they do.")],
              run: { $0.leagueTable }),
         Tool(name: "compare", title: "Compare",
              description: "Two to four players, or two to four staff, side by side.",

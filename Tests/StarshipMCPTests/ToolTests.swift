@@ -266,6 +266,40 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual(harness.source.reads, 2)
     }
 
+    /// FM keeps men's and women's football apart, and the user's club can sign only from its own side, so the search leaves
+    /// the other side out unless asked.
+    func testSearchPlayersKeepsToTheUsersSide() throws {
+        let harness = Harness()
+        let woman = World.player(40, name: "Made-up Woman", age: 17, ca: 150, pa: 200, at: "Rivals FC Women")
+        woman.isWoman = true
+        woman.prepare()
+        harness.source.database.players.append(woman)
+        harness.source.database.knowsSides = true
+        harness.source.current = false
+
+        let men = try harness.answer("search_players", ["name": "Made-up"])
+        XCTAssertEqual(men["found"], 0)
+        XCTAssertEqual(men["side"], .string("Men's football only, the side \(World.club) can sign from. other_side true lists women too."))
+        XCTAssertEqual(try harness.answer("search_players", ["name": "First 11"])["found"], 1, "the club's own side is there")
+        let both = try harness.answer("search_players", ["name": "Made-up", "other_side": true])
+        XCTAssertEqual(both.rowsByName.map { $0["uid"] }, [40])
+        XCTAssertEqual(both["side"], .string("Both sides, men's and women's football, as other_side asked. \(World.club) can sign only men."))
+
+        harness.source.database.womensTeams = [1]
+        harness.source.current = false
+        let women = try harness.answer("search_players", ["name": "Made-up"])
+        XCTAssertEqual(women["found"], 1)
+        XCTAssertEqual(women["side"], .string("Women's football only, the side \(World.club) can sign from. other_side true lists men too."))
+        XCTAssertEqual(try harness.answer("search_players", ["name": "First 11"])["found"], 0)
+
+        harness.source.database.womensTeams = []
+        harness.source.database.knowsSides = false
+        harness.source.current = false
+        let unknown = try harness.answer("search_players", ["name": "Made-up"])
+        XCTAssertEqual(unknown["found"], 1, "nothing is left out when the sides can't be told apart")
+        XCTAssertTrue(unknown["side"]?.string?.contains("couldn't tell them apart") ?? false)
+    }
+
     func testSquadOverviewRefusesWhenFMGivesNoRoleRatings() throws {
         let engine = FakeEngine()
         engine.roleRatings = false

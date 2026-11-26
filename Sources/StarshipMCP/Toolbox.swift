@@ -155,10 +155,17 @@ public final class Toolbox: ToolProvider {
     private var peopleByIndex: [UInt32: Player] = [:]
     private var matchesRead: Int?
     private var matchesByTeam: [Int64: (matches: TeamMatches?, at: Date)] = [:]
+    private var tablesRead: Int?
+    private var tablesByKey: [[UInt64]: (table: CompetitionTable?, at: Date)] = [:]
     private var namesRead: Int?
     private var namesByIndex: [UInt32: String] = [:]
+    private var friendlyRead: Int?
+    private var friendlyByIndex: [UInt32: Bool] = [:]
     private var reportsRead: Int?
     private var reportsFound: [ScoutReport]?
+    /// The match stats sweep, with the read, team and number of played matches it was made for.
+    var statsKey: [Int]?
+    var statsFound: [MatchStats]?
     /// The time now, which a test can move on.
     var clock: () -> Date = Date.init
     /// Where the app keeps its development records, which `development` only reads. A test points it at a folder of its own.
@@ -258,6 +265,28 @@ public final class Toolbox: ToolProvider {
         return found
     }
 
+    /// A competition's table for a team, swept for as `cachedMatches` sweeps for a team's matches.
+    func cachedTable(_ read: GameRead, team: Int64, competitionIndex: UInt32, source: MatchSource) -> CompetitionTable? {
+        if tablesRead != read.number {
+            tablesByKey = [:]
+            tablesRead = read.number
+        }
+        let key = [UInt64(bitPattern: team), UInt64(competitionIndex)]
+        let now = clock()
+        if let known = tablesByKey[key],
+           Self.stillStands(known.table.map { TeamMatches(team: team, fixtures: $0.fixtures, table: $0.table, check: $0.check) },
+                            today: read.database.gameDate, age: now.timeIntervalSince(known.at)) {
+            return known.table
+        }
+        let found = source.competitionTable(team: team, competitionIndex: competitionIndex)
+        if case .failed = found?.check {
+            tablesByKey[key] = nil
+        } else {
+            tablesByKey[key] = (found, now)
+        }
+        return found
+    }
+
     /// Competitions by database index, swept for once for each read of the save: a new competition comes with a new date.
     func competitionNames(_ read: GameRead) -> [UInt32: String] {
         guard let source = read.matches else { return [:] }
@@ -266,6 +295,17 @@ public final class Toolbox: ToolProvider {
             namesRead = read.number
         }
         return namesByIndex
+    }
+
+    /// Whether each competition is a friendly by FM's type, by database index, swept for once for each read of the save and
+    /// only when a tool asks for competitive matches. A competition missing from it isn't known.
+    func friendlyByCompetition(_ read: GameRead) -> [UInt32: Bool] {
+        guard let source = read.matches else { return [:] }
+        if friendlyRead != read.number {
+            friendlyByIndex = source.friendlyByCompetition()
+            friendlyRead = read.number
+        }
+        return friendlyByIndex
     }
 
     /// FM's opposition reports, swept for once for each read of the save: FM writes them as the days go by. Nil when they
@@ -285,7 +325,8 @@ public final class Toolbox: ToolProvider {
     /// A sweep stands as long as the read, unless it holds a match that's due and not played: the game date doesn't move
     /// while FM plays it, so the user may have played it since. Then it stands for `matchDayWait`.
     static func stillStands(_ matches: TeamMatches?, today: Date?, age: TimeInterval) -> Bool {
-        guard let matches, let today, matches.fixtures.contains(where: { !$0.played && $0.date <= today }) else { return true }
+        guard let matches, let today,
+              matches.fixtures.contains(where: { !$0.played && ($0.possibleDates.first ?? $0.date) <= today }) else { return true }
         return age < matchDayWait
     }
 
@@ -342,6 +383,7 @@ public final class Toolbox: ToolProvider {
             ("read_seconds_ago", age.map { .int($0) }),
             ("rules", .string(rules)),
             ("player_state", Self.stateStatus(db, read.engine, read.bookings)),
+            ("squad_rules", .string(read.squadRules?.status ?? "off: they can't be read from this save")),
             ("self_checks", db.checkProblems.map { .string("failed: \($0)") }),
         ] + settings(currencyKnown: true))
     }

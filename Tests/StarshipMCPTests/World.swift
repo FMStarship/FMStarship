@@ -104,6 +104,11 @@ final class FakeEngine: GameRulesEngine, PositionalRoleEngine {
             match.assists = uid == 10 && day == World.firstMatch ? 1 : 0
             match.yellow = uid == 4 ? 1 : 0
             match.xG = uid == 1 ? nil : Double(uid) / 20
+            match.xGFaced = uid == 1 ? 0.85 : nil
+            // 15 shots, 3 on target and 3 fouls, as `World.matchStats` has them.
+            match.shots = max(0, uid - 6)
+            match.shotsOnTarget = uid >= 9 ? 1 : 0
+            match.fouls = uid % 3 == 0 ? 1 : 0
             return match
         }
         switch uid {
@@ -134,6 +139,15 @@ final class FakeMatches: MatchSource {
         return teams[team] ?? TeamMatches(team: team, fixtures: [], table: nil, check: .noTable)
     }
 
+    /// The club's match stats one sweep of FM's news finds. Nil for a build of FM they haven't been checked on.
+    var stats: [MatchStats]? = World.matchStats()
+    private(set) var statsSweeps = 0
+
+    func matchStats(team: Int64) -> [MatchStats]? {
+        statsSweeps += 1
+        return stats?.filter { $0.team == team }
+    }
+
     /// The competitions one sweep of FM's memory names.
     var names: [UInt32: String] = [World.leagueIndex: "Mock League", World.cupIndex: "Mock Cup"]
     private(set) var nameSweeps = 0
@@ -141,6 +155,25 @@ final class FakeMatches: MatchSource {
     func competitionNames() -> [UInt32: String] {
         nameSweeps += 1
         return classesFound ? names : [:]
+    }
+
+    /// The table of a competition's league stage, by database index, as one sweep finds it for a club in it.
+    var tables: [UInt32: CompetitionTable] = [:]
+    private(set) var tableSweeps = 0
+
+    func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable? {
+        tableSweeps += 1
+        guard let found = tables[competitionIndex], found.table.rows.contains(where: { $0.team == team }) else { return nil }
+        return found
+    }
+
+    /// Whether each competition is a friendly by FM's type, as one sweep finds: the league and the cup aren't.
+    var friendlies: [UInt32: Bool] = [World.leagueIndex: false, World.cupIndex: false]
+    private(set) var friendlySweeps = 0
+
+    func friendlyByCompetition() -> [UInt32: Bool] {
+        friendlySweeps += 1
+        return classesFound ? friendlies : [:]
     }
 }
 
@@ -193,6 +226,60 @@ final class FakeSelection: SelectionSource {
     }
 }
 
+/// The user's inbox as `InboxSource` gives it, which a test can change between calls. Counts its reads, and its sweeps for
+/// FM's transfer timeline, which holds `events`.
+final class FakeInbox: InboxSource {
+    var result: Inbox
+    var events: [TransferEvent]? = []
+    private(set) var reads = 0
+    private(set) var sweeps = 0
+    private(set) var asked: (manager: Int64, teams: [UInt32: Int], today: Date?)?
+
+    init(_ result: Inbox) {
+        self.result = result
+    }
+
+    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox {
+        reads += 1
+        asked = (manager, teams, today)
+        return result
+    }
+
+    func transferEvents() -> [TransferEvent]? {
+        sweeps += 1
+        return events
+    }
+}
+
+/// Squad rules as `SquadRulesSource` gives them: the league's and the cup's by hand, and FM's values by uid. Counts the
+/// values it's asked for.
+final class FakeSquadRules: SquadRulesSource {
+    var off: String?
+    var countsOff: String?
+    var sets: [UInt32: SquadRuleSet] = World.squadRules()
+    /// FM's value for a player under a type, by FM's first name for it.
+    var value: (UInt32, String) -> Int = World.squadRuleValue
+    private(set) var asked: [(rule: String, players: [UInt32], team: Int64)] = []
+
+    var status: String {
+        if let off { return "off: \(off)" }
+        if let countsOff { return "on, without counts: \(countsOff)" }
+        return "on: FM's own rules and per-player values, checked against squad size and FM's own home-grown tests for 13 players at \(World.club)"
+    }
+
+    func competitionNames() -> [UInt32: String] { sets.mapValues(\.name) }
+    func league(of team: Int64) -> UInt32? { team == World.team ? World.leagueIndex : nil }
+    func rules(competition index: UInt32) -> SquadRuleSet? { off == nil ? sets[index] : nil }
+
+    func count(_ rule: SquadRule, in set: SquadRuleSet, players: [Player], team: Int64) -> SquadRuleCount {
+        asked.append((rule.name, players.map(\.uid), team))
+        if let countsOff { return SquadRuleCount(rule: rule, players: nil, notCounted: countsOff) }
+        if let why = rule.notCounted { return SquadRuleCount(rule: rule, players: nil, notCounted: why) }
+        if rule.isSize { return SquadRuleCount(rule: rule, players: players) }
+        return SquadRuleCount(rule: rule, players: players.filter { value($0.uid, rule.name) == 1 })
+    }
+}
+
 /// A save built by hand, as `GameSource` gives it. It counts its reads, and can say the save has moved on.
 final class FakeSource: GameSource {
     var database: Database
@@ -203,6 +290,8 @@ final class FakeSource: GameSource {
     var states: FakeStates? = FakeStates(World.bans())
     var bookings: FakeBookings? = FakeBookings(World.bookings())
     var selection: FakeSelection? = FakeSelection()
+    var inbox: FakeInbox? = FakeInbox(.items(World.inbox()))
+    var squadRules: FakeSquadRules? = FakeSquadRules()
     private(set) var reads = 0
 
     init(database: Database, engine: GameRulesEngine?) {
@@ -213,7 +302,8 @@ final class FakeSource: GameSource {
     func read() throws -> GameRead {
         if let problem { throw problem }
         reads += 1
-        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings, selection: selection)
+        return GameRead(database: database, engine: engine, number: reads, matches: matches, states: states, bookings: bookings, selection: selection,
+                        inbox: inbox, squadRules: squadRules)
     }
 
     func isCurrent(_ read: GameRead) -> Bool { current }
@@ -319,6 +409,7 @@ enum World {
         db.checks = "PASS"
         db.stateOff = [:]
         db.humanClubs = [(team: 1, name: World.club, manager: 500)]
+        db.humanTeams = [1: [firstTeamIndex: 0, youthTeamIndex: 11]]
         db.budgets = [1: (transfer: 5_000_000, wageRoom: 20_000)]
         db.tactics = [1: tactic(players)]
         db.prepare()
@@ -403,6 +494,71 @@ enum World {
         ]
     }
 
+    // MARK: Squad rules
+
+    static let continentalIndex: UInt32 = 30
+
+    /// The league's: a squad of at most 25, at most 11 on professional contracts, at least 3 trained in the nation, at most 10
+    /// not home-grown, and at most 3 from outside the EU in a matchday squad. None for the cup. The continental cup's, which
+    /// Testing FC doesn't play in: at most 25 and at least 2 goalkeepers.
+    static func squadRules() -> [UInt32: SquadRuleSet] {
+        [
+            leagueIndex: SquadRuleSet(index: leagueIndex, name: "Mock League", record: 0x9000, group: 8, rules: [
+                SquadRule(type: 1, names: ["max_squad_size"], limit: 25, direction: .atMost),
+                SquadRule(type: 5, names: ["players_on_pt_or_ft_contract_in_squad"], limit: 11, direction: .atMost),
+                SquadRule(type: 3, names: ["homegrown_players_0_21_from_nation", "homegrown_players_from_nation"], limit: 3, direction: .atLeast),
+                SquadRule(type: 4, names: ["non_homegrown_players_in_squad"], limit: 10, direction: .atMost),
+                SquadRule(type: 7, names: ["non_eec_players_in_match_squad"], limit: 3, direction: .atMost),
+            ]),
+            cupIndex: SquadRuleSet(index: cupIndex, name: "Mock Cup", record: 0x9100, group: -1, rules: []),
+            continentalIndex: SquadRuleSet(index: continentalIndex, name: "Made-up Champions Cup", record: 0x9200, group: 0, rules: [
+                SquadRule(type: 1, names: ["max_squad_size"], limit: 25, direction: .atMost),
+                SquadRule(type: 6, names: ["goalkeepers_in_squad"], limit: 2, direction: .atLeast),
+            ]),
+        ]
+    }
+
+    /// First 1 to First 11 are on professional contracts. First 1 was trained at the club and First 2 in its nation, as
+    /// `FakeEngine.homeGrown` says, and the youngster in its nation too; everyone else isn't home-grown. First 1 is the
+    /// only goalkeeper.
+    static func squadRuleValue(_ uid: UInt32, _ type: String) -> Int {
+        switch type {
+        case "players_on_pt_or_ft_contract_in_squad": return (1...11).contains(uid) ? 1 : 0
+        case "homegrown_players_0_21_from_nation": return [1, 2, 12].contains(uid) ? 1 : 0
+        case "non_homegrown_players_in_squad": return [1, 2, 12].contains(uid) ? 0 : 1
+        case "goalkeepers_in_squad": return uid == 1 ? 1 : 0
+        default: return 0
+        }
+    }
+
+    // MARK: Inbox
+
+    static let firstTeamIndex: UInt32 = 0x438
+    static let youthTeamIndex: UInt32 = 0x4401
+
+    /// Testing FC's inbox, oldest first, from 8 September: contracts running out, Hurt Player's injury report, a transfer for
+    /// the youth team, a plea from First 5 sent through an agent, and the board's confidence from a chairman FM Starship
+    /// doesn't read.
+    static func inbox() -> [InboxItem] {
+        func day(_ day: Int) -> Date { GameDate.checked(year: 2026, dayOfYear: day)! }
+        let coach = NewsPerson(uid: 501, index: 501, isPlayer: false, name: "Coach One")
+        let hurt = NewsPerson(uid: 13, index: 13, isPlayer: true, name: "Hurt Player")
+        return [
+            InboxItem(serial: 1000, date: day(251), className: "CONTRACT_EXPIRES_SOON_NEWS", team: firstTeamIndex, sender: coach,
+                      senderJob: "Director of Football", subject: .contractsExpiring(indexes: [12, 501, 9999])),
+            InboxItem(serial: 1001, date: day(256), className: "INJURY_REPORT_NEWS_ITEM", team: firstTeamIndex, sender: coach,
+                      senderJob: "Head Physio", subject: .injury(player: hurt, injury: "Hamstring strain", on: day(256), days: 21)),
+            InboxItem(serial: 1002, date: day(258), className: "TRANSFER_COMPLETED_NEWS", team: youthTeamIndex, sender: coach,
+                      senderJob: "Director of Football",
+                      subject: .transfer(person: NewsPerson(uid: 502, index: 502, isPlayer: false, name: "Rival Coach"), club: rivals)),
+            InboxItem(serial: 1003, date: day(265), className: "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM", team: nil, sender: nil, fromAgent: true,
+                      senderJob: nil, subject: .comeAndGetMe(player: NewsPerson(uid: 5, index: 5, isPlayer: true, name: "First 5"),
+                                                             club: "Big Club FC")),
+            InboxItem(serial: 1004, date: day(268), className: "BOARD_CONFIDENCE_UPDATE_NEWS", team: firstTeamIndex,
+                      sender: NewsPerson(uid: 8888, index: 8888, isPlayer: false, name: "The Chairman"), senderJob: "Chairperson"),
+        ]
+    }
+
     /// A 4-4-2 with the first eleven in it, and the youngster and the injured player on the bench, with a gap between them.
     static func tactic(_ players: [Player], bench: [UInt32?] = [12, nil, 13]) -> Tactic {
         let places: [(String, TacticSlot.Side)] = [("GK", .centre), ("DR", .right), ("DC", .right), ("DC", .left), ("DL", .left),
@@ -477,6 +633,18 @@ enum World {
             rivalsTeam: TeamMatches(team: rivalsTeam, fixtures: [first], table: table, check: .passed),
             otherTeam: TeamMatches(team: otherTeam, fixtures: [second, next], table: table, check: .passed),
         ])
+    }
+
+    /// FM's post-match news holds team stats for both league matches. Its figures for the 1-1 at Other Town are what the
+    /// players' records add up to; the 2-0 against Rivals FC has two goals, and the records only one, so its check fails.
+    static func matchStats() -> [MatchStats] {
+        func side(_ possession: Int, _ xG100: Int, _ shots: Int, _ onTarget: Int, _ fouls: Int, _ goals: Int) -> MatchSideStats {
+            MatchSideStats(possession: possession, xG100: xG100, shots: shots, shotsOnTarget: onTarget, fouls: fouls, goals: goals)
+        }
+        return [MatchStats(date: GameDate.date(year: 2026, dayOfYear: firstMatch) ?? Date(), team: team, opponent: rivalsTeam, home: true,
+                           ours: side(64, 325, 15, 3, 3, 2), theirs: side(36, 85, 4, 2, 8, 0)),
+                MatchStats(date: GameDate.date(year: 2026, dayOfYear: secondMatch) ?? Date(), team: team, opponent: otherTeam, home: false,
+                           ours: side(46, 325, 15, 3, 3, 1), theirs: side(54, 85, 9, 4, 11, 1))]
     }
 
     // MARK: Development

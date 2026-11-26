@@ -18,9 +18,14 @@ public struct GameRead {
     public let bookings: BookingSource?
     /// The user's matchday squad as FM holds it when a tool answers, and FM's scout reports. Nil where they can't be read again.
     public let selection: SelectionSource?
+    /// The user's inbox as FM holds it when a tool answers. Nil where it can't be read.
+    public let inbox: InboxSource?
+    /// Each competition's squad rules and FM's per-player values for them. Nil where they can't be read.
+    public let squadRules: SquadRulesSource?
 
     public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil,
-                bookings: BookingSource? = nil, selection: SelectionSource? = nil) {
+                bookings: BookingSource? = nil, selection: SelectionSource? = nil, inbox: InboxSource? = nil,
+                squadRules: SquadRulesSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
@@ -28,7 +33,60 @@ public struct GameRead {
         self.states = states
         self.bookings = bookings
         self.selection = selection
+        self.inbox = inbox
+        self.squadRules = squadRules
     }
+}
+
+/// Squad rules as `SquadRulesReader` gives them.
+public protocol SquadRulesSource: AnyObject {
+    /// On with what its check found, or off and why, for `game_status`. Asking runs the check.
+    var status: String { get }
+    /// Why the rules are off for this read, nil while they're on.
+    var off: String? { get }
+    /// Why FM's per-player values are off, so the rules come without counts. Nil while they're on.
+    var countsOff: String? { get }
+    /// The competitions FM holds fixtures of, by database index.
+    func competitionNames() -> [UInt32: String]
+    /// A team's league, by database index.
+    func league(of team: Int64) -> UInt32?
+    /// A competition's rules. Nil when they're off or its record isn't known.
+    func rules(competition index: UInt32) -> SquadRuleSet?
+    /// One rule counted against these players for `team`.
+    func count(_ rule: SquadRule, in set: SquadRuleSet, players: [Player], team: Int64) -> SquadRuleCount
+}
+
+extension SquadRulesReader: SquadRulesSource {}
+
+/// The user's inbox, as `InboxReader` gives it.
+public protocol InboxSource: AnyObject {
+    /// The inbox of the human manager at `manager` as FM holds it now: new items come in without the date moving.
+    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox
+    /// FM's transfer timeline as it holds it now, each entry once. Nil when it can't be read.
+    func transferEvents() -> [TransferEvent]?
+}
+
+/// The running game's, through an `InboxReader` made on the first question.
+final class LiveInbox: InboxSource {
+    private let game: GameProcess
+    private var reader: InboxReader?
+
+    init(game: GameProcess) {
+        self.game = game
+    }
+
+    private var found: InboxReader {
+        if let reader { return reader }
+        let made = InboxReader(game: game, rtti: Rtti(game))
+        reader = made
+        return made
+    }
+
+    func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox {
+        found.inbox(manager: manager, teams: teams, today: today)
+    }
+
+    func transferEvents() -> [TransferEvent]? { found.transferEvents() }
 }
 
 /// The matchday squad and the scout's reports, as `SelectionReader` gives them.
@@ -91,6 +149,21 @@ public protocol MatchSource: AnyObject {
     func matches(team: Int64) -> TeamMatches?
     /// Every competition with a fixture in FM's memory, by database index, which is all a player's match record holds.
     func competitionNames() -> [UInt32: String]
+    /// Whether each competition with a fixture in FM's memory is a friendly, by FM's type of competition, by database index.
+    /// A competition whose type isn't known is left out.
+    func friendlyByCompetition() -> [UInt32: Bool]
+    /// The team stats of the user's club's recent matches, from FM's post-match news, before FM Starship's check. Nil on a
+    /// build of FM they haven't been checked on.
+    func matchStats(team: Int64) -> [MatchStats]?
+    /// The table of the league stage the team is in of one competition, by database index, such as the Champions League's
+    /// league phase, with every club's matches in that stage and the check of one against the other. Nil when there's none.
+    func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable?
+}
+
+extension MatchSource {
+    public func matchStats(team: Int64) -> [MatchStats]? { nil }
+    public func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable? { nil }
+    public func friendlyByCompetition() -> [UInt32: Bool] { [:] }
 }
 
 /// The running game's, through `FixturesReader`, which is set up on the first question about a match.
@@ -113,7 +186,22 @@ final class LiveMatches: MatchSource {
         return (reader ?? nil)?.competitionNames() ?? [:]
     }
 
-    /// Each competition's record by database index, for naming the rule sets yellow cards count under.
+    func friendlyByCompetition() -> [UInt32: Bool] {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.friendlyByCompetition() ?? [:]
+    }
+
+    func competitionTable(team: Int64, competitionIndex: UInt32) -> CompetitionTable? {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.competitionTable(team: team, competitionIndex: competitionIndex)
+    }
+
+    private lazy var statsReader = MatchStatsReader(game: game, rtti: Rtti(game))
+
+    func matchStats(team: Int64) -> [MatchStats]? { statsReader.stats(team: team) }
+
+    /// Each competition's record by database index, for naming the rule sets yellow cards count under and finding a
+    /// competition's squad rules.
     func competitionRecords() -> [UInt32: Int64] {
         if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
         return (reader ?? nil)?.competitionRecords() ?? [:]
@@ -185,7 +273,9 @@ public final class LiveGame: GameSource {
                             states: PlayerStateReader(game: process, database: database),
                             bookings: BookingsReader(game: process, database: database, engine: engine,
                                                      competitionRecords: { matches.competitionRecords() }),
-                            selection: LiveSelection(game: process))
+                            selection: LiveSelection(game: process), inbox: LiveInbox(game: process),
+                            squadRules: SquadRulesReader(game: process, database: database, engine: engine,
+                                                         competitionRecords: { matches.competitionRecords() }))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {

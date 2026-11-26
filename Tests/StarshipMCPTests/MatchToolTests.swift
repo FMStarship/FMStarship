@@ -28,6 +28,7 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(next["venue"], "H")
         XCTAssertEqual(next["opponent"], .string(World.otherTown))
         XCTAssertEqual(next["score"], .null)
+        XCTAssertEqual(next["checked"], .null, "a match still to come has no score to check")
         let later = try XCTUnwrap(rows(fixtures).last)
         XCTAssertEqual(later["kick_off"], .null, "no time set yet")
         XCTAssertEqual(later["stage"], "kvartfinale", "FM's own words, in the game's language")
@@ -73,6 +74,44 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("fixtures", ["to": "2026-09-14"])["found"], 1, "to alone starts from the first")
     }
 
+    /// competitive leaves out the matches FM's type of competition makes friendlies, and keeps one whose type isn't known,
+    /// saying so. Left out, everything is listed as before.
+    func testCompetitiveLeavesFriendliesOut() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        var ours = try XCTUnwrap(matches.teams[World.team])
+        for i in ours.fixtures.indices { ours.fixtures[i].friendly = false }
+        var friendly = World.fixture(World.firstMatch - 7, home: World.team, away: World.minnowsTeam, score: (5, 0))
+        friendly.competition = "Treningskamp"
+        friendly.competitionIndex = 131
+        friendly.friendly = true
+        var unknown = World.fixture(World.secondMatch + 1, home: World.minnowsTeam, away: World.team, score: (0, 1))
+        unknown.competition = "Mock Oddity"
+        unknown.competitionIndex = 999
+        ours.fixtures = ([friendly, unknown] + ours.fixtures).sorted { $0.date < $1.date }
+        matches.teams[World.team] = ours
+
+        let all = try harness.answer("fixtures", ["from": "2026-09-01"])
+        XCTAssertEqual(rows(all).map { $0["competition"] },
+                       ["Treningskamp", "Mock League", "Mock League", "Mock Oddity", "Mock Cup", "Mock League", "Mock Cup"])
+        XCTAssertNil(all["note"], "nothing to say without competitive")
+        let competitive = try harness.answer("fixtures", ["from": "2026-09-01", "competitive": true])
+        XCTAssertEqual(competitive["found"], 6)
+        XCTAssertEqual(competitive.columnNames, Toolbox.fixtureColumns, "the competition column stays")
+        XCTAssertEqual(rows(competitive).map { $0["competition"] },
+                       ["Mock League", "Mock League", "Mock Oddity", "Mock Cup", "Mock League", "Mock Cup"])
+        XCTAssertEqual(competitive["note"]?.string,
+                       "One match is kept in although competitive is set, because FM Starship couldn't read whether it's a friendly.")
+
+        XCTAssertEqual(try harness.answer("results")["found"], 5)
+        let results = try harness.answer("results", ["competitive": true])
+        XCTAssertEqual(results["found"], 4)
+        XCTAssertEqual(rows(results).map { $0["date"] }, ["2026-09-23", "2026-09-21", "2026-09-20", "2026-09-13"])
+        XCTAssertTrue(results["note"]?.string?.contains("One match is kept in although competitive is set") ?? false)
+        XCTAssertEqual(try harness.answer("results", ["date": "2026-09-06", "competitive": true])["competition"], "Treningskamp",
+                       "a match asked for by date is given either way")
+    }
+
     func testFixturesRefuseBadDates() throws {
         let harness = Harness()
         XCTAssertEqual(try harness.refusal("fixtures", ["from": "27/09/2026"]), "from must be a date, as YYYY-MM-DD.")
@@ -107,16 +146,35 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("results", ["date": "2026-09-20"])["didnt_play"], ["Young Prospect"], "healed by then")
     }
 
-    /// A goal for Testing FC scored by a Rivals FC player is an own goal.
+    /// A goal for Testing FC that FM marks as an own goal, scored by a Rivals FC player, is one.
     func testAnOwnGoalIsMarked() throws {
         let harness = Harness()
         let matches = try XCTUnwrap(harness.source.matches)
         var ours = try XCTUnwrap(matches.teams[World.team])
-        ours.fixtures[0].goals.append(MatchGoal(scorer: 21, assist: nil, home: true, minute: 50, addedMinute: 0))
+        ours.fixtures[0].goals.append(MatchGoal(scorer: 21, assist: nil, home: true, minute: 50, addedMinute: 0, ownGoal: true))
         matches.teams[World.team] = ours
         let first = try harness.answer("results", ["date": "2026-09-13"])
         XCTAssertEqual(first["scorers"]?.array?.last, "50' Rival 21 (own goal)")
         XCTAssertEqual(first["scorers"]?.array?.first, "23' First 9, assist First 10", "his own side's goals aren't marked")
+    }
+
+    /// FM's kind decides it, and the scorer's club can only veto it: a player who has moved since keeps his goal.
+    func testAnOwnGoalNeedsFMsKind() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        var ours = try XCTUnwrap(matches.teams[World.team])
+        ours.fixtures[0].goals += [
+            // Scored for Testing FC by a player at Rivals FC now, but not an own goal: he has moved since.
+            MatchGoal(scorer: 21, assist: nil, home: true, minute: 50, addedMinute: 0),
+            // An own goal by a player at Testing FC now: he may have moved since, so it can't be told.
+            MatchGoal(scorer: 5, assist: nil, home: true, minute: 60, addedMinute: 0, ownGoal: true),
+            // An own goal by a player who isn't in the read, named by the side that conceded it.
+            MatchGoal(scorer: 9_996, assist: nil, home: true, minute: 70, addedMinute: 0, ownGoal: true),
+        ]
+        matches.teams[World.team] = ours
+        let scorers = try XCTUnwrap(try harness.answer("results", ["date": "2026-09-13"])["scorers"]?.array)
+        XCTAssertEqual(Array(scorers.suffix(3)), ["50' Rival 21", "60' First 5",
+                                                  .string("70' a \(World.rivals) player FM Starship can't name (own goal)")])
     }
 
     func testOneResultWithThePlayers() throws {
@@ -179,6 +237,142 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(try harness.answer("league_table", ["club": "other town"])["position"], 2)
     }
 
+    // MARK: A competition's league stage
+
+    /// The cup's league phase, as the reader gives it: Testing FC and Minnows FC each played once, Testing FC at home to Minnows
+    /// FC to come. FM's places: the top one through, the next two to a play-off.
+    private func cupPhase(lines: LeagueLines? = LeagueLines(through: 1, playOff: 2, relegationPlayOff: 0, relegated: 0),
+                          check: TeamMatches.Check = .passed) -> CompetitionTable {
+        func record(_ p: Int, _ w: Int, _ d: Int, _ l: Int, _ f: Int, _ a: Int) -> TableRecord {
+            TableRecord(played: p, won: w, drawn: d, lost: l, goalsFor: f, goalsAgainst: a, points: 3 * w + d)
+        }
+        let none = record(0, 0, 0, 0, 0, 0)
+        var played = World.fixture(World.cupMatch, home: World.minnowsTeam, away: World.team, score: (2, 4), cup: true)
+        var toCome = World.fixture(World.laterMatch, home: World.team, away: World.minnowsTeam, cup: true)
+        // FM's old fixture of a match since moved, under a date before today.
+        var moved = World.fixture(World.firstMatch, home: World.team, away: World.minnowsTeam, cup: true)
+        played.stage = "ligafase"
+        toCome.stage = "ligafase"
+        moved.stage = "ligafase"
+        toCome.kickOff = 20 * 60 + 45
+        let table = LeagueTable(competition: "Mock Cup", competitionIndex: World.cupIndex, rows: [
+            LeagueTableRow(team: World.rivalsTeam, name: World.rivals, position: 1, overall: record(1, 1, 0, 0, 5, 0), home: record(1, 1, 0, 0, 5, 0), away: none),
+            LeagueTableRow(team: World.team, name: World.club, position: 2, overall: record(1, 1, 0, 0, 4, 2), home: none, away: record(1, 1, 0, 0, 4, 2)),
+            LeagueTableRow(team: World.minnowsTeam, name: World.minnows, position: 3, overall: record(1, 0, 0, 1, 2, 4), home: record(1, 0, 0, 1, 2, 4), away: none),
+            LeagueTableRow(team: World.otherTeam, name: World.otherTown, position: 4, overall: record(1, 0, 0, 1, 0, 5), home: none, away: record(1, 0, 0, 1, 0, 5)),
+        ])
+        return CompetitionTable(table: table, stage: "ligafase", season: 2026, fixtures: [moved, played, toCome], lines: lines, check: check)
+    }
+
+    /// Each line's places, where they lead, and the place, club and points on it.
+    private func lines(_ answer: JSON) -> [[JSON?]] {
+        (answer["lines"]?.array ?? []).map { line in ["places", "to", "line_position", "line_club", "line_points"].map { line[$0] } }
+    }
+
+    func testACompetitionsLeagueStageTable() throws {
+        let harness = Harness()
+        let matches = try XCTUnwrap(harness.source.matches)
+        matches.tables[World.cupIndex] = cupPhase()
+        let table = try harness.answer("league_table", ["competition": "mock cup"])
+        XCTAssertEqual(table["competition"], "Mock Cup")
+        XCTAssertEqual(table["stage"], "ligafase")
+        XCTAssertEqual(table["club"], .string(World.club))
+        XCTAssertEqual(table["position"], 2)
+        XCTAssertEqual(table["points"], 3)
+        XCTAssertEqual(table.columnNames, Toolbox.tableColumns)
+        XCTAssertEqual(rows(table).map { $0["club"] }, [.string(World.rivals), .string(World.club), .string(World.minnows), .string(World.otherTown)])
+        XCTAssertEqual(rows(table)[1]["away"], "P1 W1 D0 L0 4-2 3pts")
+        XCTAssertEqual(lines(table), [["1", "through", 1, .string(World.rivals), 3], ["2-3", "play_off", 3, .string(World.minnows), 0]])
+        let left = try XCTUnwrap(table["still_to_play"])
+        XCTAssertEqual(left.rowsByName, [["date": "2026-10-11", "kick_off": "20:45", "venue": "H", "opponent": .string(World.minnows)]])
+        XCTAssertNil(table["note"])
+        // Swept for once for the read.
+        _ = try harness.answer("league_table", ["competition": "Mock Cup"])
+        XCTAssertEqual(matches.tableSweeps, 1)
+        // Without competition, the club's league as before.
+        XCTAssertEqual(try harness.answer("league_table")["competition"], "Mock League")
+    }
+
+    func testACompetitionTheFixturesDontNameIsAnsweredWithTheirs() throws {
+        let harness = Harness()
+        let sentence = try harness.refusal("league_table", ["competition": "UEFA Champions League"])
+        XCTAssertEqual(sentence, "UEFA Champions League isn't a competition \(World.club)'s fixtures name. They name, as FM does in the "
+                       + "game's language: Mock Cup, Mock League.")
+        XCTAssertEqual(harness.source.matches?.tableSweeps, 0)
+    }
+
+    func testACompetitionWithoutALeagueStageSaysSo() throws {
+        let harness = Harness()
+        let sentence = try harness.refusal("league_table", ["competition": "Mock Cup"])
+        XCTAssertTrue(sentence.hasPrefix("There's no league table FM Starship can read for \(World.club) in Mock Cup"), sentence)
+    }
+
+    /// Every row must add up to its club's results: when one doesn't, there's no table, and the answer says why.
+    func testAFailedStageCheckGivesNoTable() throws {
+        let harness = Harness()
+        harness.source.matches?.tables[World.cupIndex] = cupPhase(check: .failed("Minnows FC's home results in the stage add up to P0"))
+        let sentence = try harness.refusal("league_table", ["competition": "Mock Cup"])
+        XCTAssertTrue(sentence.hasPrefix("FM Starship's check of Mock Cup's ligafase table failed: Minnows FC's home results"), sentence)
+        XCTAssertTrue(sentence.contains("switched off rather than guessed"), sentence)
+        // A failed sweep isn't kept: the next question sweeps again.
+        _ = try harness.refusal("league_table", ["competition": "Mock Cup"])
+        XCTAssertEqual(harness.source.matches?.tableSweeps, 2)
+    }
+
+    /// A match of the stage whose date couldn't be told is in still_to_play once, with no date or kick-off, and the note says
+    /// why, as fixtures does.
+    func testAStageMatchWhoseDateCantBeToldHasNone() throws {
+        let harness = Harness()
+        var phase = cupPhase()
+        let at = try XCTUnwrap(phase.fixtures.firstIndex { !$0.played && $0.date == GameDate.date(year: 2026, dayOfYear: World.laterMatch) })
+        let days = [World.nextMatch, World.laterMatch].compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+        phase.fixtures[at].possibleDates = days
+        harness.source.matches?.tables[World.cupIndex] = phase
+        // `fixtures` can't tell either.
+        let ours = try XCTUnwrap(harness.source.matches?.teams[World.team]?.fixtures.firstIndex { $0.date == phase.fixtures[at].date })
+        harness.source.matches?.teams[World.team]?.fixtures[ours].possibleDates = days
+        let table = try harness.answer("league_table", ["competition": "Mock Cup"])
+        let left = try XCTUnwrap(table["still_to_play"])
+        XCTAssertEqual(left.rowsByName, [["date": .null, "kick_off": .null, "venue": "H", "opponent": .string(World.minnows)]])
+        XCTAssertEqual(table["note"], .string(Toolbox.dateUnknownSentence(phase.fixtures[at])))
+        XCTAssertTrue(table["note"]?.string?.contains("2026-10-04 and 2026-10-11") ?? false)
+    }
+
+    /// The stage alone knows a day is past only by the club's matches in the stage. Where `fixtures`, which goes by every
+    /// match the club played, knows the day of the same match, `still_to_play` gives it.
+    func testAStageMatchsDayComesFromFixturesWhereTheyKnowIt() throws {
+        let harness = Harness()
+        var phase = cupPhase()
+        let at = try XCTUnwrap(phase.fixtures.firstIndex { !$0.played && $0.date == GameDate.date(year: 2026, dayOfYear: World.laterMatch) })
+        phase.fixtures[at].possibleDates = [World.nextMatch, World.laterMatch].compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+        harness.source.matches?.tables[World.cupIndex] = phase
+        let table = try harness.answer("league_table", ["competition": "Mock Cup"])
+        let left = try XCTUnwrap(table["still_to_play"])
+        XCTAssertEqual(left.rowsByName, [["date": "2026-10-11", "kick_off": .null, "venue": "H", "opponent": .string(World.minnows)]],
+                       "the club's fixtures list it on its day, with no kick-off yet")
+        XCTAssertFalse(table["note"]?.string?.contains("2026-10-04") ?? false)
+    }
+
+    /// Where FM's places couldn't be read, they're left out and the note says so, rather than filled in from the rules.
+    func testLinesFMsSettingsDontGiveAreLeftOut() throws {
+        let harness = Harness()
+        harness.source.matches?.tables[World.cupIndex] = cupPhase(lines: nil)
+        let unread = try harness.answer("league_table", ["competition": "Mock Cup"])
+        XCTAssertNil(unread["lines"])
+        XCTAssertTrue(unread["note"]?.string?.contains("couldn't be read") ?? false)
+
+        let other = Harness()
+        other.source.matches?.tables[World.cupIndex] = cupPhase(lines: LeagueLines(through: 0, playOff: 0, relegationPlayOff: 0, relegated: 0))
+        let none = try other.answer("league_table", ["competition": "Mock Cup"])
+        XCTAssertNil(none["lines"])
+        XCTAssertTrue(none["note"]?.string?.contains("no places that lead anywhere") ?? false)
+
+        let bottom = Harness()
+        bottom.source.matches?.tables[World.cupIndex] = cupPhase(lines: LeagueLines(through: 0, playOff: 0, relegationPlayOff: 1, relegated: 1))
+        XCTAssertEqual(lines(try bottom.answer("league_table", ["competition": "Mock Cup"])),
+                       [["3", "relegation_play_off", 3, .string(World.minnows), 0], ["4", "relegated", 4, .string(World.otherTown), 0]])
+    }
+
     // MARK: Other clubs
 
     func testAnotherClubFromTheLeagueOrTheFixtures() throws {
@@ -189,12 +383,22 @@ final class MatchToolTests: XCTestCase {
         XCTAssertEqual(rows(rivals).first?["result"], "L")
         XCTAssertEqual(rows(rivals).first?["scorers"], .null)
         XCTAssertEqual(rows(rivals).first?["opponent_scorers"], ["23' First 9, assist First 10", "45+1' First 11"])
-        // A cup opponent outside the league, which FM has no table for here.
-        XCTAssertTrue(try harness.refusal("results", ["club": .string(World.minnows)]).contains("no league table"))
+        XCTAssertEqual(rows(rivals).map { $0["checked"] }, rows(rivals).map { _ in true }, "a checked club's scores say so")
 
         let unknown = try harness.refusal("fixtures", ["club": "Other"])
         XCTAssertTrue(unknown.contains("Did you mean: \(World.otherTown)?"), unknown)
         XCTAssertTrue(unknown.contains("the clubs in its league and the clubs it plays"), unknown)
+    }
+
+    /// A score checked against the league table says so, so an agent can tell it from one that wasn't.
+    func testACheckedScoreIsMarkedChecked() throws {
+        let harness = Harness()
+        let results = try harness.answer("results")
+        XCTAssertFalse(rows(results).isEmpty)
+        XCTAssertEqual(rows(results).map { $0["checked"] }, rows(results).map { _ in true })
+        XCTAssertEqual(try harness.answer("results", ["date": "2026-09-20"])["checked"], true)
+        let fixtures = try harness.answer("fixtures", ["from": "2026-09-01"])
+        XCTAssertEqual(rows(fixtures).map { $0["checked"] }, rows(fixtures).map { $0["score"] == .null ? .null : true })
     }
 
     // MARK: When the matches can't be trusted
@@ -221,13 +425,66 @@ final class MatchToolTests: XCTestCase {
         let fixtures = try harness.answer("fixtures", ["from": "2026-09-01"])
         XCTAssertEqual(rows(fixtures).first?["score"], .null)
         XCTAssertEqual(rows(fixtures).first?["scorers"], .null)
+        XCTAssertEqual(rows(fixtures).first?["checked"], .null, "no score given, so nothing to say was checked")
         XCTAssertTrue(fixtures["note"]?.string?.contains("can't check its results") ?? false)
         XCTAssertNotNil(try harness.answer("game_status")["next_fixture"], "dates aren't scores")
         XCTAssertEqual(try harness.answer("league_table")["note"], .string("\(World.club) hasn't played a league match yet this season."))
 
+    }
+
+    /// A club in a league FM runs in the background has no table to check its scores against, so they're given marked
+    /// not checked, with a sentence saying so.
+    func testAClubWithNoTableGetsScoresMarkedNotChecked() throws {
+        let harness = Harness()
+        let ours = try XCTUnwrap(harness.source.matches?.teams[World.team])
+        let cupTie = ours.fixtures[2], later = ours.fixtures[4]
+        harness.source.matches?.teams[World.minnowsTeam] = TeamMatches(team: World.minnowsTeam, fixtures: [cupTie, later],
+                                                                        table: nil, check: .noTable)
+
+        let results = try harness.answer("results", ["club": .string(World.minnows)])
+        XCTAssertEqual(results["found"], 1)
+        XCTAssertEqual(results.columnNames, Toolbox.resultColumns)
+        let tie = try XCTUnwrap(rows(results).first)
+        XCTAssertEqual(tie["score"], "2-4")
+        XCTAssertEqual(tie["result"], "L")
+        XCTAssertEqual(tie["aggregate"], .string("\(World.minnows) 3-6 \(World.club)"))
+        XCTAssertEqual(tie["opponent_scorers"], .null)
+        XCTAssertEqual(tie["checked"], false)
+        let note = try XCTUnwrap(results["note"]?.string)
+        XCTAssertTrue(note.contains("no league table FM Starship can read"), note)
+        XCTAssertTrue(note.contains("couldn't check these scores"), note)
+        XCTAssertTrue(note.contains("read the same way as the scores of a league with a table"), note)
+
+        let one = try harness.answer("results", ["club": .string(World.minnows), "date": "2026-09-23"])
+        XCTAssertEqual(one["score"], "2-4")
+        XCTAssertEqual(one["checked"], false)
+        XCTAssertTrue(one["note"]?.string?.contains("couldn't check these scores") ?? false)
+        let noRules = Harness(engine: nil)
+        noRules.source.matches?.teams[World.minnowsTeam] = harness.source.matches?.teams[World.minnowsTeam]
+        let bare = try noRules.answer("results", ["club": .string(World.minnows), "date": "2026-09-23"])
+        XCTAssertEqual(bare["checked"], false)
+        XCTAssertTrue(bare["note"]?.string?.contains("couldn't check these scores") ?? false, "said without the players too")
+
+        let fixtures = try harness.answer("fixtures", ["club": .string(World.minnows), "from": "2026-09-01"])
+        XCTAssertEqual(fixtures.columnNames, Toolbox.fixtureColumns)
+        XCTAssertEqual(rows(fixtures).map { $0["score"] }, ["2-4", .null])
+        XCTAssertEqual(rows(fixtures).map { $0["checked"] }, [false, .null], "a match still to come has no score to check")
+        XCTAssertTrue(fixtures["note"]?.string?.contains("checked: false") ?? false)
+
+        // The user's own club, were its league one with no table.
         harness.source.matches?.teams[World.team]?.check = .noTable
         harness.source.current = false
-        XCTAssertTrue(try harness.refusal("results").contains("no league table"))
+        XCTAssertEqual(rows(try harness.answer("results")).map { $0["checked"] }, [false, false, false])
+    }
+
+    /// A failed check still switches scores off, for another club as for the user's.
+    func testAFailedCheckStillRefusesAnotherClub() throws {
+        let harness = Harness()
+        harness.source.matches?.teams[World.rivalsTeam]?.check = .failed("a match was half-made")
+        for tool in ["fixtures", "results"] {
+            let sentence = try harness.refusal(tool, ["club": .string(World.rivals)])
+            XCTAssertTrue(sentence.hasPrefix("FM Starship's check of \(World.rivals)'s matches failed"), sentence)
+        }
     }
 
     func testWithoutMatchesTheToolsSaySo() throws {
@@ -306,6 +563,39 @@ final class MatchToolTests: XCTestCase {
         XCTAssertNil(next["stage"])
         XCTAssertEqual(next["venue"], "home")
         XCTAssertEqual(next["opponent"], .string(World.otherTown))
+    }
+
+    /// A match FM holds on two dates, where which is current couldn't be told, is listed once with no date and a note.
+    /// While it could come first, game_status and selection don't name a next match; once both dates are after the next
+    /// one, they do.
+    func testAMatchWhoseDateCantBeToldHasNone() throws {
+        func harness(_ days: [Int]) -> Harness {
+            let harness = Harness()
+            var moved = World.fixture(days.last ?? 0, home: World.team, away: World.rivalsTeam)
+            moved.round = 4
+            moved.possibleDates = days.compactMap { GameDate.date(year: 2026, dayOfYear: $0) }
+            harness.source.matches?.teams[World.team]?.fixtures.append(moved)
+            return harness
+        }
+        let unsure = harness([275, 290])
+        let fixtures = try unsure.answer("fixtures")
+        XCTAssertEqual(fixtures["found"], 3)
+        let row = try XCTUnwrap(rows(fixtures).last)
+        XCTAssertEqual(row["opponent"], .string(World.rivals))
+        XCTAssertEqual(row["date"], .null)
+        XCTAssertEqual(row["kick_off"], .null)
+        let sentence = "FM holds more than one date for \(World.club) v \(World.rivals) in Mock League, 2026-10-02 and 2026-10-17, and "
+            + "FM Starship couldn't tell which is current, so its date is left out rather than guessed."
+        XCTAssertEqual(fixtures["note"], .string(sentence))
+        XCTAssertEqual(try unsure.answer("fixtures", ["from": "2026-10-12", "to": "2026-10-20"])["found"], 1, "in on either date")
+        XCTAssertEqual(try unsure.answer("game_status")["next_fixture"], .string("unknown: " + sentence))
+        let selection = try unsure.answer("selection")
+        XCTAssertNil(selection["next_match"])
+        XCTAssertTrue(selection["notes"]?.array?.contains(.string(sentence)) == true)
+
+        let later = harness([280, 290])
+        XCTAssertEqual(try later.answer("game_status")["next_fixture"]?["date"], "2026-10-04")
+        XCTAssertEqual(try later.answer("selection")["next_match"]?["date"], "2026-10-04")
     }
 
     func testOneSweepForEachTeamAndRead() throws {

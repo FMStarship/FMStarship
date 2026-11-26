@@ -105,6 +105,24 @@ extension Toolbox {
         filter.seasonRating = try args.number("rating_min").map { String($0) } ?? ""
         let rules = try Self.rules(args, known: PlayerFilter.ruleAttributes, hidden: PlayerFilter.hiddenRuleAttributes, visibility)
         filter.rules = rules
+        // FM keeps men's and women's football apart, and the user's club can sign players only from its own side.
+        var side: String?
+        let otherSide = try args.bool("other_side") ?? false
+        if let club = try? context.ownClub(nil) {
+            if context.db.knowsSides {
+                let womens = context.db.womensTeams.contains(club.team)
+                if otherSide {
+                    side = "Both sides, men's and women's football, as other_side asked. \(club.name) can sign only "
+                        + (womens ? "women" : "men") + "."
+                } else {
+                    filter.gender = womens ? "Women" : "Men"
+                    side = (womens ? "Women's" : "Men's") + " football only, the side \(club.name) can sign from. other_side true lists "
+                        + (womens ? "men" : "women") + " too."
+                }
+            } else {
+                side = "Men's and women's football together: FM Starship couldn't tell them apart on this build of FM."
+            }
+        }
         let catalogue = Columns.forPlayers()
         // Starts is the MCP's own column, from FM's "3 (2)", so it isn't in the catalogue to order by.
         let byStarts = try args.string("sort").map { $0.caseInsensitiveCompare(Output.startsName) == .orderedSame } ?? false
@@ -132,9 +150,10 @@ extension Toolbox {
         let columns = Output.columns(shownNames, in: catalogue, visibility)
         var order = byStarts ? Output.startsName : sort?.name ?? (visibility.showsAbility ? "CA" : "Value")
         if sort?.name == "Appearances" { order = "Appearances: starts and sub appearances together" }
-        return .object([("found", .int(found.count)), ("shown", .int(min(limit, found.count))), ("order", .string(order)),
-                        ("wages", .string(Units.wageSuffix))]
-                       + Output.rows(Array(ordered.prefix(limit)), columns))
+        var pairs: [(String, JSON)] = [("found", .int(found.count)), ("shown", .int(min(limit, found.count))),
+                                       ("order", .string(order)), ("wages", .string(Units.wageSuffix))]
+        if let side { pairs.append(("side", .string(side))) }
+        return .object(pairs + Output.rows(Array(ordered.prefix(limit)), columns))
     }
 
     /// By this season's starts, with players who have no season stats last either way, as the catalogue's columns sort.

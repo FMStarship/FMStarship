@@ -299,6 +299,18 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(found.fixtures.first?.goals.count, 0)
     }
 
+    /// FM's goal kind 1 is an own goal: its scorer plays for the side that conceded it.
+    func testKnowsAnOwnGoalByItsKind() throws {
+        let world = World()
+        var match = world.values(home: world.rovers, away: world.minnows, day: 104, league: false)
+        match.score = (2, 1)
+        match.goals = [(11, nil, true, 0, 10, 0), (31, nil, true, 1, 30, 0), (32, nil, false, 2, 80, 0)]
+        world.game.match(match)
+        let goals = try XCTUnwrap(world.reader().teamMatches(team: world.rovers).fixtures.first?.goals)
+        XCTAssertEqual(goals.map(\.ownGoal), [false, true, false])
+        XCTAssertEqual(goals.map(\.home), [true, true, false], "an own goal counts for the side it went in for")
+    }
+
     func testNothingToCheckAgainst() throws {
         let fresh = World { game, rovers, town, _ in
             [game.tableRow(team: rovers, overall: (0, 0, 0, 0, 0, 0, 0), home: (0, 0, 0, 0, 0, 0, 0),
@@ -342,6 +354,79 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertNotEqual(FixturesReader.check([match(2029, 0, 4), match(2029, 1, 0)], team: 1, table: table), .passed)
     }
 
+    /// Rovers v United in round 3, moved twice: FM's screens keep copies from day 90 and day 130, and FM's own copy is on
+    /// day 140, beside another copy on that day that isn't FM's own. The Rovers played on day 107, after day 90.
+    private func movedMatch(_ world: World, own: Bool = true) {
+        var match = world.values(home: world.rovers, away: world.united, day: 90)
+        match.round = 2
+        match.flags = 0x01
+        world.game.match(match)
+        match.day = 130
+        world.game.match(match)
+        match.day = 140
+        world.game.match(match)
+        if own { match.flags = 0x41 }
+        world.game.match(match)
+    }
+
+    func testAMovedMatchIsListedOnceOnTheDayOfFMsOwnCopy() throws {
+        let world = World()
+        world.playLeague()
+        movedMatch(world)
+        let found = try world.reader().teamMatches(team: world.rovers)
+        XCTAssertEqual(found.check, .passed)
+        let waiting = found.fixtures.filter { !$0.played }
+        XCTAssertEqual(waiting.count, 1, "\(waiting.map(\.date))")
+        XCTAssertEqual(waiting.first?.date, GameDate.date(year: 2029, dayOfYear: 140))
+        XCTAssertEqual(waiting.first?.round, 3)
+        XCTAssertEqual(waiting.first?.dateUnknown, false)
+        XCTAssertEqual(waiting.first?.kickOff, 15 * 60)
+    }
+
+    /// With no copy FM's own, or on a build where that isn't read, the day the Rovers have played since is past, and the
+    /// two days still to come can't be told apart: the match is listed once, with both.
+    func testAMovedMatchWhoseDayCantBeToldIsListedOnceWithItsDays() throws {
+        let world = World()
+        world.playLeague()
+        movedMatch(world, own: false)
+        let unchecked = try XCTUnwrap(FixturesReader(game: world.game.process(), rtti: Rtti(world.game.process()), checkedBuild: false))
+        for reader in [try world.reader(), unchecked] {
+            let waiting = reader.teamMatches(team: world.rovers).fixtures.filter { !$0.played }
+            XCTAssertEqual(waiting.count, 1)
+            let match = try XCTUnwrap(waiting.first)
+            XCTAssertTrue(match.dateUnknown)
+            XCTAssertEqual(match.possibleDates, [130, 140].compactMap { GameDate.date(year: 2029, dayOfYear: $0) })
+            XCTAssertEqual(match.date, GameDate.date(year: 2029, dayOfYear: 140), "the latest, for its place in the list")
+        }
+        // FM's own copy isn't read on a build it wasn't found on.
+        let other = World()
+        other.playLeague()
+        movedMatch(other)
+        let match = try XCTUnwrap(try XCTUnwrap(FixturesReader(game: other.game.process(), rtti: Rtti(other.game.process()), checkedBuild: false))
+            .teamMatches(team: other.rovers).fixtures.last)
+        XCTAssertEqual(match.possibleDates.count, 2)
+    }
+
+    /// Played matches are as before; a copy not played from before a played one's day is gone, and friendlies, whose season
+    /// FM leaves at 0, aren't taken for one match moved.
+    func testPlayedMatchesAndFriendliesAreKept() throws {
+        let world = World()
+        world.playLeague()
+        var stale = world.values(home: world.united, away: world.rovers, day: 103)
+        stale.round = 1
+        world.game.match(stale)
+        let cupName = world.cupName
+        for day: UInt16 in [150, 160] {
+            world.game.match(FakeGame.MatchValues(home: world.rovers, away: world.town, name: cupName, season: 0, round: 0xff, day: day))
+        }
+        let fixtures = try world.reader().teamMatches(team: world.rovers).fixtures
+        XCTAssertEqual(fixtures.map(\.played), [true, true, false, false])
+        XCTAssertEqual(fixtures[1].date, GameDate.date(year: 2029, dayOfYear: 107))
+        XCTAssertEqual([fixtures[1].homeGoals, fixtures[1].awayGoals], [1, 1])
+        XCTAssertEqual(fixtures.suffix(2).map(\.date), [150, 160].compactMap { GameDate.date(year: 2029, dayOfYear: $0) })
+        XCTAssertFalse(fixtures.contains(where: \.dateUnknown))
+    }
+
     func testKickOffTimes() {
         XCTAssertEqual(MatchFixture.kickOff(code: 37), 15 * 60)
         XCTAssertEqual(MatchFixture.kickOff(code: 55), 19 * 60 + 30)
@@ -351,7 +436,8 @@ final class FixturesReaderTests: XCTestCase {
 
     func testReadsAPlayersMatchHistory() throws {
         let world = World()
-        let played = FakeGame.PlayedValues(minutes: 78, rating: 74, goals: 1, assists: 2, yellow: 1, red: 0, xG: 63, position: 12)
+        let played = FakeGame.PlayedValues(minutes: 78, rating: 74, goals: 1, assists: 2, yellow: 1, red: 0, xG: 63, position: 12,
+                                           shots: 4, shotsOnTarget: 2, fouls: 3)
         let keeper = FakeGame.PlayedValues(minutes: 90, rating: 66, xG: 614, position: 0)
         let history = world.game.history([
             (world.rovers, [FakeGame.HistoryEntry(opponent: world.town, day: 100, competition: World.leagueIndex, played: played),
@@ -370,6 +456,7 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual(latest.team, world.rovers)
         XCTAssertEqual(latest.competitionIndex, World.cupIndex)
         XCTAssertNil(latest.xG, "a goalkeeper's xG field means something else")
+        XCTAssertEqual(latest.xGFaced, 6.14, "the xG of the shots he faced")
         XCTAssertEqual(latest.rating, 6.6)
         let unused = found.matches[1]
         XCTAssertFalse(unused.played)
@@ -381,6 +468,8 @@ final class FixturesReaderTests: XCTestCase {
         XCTAssertEqual([first.minutes, first.goals, first.assists, first.yellow, first.red], [78, 1, 2, 1, 0])
         XCTAssertEqual(first.rating, 7.4)
         XCTAssertEqual(first.xG, 0.63)
+        XCTAssertNil(first.xGFaced)
+        XCTAssertEqual([first.shots, first.shotsOnTarget, first.fouls], [4, 2, 3])
         XCTAssertNil(found.fullFrom[world.rovers])
         XCTAssertEqual(found.fullFrom[world.minnows], GameDate.date(year: 2028, dayOfYear: 20), "only a full list loses matches")
 
@@ -392,6 +481,12 @@ final class FixturesReaderTests: XCTestCase {
         let lower = try XCTUnwrap(found.matches.last)
         XCTAssertEqual(lower.teamName, "Little Minnows")
         XCTAssertEqual(lower.competitionName, "Mock Lower League")
+
+        // With types, as the rules engine asks on the checked build, his team's own league says it's no friendly; the cup,
+        // whose record the history doesn't read, isn't known. Without, nothing is.
+        XCTAssertTrue(found.matches.allSatisfy { $0.friendly == nil })
+        let typed = FixturesReader.history(player: player.address, in: world.game.process(), types: true) { _ in "" }.matches
+        XCTAssertEqual(typed.map(\.friendly), [nil, false, false] + Array(repeating: false, count: 20))
     }
 
     func testNamesEveryCompetitionAFixtureIsIn() throws {
@@ -401,6 +496,34 @@ final class FixturesReaderTests: XCTestCase {
         leg.score = (4, 2)
         world.game.match(leg)
         XCTAssertEqual(try world.reader().competitionNames(), [World.leagueIndex: "Mock League", World.cupIndex: "Mock Cup"])
+    }
+
+    /// FM's type of competition tells a friendly from the rest, whatever its name: 9 a club friendly, 24 an international one.
+    /// A type FM Starship hasn't seen, or one read on a build it wasn't checked on, isn't known.
+    func testFriendliesAreToldByFMsTypeOfCompetition() throws {
+        let world = World()
+        world.playLeague()
+        let game = world.game
+        let pairs: [(String, UInt32, UInt8, Int64)] = [("Treningskamp", 131, 9, world.town), ("vennskapskamp", 350, 24, world.united),
+                                                       ("Mock Cup Two", 646, 2, world.minnows), ("Mock Oddity", 999, 200, world.town)]
+        for (i, (name, index, type, opponent)) in pairs.enumerated() {
+            let comp = game.competition(name, index: index, type: type)
+            var match = FakeGame.MatchValues(home: world.rovers, away: opponent, name: game.fixtureName(competition: comp), day: UInt16(30 + i))
+            match.score = (1, 0)
+            game.match(match)
+        }
+        let fixtures = try world.reader().fixtures(team: world.rovers)
+        func friendly(_ name: String) -> Bool?? { fixtures.first { $0.competition == name }.map(\.friendly) }
+        XCTAssertEqual(friendly("Treningskamp"), true)
+        XCTAssertEqual(friendly("vennskapskamp"), true)
+        XCTAssertEqual(friendly("Mock League"), false)
+        XCTAssertEqual(friendly("Mock Cup Two"), false)
+        XCTAssertEqual(friendly("Mock Oddity"), .some(nil), "a type FM Starship hasn't seen isn't known")
+        XCTAssertEqual(try world.reader().friendlyByCompetition(), [World.leagueIndex: false, 131: true, 350: true, 646: false])
+
+        let unchecked = try XCTUnwrap(FixturesReader(game: game.process(), rtti: Rtti(game.process()), checkedBuild: false))
+        XCTAssertTrue(unchecked.fixtures(team: world.rovers).allSatisfy { $0.friendly == nil }, "only read on the checked build")
+        XCTAssertEqual(unchecked.friendlyByCompetition(), [:])
     }
 
     /// A copy in freed memory could point at another competition record with the same index: the name most fixtures carry wins.
@@ -471,5 +594,156 @@ final class FixturesReaderTests: XCTestCase {
         }
         XCTAssertEqual(rtti.vtables("FIXTURE").first.map { game.process().pluginBase + Int64($0.addressPoint) }, game.vtable("FIXTURE"))
         XCTAssertEqual(rtti.vtables("FIXTURE_RESULT").count, 1, "FIXTURE doesn't match inside FIXTURE_RESULT")
+    }
+
+    // MARK: A competition's league stage
+
+    static let phaseIndex: UInt32 = 0x27d
+
+    /// A made-up continental cup the Rovers, Town, United and the Minnows play in, besides their own leagues: a qualifying
+    /// round, then a league phase of four clubs, two rounds played and one to come, and last season's league phase.
+    /// `rows` makes the phase's table, by default one that agrees with its results; `missing` leaves out the Minnows 1-3
+    /// Rovers result; `moved` has FM move Rovers v United from day 210 to day 214, with its screens' copy of day 210 kept.
+    private func leaguePhase(_ world: World, rows: ((FakeGame, World) -> [Int64])? = nil, clubs: UInt8 = 4,
+                             missing: Bool = false, moved: Bool = false) -> Int64 {
+        let game = world.game
+        let table = rows?(game, world) ?? [
+            game.tableRow(team: world.rovers, overall: (2, 2, 0, 0, 5, 2, 6), home: (1, 1, 0, 0, 2, 1, 3), away: (1, 1, 0, 0, 3, 1, 3)),
+            game.tableRow(team: world.united, overall: (2, 0, 2, 0, 2, 2, 2), home: (1, 0, 1, 0, 0, 0, 1), away: (1, 0, 1, 0, 2, 2, 1)),
+            game.tableRow(team: world.town, overall: (2, 0, 1, 1, 3, 4, 1), home: (1, 0, 1, 0, 2, 2, 1), away: (1, 0, 0, 1, 1, 2, 0)),
+            game.tableRow(team: world.minnows, overall: (2, 0, 1, 1, 1, 3, 1), home: (1, 0, 0, 1, 1, 3, 0), away: (1, 0, 1, 0, 0, 0, 1)),
+        ]
+        let settings = game.leagueSettings(stage: "league phase", clubs: clubs, places: [1, 2, 0, 0])
+        let cup = game.competition("Made-up Champions Cup", index: Self.phaseIndex, type: 21,
+                                   tables: [game.leagueStage(rows: table, settings: settings)])
+        let phase = game.fixtureName(competition: cup, stage: "league phase")
+        let qualifying = game.fixtureName(competition: cup, stage: "qualifying")
+        func play(_ home: Int64, _ away: Int64, day: UInt16, _ score: (UInt8, UInt8)?, name: Int64? = nil, season: UInt16 = 2029,
+                  flags: UInt8 = 0) {
+            var match = FakeGame.MatchValues(home: home, away: away, name: name ?? phase, day: day)
+            match.season = season
+            match.year = season
+            match.score = score
+            match.flags = flags
+            game.match(match)
+        }
+        play(world.rovers, world.minnows, day: 150, (5, 0), name: qualifying)
+        play(world.rovers, world.town, day: 200, (2, 1))
+        play(world.united, world.minnows, day: 200, (0, 0))
+        if !missing { play(world.minnows, world.rovers, day: 207, (1, 3)) }
+        play(world.town, world.united, day: 207, (2, 2))
+        if moved {
+            play(world.rovers, world.united, day: 210, nil, flags: 0x01)
+            play(world.rovers, world.united, day: 214, nil, flags: 0x41)
+        } else {
+            play(world.rovers, world.united, day: 214, nil)
+        }
+        play(world.town, world.minnows, day: 214, nil)
+        play(world.rovers, world.town, day: 200, (0, 3), season: 2028)
+        return cup
+    }
+
+    /// The table is found from the competition the fixtures name, not the club's own league, and checked club by club
+    /// against the phase's results only: not the qualifying round's, nor last season's.
+    func testFindsACompetitionsLeagueStageByItsFixtures() throws {
+        let world = World()
+        world.playLeague()
+        _ = leaguePhase(world)
+        let reader = try world.reader()
+        let found = try XCTUnwrap(reader.competitionTable(team: world.town, competitionIndex: Self.phaseIndex))
+        XCTAssertEqual(found.table.competition, "Made-up Champions Cup")
+        XCTAssertEqual(found.table.competitionIndex, Self.phaseIndex)
+        XCTAssertEqual(found.table.rows.map(\.name), ["Mockport Rovers", "Testing United", "Fixture Town", "Little Minnows"])
+        XCTAssertEqual(found.table.rows.map(\.position), [1, 2, 3, 4])
+        XCTAssertEqual(found.stage, "league phase")
+        XCTAssertEqual(found.season, 2029)
+        XCTAssertEqual(found.fixtures.count, 6, "the phase's four results and two fixtures to come")
+        XCTAssertEqual(Set(found.fixtures.filter { !$0.played }.map(\.homeName)), ["Mockport Rovers", "Fixture Town"])
+        XCTAssertEqual(found.lines, LeagueLines(through: 1, playOff: 2, relegationPlayOff: 0, relegated: 0))
+        XCTAssertEqual(found.check, .passed)
+        XCTAssertEqual(reader.leagueTable(team: world.town)?.competition, "Mock League", "the club's own league is unchanged")
+        XCTAssertNil(reader.competitionTable(team: world.town, competitionIndex: 0x999), "no fixture names it")
+        XCTAssertNil(reader.competitionTable(team: world.town, competitionIndex: World.cupIndex), "the cup has no league stage")
+    }
+
+    /// A moved match of the phase is listed once, as the club's fixtures list it: on the day of FM's own copy, or where that
+    /// isn't read, once with both days it could be on.
+    func testAMovedPhaseMatchIsListedOnce() throws {
+        let world = World()
+        world.playLeague()
+        _ = leaguePhase(world, moved: true)
+        let found = try XCTUnwrap(world.reader().competitionTable(team: world.rovers, competitionIndex: Self.phaseIndex))
+        let waiting = found.fixtures.filter { !$0.played && $0.home == world.rovers }
+        XCTAssertEqual(waiting.map(\.date), [GameDate.date(year: 2029, dayOfYear: 214)])
+        XCTAssertEqual(waiting.first?.dateUnknown, false)
+        XCTAssertEqual(found.fixtures.count, 6)
+        XCTAssertEqual(found.check, .passed)
+
+        let unchecked = try XCTUnwrap(FixturesReader(game: world.game.process(), rtti: Rtti(world.game.process()), checkedBuild: false))
+        let unsure = try XCTUnwrap(unchecked.competitionTable(team: world.rovers, competitionIndex: Self.phaseIndex))
+            .fixtures.filter { !$0.played && $0.home == world.rovers }
+        XCTAssertEqual(unsure.count, 1)
+        XCTAssertEqual(unsure.first?.possibleDates, [210, 214].compactMap { GameDate.date(year: 2029, dayOfYear: $0) })
+    }
+
+    func testAResultMissingFromAPhaseFailsItsCheck() throws {
+        let world = World()
+        _ = leaguePhase(world, missing: true)
+        let found = try XCTUnwrap(world.reader().competitionTable(team: world.rovers, competitionIndex: Self.phaseIndex))
+        guard case .failed(let why) = found.check else { return XCTFail("should fail") }
+        XCTAssertTrue(why.contains("Mockport Rovers's away results in the stage add up to P0") && why.contains("says P1 W1"), why)
+    }
+
+    /// Every row is checked, home and away too, not only the asked club's.
+    func testAnotherClubsHomeRecordFailsThePhasesCheck() throws {
+        let world = World()
+        _ = leaguePhase(world) { game, world in
+            [game.tableRow(team: world.rovers, overall: (2, 2, 0, 0, 5, 2, 6), home: (1, 1, 0, 0, 2, 1, 3), away: (1, 1, 0, 0, 3, 1, 3)),
+             game.tableRow(team: world.united, overall: (2, 0, 2, 0, 2, 2, 2), home: (1, 0, 1, 0, 0, 0, 1), away: (1, 0, 1, 0, 2, 2, 1)),
+             // Town's home draw and away defeat swapped.
+             game.tableRow(team: world.town, overall: (2, 0, 1, 1, 3, 4, 1), home: (1, 0, 0, 1, 1, 2, 0), away: (1, 0, 1, 0, 2, 2, 1)),
+             game.tableRow(team: world.minnows, overall: (2, 0, 1, 1, 1, 3, 1), home: (1, 0, 0, 1, 1, 3, 0), away: (1, 0, 1, 0, 0, 0, 1))]
+        }
+        let found = try XCTUnwrap(world.reader().competitionTable(team: world.rovers, competitionIndex: Self.phaseIndex))
+        guard case .failed(let why) = found.check else { return XCTFail("should fail") }
+        XCTAssertTrue(why.hasPrefix("Fixture Town's home results"), why)
+    }
+
+    /// FM's places are only read on the checked build, and only when the settings' count of clubs is the table's.
+    func testThePhasesLinesNeedTheCheckedBuildAndTheTablesSize() throws {
+        let world = World()
+        _ = leaguePhase(world)
+        let unchecked = try XCTUnwrap(FixturesReader(game: world.game.process(), rtti: Rtti(world.game.process()), checkedBuild: false))
+        let found = try XCTUnwrap(unchecked.competitionTable(team: world.rovers, competitionIndex: Self.phaseIndex))
+        XCTAssertNil(found.lines)
+        XCTAssertEqual(found.check, .passed, "the results are covered by the check")
+
+        let other = World()
+        _ = leaguePhase(other, clubs: 36)
+        XCTAssertNil(try other.reader().competitionTable(team: other.rovers, competitionIndex: Self.phaseIndex)?.lines)
+    }
+
+    func testTheStagesCheck() {
+        func match(_ home: Int64, _ away: Int64, _ score: (Int, Int)?) -> MatchFixture {
+            var match = MatchFixture(date: Date(), home: home, away: away)
+            match.homeName = "Club \(home)"
+            match.awayName = "Club \(away)"
+            if let score { (match.homeGoals, match.awayGoals) = score }
+            return match
+        }
+        func row(_ team: Int64, _ overall: TableRecord, _ home: TableRecord, _ away: TableRecord) -> LeagueTableRow {
+            LeagueTableRow(team: team, name: "Club \(team)", position: Int(team), overall: overall, home: home, away: away)
+        }
+        let win = TableRecord(played: 1, won: 1, goalsFor: 1, points: 3), loss = TableRecord(played: 1, lost: 1, goalsAgainst: 1)
+        let table = LeagueTable(competition: "Cup", competitionIndex: 1, rows: [row(1, win, win, TableRecord()), row(2, loss, TableRecord(), loss)])
+        XCTAssertEqual(FixturesReader.check(stage: [match(1, 2, (1, 0)), match(2, 1, nil)], table: table), .passed)
+        guard case .failed(let stranger) = FixturesReader.check(stage: [match(1, 3, (1, 0))], table: table) else { return XCTFail("should fail") }
+        XCTAssertTrue(stranger.contains("a club its table doesn't have"), stranger)
+        var unknown = match(1, 2, nil)
+        unknown.scoreUnknown = true
+        guard case .failed(let disagree) = FixturesReader.check(stage: [unknown], table: table) else { return XCTFail("should fail") }
+        XCTAssertTrue(disagree.contains("disagree"), disagree)
+        let fresh = LeagueTable(competition: "Cup", competitionIndex: 1, rows: [row(1, TableRecord(), TableRecord(), TableRecord())])
+        XCTAssertEqual(FixturesReader.check(stage: [match(1, 2, nil)], table: fresh), .nothingPlayed)
     }
 }

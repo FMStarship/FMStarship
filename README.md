@@ -136,9 +136,12 @@ FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://mode
 use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
 shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match
-and why the others didn't play, the starting eleven and bench you've picked for the next match with a warning for anyone banned
-or injured for it, FM's scout's predicted line-up of your next opponent, each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
-each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how your players have developed
+and why the others didn't play, both sides' possession, xG, shots, shots on target and fouls in your recent matches, the
+starting eleven and bench you've picked for the next match with a warning for anyone banned
+or injured for it, FM's scout's predicted line-up of your next opponent, what's come into your inbox in about the last month
+(injuries and how long, contracts running out, transfers and the fees agreed, contract clauses that came into force, fines, unhappiness, and each item's kind, date and sender), each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
+each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, each
+competition's squad rules counted against your squad by FM's own rules, how your players have developed
 between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
 recommended staff and bargains.
 
@@ -194,8 +197,10 @@ The first question after FM starts takes about 5 seconds on a big save, while th
 after the game date moves on, when it's read again. The first question about a club's matches takes a couple of seconds more.
 Other answers are instant. Fixtures and results are only given once a club's league results add up to its row in the league
 table, and FM keeps each player's last 20 matches for a team, so an older match can miss players. That check has only been tried
-on a league with one stage: in a league with play-offs, a split or groups it's unverified, and may switch them off. It doesn't
-know a match's team stats, such as shots, possession or team xG, FM's words for condition and morale, or squad registration yet.
+on a league with one stage: in a league with play-offs, a split or groups it's unverified, and may switch them off. A match's
+team stats come from FM's post-match news, which FM keeps for your club's matches of the last few weeks only, and not for every
+match. It doesn't know when in a match the shots came, each shot's xG, FM's words for condition and morale, or squad
+registration yet.
 
 ## Updates
 
@@ -381,6 +386,8 @@ how each value was first found:
 | `trainedAtClub`, `trainedInNation` | The two `bl` targets in slot 2 of `OWN_PLAYER_RULE_PLAYER_IS_HOMEGROWN_PLAYER_FOR_CLUB`, which answers 2 for the first and 1 for the second |
 | `disciplineGlobal` | The global FM's code reads `GAME_DISCIPLINE` through, as `[[global] + 0x158] + 0x70` (`MacLayout.Discipline`). The object at the end has `GAME_DISCIPLINE`'s vtable, the one a vtable scan finds |
 | `countUntilNextBan` | Called in a loop over a player's `PLAYER_BOOKING_COUNT`s by FM's "one booking from a ban" check (`+0xd6d7b0` on 27.1.0, which takes a `db::COMP` and flags an answer of 1; the strings `TSF_UPCOMING_SUSPENSION` and `PLAYER_HAS_HIGH_NUMBER_OF_BOOKINGS` are a lead to it, not checked). Takes (discipline, count, rules index, out left, out length, fixture, out count, out last ban) with `[-1, 0, 0, 0]` on the stack. `BookingsReader`'s check is the test: its count must be the one read, and the latest ban for bookings must have come at its last step |
+| `squadRuleValue` | `PLAYER::get_squad_selection_rule_value`, on FM's eligibility path. Takes (player, rule type, team, -1, -1, squad-selection group, `db::COMP`, 0) with eight zeros on the stack and answers 0 or 1. `SquadRulesReader`'s check is the test: squad size must count everyone at the human clubs, and the home-grown types must agree with `trainedAtClub` and `trainedInNation` for each of them |
+| `squadRuleNames`, `squadRuleDirections` | FM's own tables of {C string, value} pairs: every squad-rule type's name (`max_squad_size` is 9, and the table ends at 65535), and `less_than`, `equals`, `more_than` for -1, 0 and 1. Found by their strings in the image |
 
 The optimizer reads FM's own tactic data from `game_plugin.bundle/Contents/Resources/shared/data/simatch.fmf`, so it follows
 patches: the `.tac` presets, `styles.xml` (favoured attributes, preferred roles, features of play) and the role complexity
@@ -419,6 +426,37 @@ FM Starship's own parts, and how to check them after a patch:
   `selection` is asked (`SelectionReader`). It holds a `GAME_TACTIC_INFO` whose array reads as ours does, and its date at +0x88.
   Nothing found in it names the team, so the server takes the newest report whose eleven mostly plays for the next opponent,
   dated after the last match with them and by the day of this one. It's the scout's prediction, not the AI's pick.
+- **The inbox** is a vector of news items off the user's manager record, `HUMAN_NON_PLAYER` + 0x350 (`MacLayout.Inbox`), read
+  by `InboxReader` each time `inbox` is asked, as items come in without the date moving. FM stores no text for an item: its class
+  says the kind, and a header common to every item has the sender (+0x78, with the job at +0x9a), the date (+0x88), the addressed
+  team's index (+0x8c) and FM's rising counter (+0x90). Past the header each class has its own fields, and FM Starship reads them
+  only for the classes in `MacLayout.Inbox` whose fields were the same on every item of them on Molde's save; the others go out by
+  kind, date and sender. A contracts-expiring item's people are a vector of pointers to small records, each starting with the
+  person's club and holding their database index at +0x28, with no date; the tool gives the contract the person has now. A
+  contract add-on activated points at a record of the club and a vector of add-ons, each the player's identity and, at +0x1c, the
+  8 bytes of the clause exactly as his contract's clause list holds them (amount, count, code). Only code 10 is named: goals in
+  the season, from one item that came the day after the player's 10th league goal of the season. A transfer offer confirmation
+  holds the person at +0x2b0, the user's team at +0x2f0, the other club's team at +0x320, and the fee four times from +0x3a4,
+  the amount FM's transfer history (`TRANSFER_TIMELINE_EVENT` +0x54) keeps for the move; the fee is given only when all four
+  agree, and the club only when the teams are the user's and another's. An
+  item for no team (+0x8c all ones) is FM's own news item copied in, and on Molde's save every one named the club's team or a
+  player (bans, call-ups, scouting). The list is checked as a whole, and switched off with the reason when it fails: every item
+  one of FM's objects, the counter rising, dates never going back or past the game date, and every item for one of the club's
+  teams or for none; and an injury report's length must match the player's own record. On Molde's save FM kept 150 items, 26 days; whether 150
+  is a limit isn't known, so the answer always says when its window starts. No read or unread flag was found.
+- **Squad rules** are each competition's `FIXTURE_RULES` (`MacLayout.FixtureRules`), reached as FM's import code writes it:
+  `ACTUAL_COMP` + 0x49 picks an entry of `[[ACTUAL_COMP + 0x388] + 0x1f0] + 0x60`, -1 for none, and that entry's +0x70 is a
+  vector of `SQUAD_SELECTION_RULE`s, each a type, a limit and a direction. `SquadRulesReader` names the types from FM's own table
+  and asks FM's `squadRuleValue` whether each player counts. On 27.1.0, Eliteserien held a squad of 20 to 30, at most 25 on
+  professional or part-time contracts and 5 on youth or amateur contracts, at least 16 trained in Norway up to 21, at most 9 not
+  home-grown and at least 2 trained at the club; the Champions League, Europa League and Conference League shared at most 25,
+  at least 8 trained in the nation between 15 and 21, at least 4 of them at the club, and at least 2 goalkeepers; the cup had
+  none. FM kept no registration list for Molde, so which players FM counts isn't known: the MCP server's `squad_rules` counts
+  each rule for the first team and for the whole club, gives a standing only where the two agree, and never says who is
+  registered. The read is switched off with the reason when a rule set doesn't carry its own entry (+0x120) and owner
+  (+0x88), when FM's tables don't read back as FM's, or, for the counts alone, when FM's values disagree with squad size or FM's
+  own home-grown tests for the human clubs' players. The direction is read as at most, exactly and at least: Molde's squad sat
+  exactly on three limits, which a strict "less than" would make breaches.
 - **Squad overview and Staff overview** are `OverviewReport`s: each place, how it stands against the league, and the best
   person who'd join. Staff jobs come from FM's own board table, `StaffLimits.Club`. Its entries were matched to jobs by comparing
   them with who holds each job at 600 clubs, which `fmprobe staffmap 7 600` repeats if a patch reorders them.
@@ -445,6 +483,15 @@ FM Starship's own parts, and how to check them after a patch:
   come from the same record as his form. `tools/match_builds.py` lists these classes among the reader's. To find them again,
   `fmprobe humanteams` gives each human club's team, and `fmprobe fx TEAM` reads that team's matches and table, and runs the
   self-check.
+- **A match's team stats** are read by `MatchStatsReader`, when `results` is asked about the user's club. FM keeps them only in
+  a summary inside each post-match news item about the club (`MATCH_REPORT_NEWS` and others), so only for the last few weeks'
+  matches. The sweep finds the summary by its shape, with offsets in `MacLayout.MatchSummary`: the club's team, the opponent's
+  team, and possession that adds up to 100. Its date comes from the match's `FIXTURE_RESULT` where the copy points at the
+  match's `GAME_MATCH_STATS`, else from the `SCORELINE` before it. Its self-check is per match: the club's shots, on target,
+  fouls, goals (less own goals for it) and xG must be what its players' match records add up to, xG within 0.01, both goals
+  the score, and the opponent's xG what the club's goalkeepers faced. The opponent's shots, on target, fouls and possession
+  aren't covered by it, so the summary is only read on the build that `Mac27.fingerprint` names. `fmprobe matchstats TEAM` lists
+  what the reader finds and runs the check.
 - **Players' state** is read with the save: condition, sharpness, the day FM last brought them up to date, and morale from the
   player's record, playing time happiness from his contract, and bans as FM stores them, from the same head read of the record
   that holds his injuries, with offsets in `MacLayout`. That costs the read two more reads for each ban, and `clock` logs its

@@ -1433,6 +1433,44 @@ case "fx":
     }
     print("self-check:", found.check)
 
+case "matchstats":
+    // MatchStatsReader for the user's club's team: each match summary found in FM's post-match news, matched to the team's
+    // results, and the self-check against its players' match records. TEAM is a team's address, from `humanteams`.
+    guard args.count > 2, let team = Int64(args[2].replacingOccurrences(of: "0x", with: ""), radix: 16) else { print("usage: fmprobe matchstats TEAM"); exit(2) }
+    let rtti = Rtti(game)
+    let statsReader = MatchStatsReader(game: game, rtti: rtti)
+    guard statsReader.checkedBuild else { print("not the checked build of game_plugin: the reader is off"); exit(1) }
+    let started = Date()
+    let summaries = statsReader.stats(team: team) ?? []
+    print(String(format: "%d summaries in %.1fs", summaries.count, Date().timeIntervalSince(started)))
+    let fixtures = FixturesReader(game: game, rtti: rtti)?.fixtures(team: team) ?? []
+    let club = GameReader.clubName(team: team, in: game)
+    let db = try GameReader(game: game) { _ in }.readAll()
+    var records: [Date: [PlayerMatch]] = [:]
+    for p in db.players where p.clubFull == club || p.loanClubFull == club {
+        for r in FixturesReader.history(player: p.block, in: game, name: { GameReader.clubName(team: $0, in: game) }).matches
+        where r.team == team && r.played {
+            records[r.date, default: []].append(r)
+        }
+    }
+    func side(_ s: MatchSideStats) -> String {
+        String(format: "poss %d xG %.2f shots %d on target %d fouls %d goals %d", s.possession, s.xG, s.shots, s.shotsOnTarget, s.fouls, s.goals)
+    }
+    for s in summaries {
+        let day = ISO8601DateFormatter.string(from: s.date, timeZone: .gmt, formatOptions: [.withFullDate])
+        print(day, s.home ? "home" : "away", "v", GameReader.clubName(team: s.opponent, in: game))
+        print("  ours  ", side(s.ours))
+        print("  theirs", side(s.theirs))
+        guard let match = fixtures.first(where: { $0.date == s.date && Set([$0.home, $0.away]) == Set([team, s.opponent]) }) else {
+            print("  no result of the team's on that day"); continue
+        }
+        let list = records[s.date] ?? []
+        print("  players: \(list.count), shots \(list.reduce(0) { $0 + $1.shots }), on target \(list.reduce(0) { $0 + $1.shotsOnTarget }), "
+              + "fouls \(list.reduce(0) { $0 + $1.fouls }), goals \(list.reduce(0) { $0 + $1.goals }), "
+              + String(format: "xG %.2f, keepers faced %.2f", list.compactMap(\.xG).reduce(0, +), list.compactMap(\.xGFaced).reduce(0, +)))
+        print("  self-check:", MatchStatsReader.check(s, match: match, records: list) ?? "passed")
+    }
+
 default:
     print("unknown command")
 }

@@ -258,6 +258,7 @@ extension Toolbox {
         let catalogue: [Col]
         let groups: [String]
         let recent = try args.int("matches", in: 0...40) ?? 10
+        let competitive = try args.bool("competitive") ?? false
         if let player = person as? Player {
             pairs.append(("kind", "player"))
             // A player/manager or player/coach, whose staff side is asked for apart.
@@ -289,6 +290,14 @@ extension Toolbox {
             }
             if !values.isEmpty { pairs.append((group, .object(values))) }
         }
+        if let player = person as? Player, let clauses = Self.clauses(player, context.read.engine) {
+            // In his contract, with the release clauses.
+            if let at = pairs.firstIndex(where: { $0.0 == "Contract" }), case .object(let values) = pairs[at].1 {
+                pairs[at].1 = .object(values + clauses)
+            } else {
+                pairs.append(("Contract", .object(clauses)))
+            }
+        }
         if let player = person as? Player {
             let history = context.read.engine?.matchHistory(player: player)
             if let split = Self.seasonByCompetition(player, context.read.engine, history: history) {
@@ -300,12 +309,46 @@ extension Toolbox {
                 pairs.append(("Fitness and morale", state))
             }
             if let load = Self.matchLoad(history, today: context.db.gameDate) { pairs.append((Self.matchLoadName, load)) }
-            if let history, let matches = recentMatches(history, player: player, limit: recent, context) { pairs.append(("Recent matches", matches)) }
+            if let history, let matches = recentMatches(history, player: player, limit: recent, competitive: competitive, context) { pairs.append(("Recent matches", matches)) }
             let traits = player.traits.components(separatedBy: "; ").filter { !$0.isEmpty }
             if !traits.isEmpty { pairs.append(("Traits", .array(traits.map { .string($0) }))) }
         }
         if let session, let join = wouldJoin(person, session) { pairs.append(("Would join your club", join)) }
         return .object(pairs)
+    }
+
+    /// His contract's clauses for goals in the season, each with his league goals this season and whether they've reached
+    /// it, and how many others it holds that FM Starship doesn't know. Nothing when it holds neither. Contract clauses aren't
+    /// hidden in FM.
+    static func clauses(_ player: Player, _ engine: GameRulesEngine?) -> [(String, JSON)]? {
+        var pairs: [(String, JSON)] = []
+        if !player.seasonGoalClauses.isEmpty {
+            // His loan club's league goals are what FM's stats give while he's on loan, and whether those count isn't known.
+            let onLoan = !player.loanClubFull.isEmpty
+            let goals = onLoan ? nil : engine?.seasonStats(player: player, season: RulesEngine.league)?.goals
+            let rows: [JSON] = player.seasonGoalClauses.sorted { $0.goals < $1.goals }.map { clause in
+                .object(dropping: [("goals", .int(clause.goals)), ("sum", Output.text(Units.moneyText(Double(clause.amount)))),
+                                   ("league_goals", goals.map { .int($0) } ?? .string(notAvailable)),
+                                   ("reached", goals.map { .bool($0 >= clause.goals) })])
+            }
+            var note = "Each pays its sum once he has scored that many goals in the season. FM's item for one came the day after "
+                + "the player's 10th league goal of the season, and his goals in Europe didn't count; whether cup goals count isn't "
+                + "known. league_goals is his league goals this season at his club, from FM's stats, as League stats gives them, "
+                + "and reached is whether they're at the clause's goals. The clause stays in his contract after it has paid, so "
+                + "reached doesn't say when it paid; whether it pays again next season isn't known."
+            if onLoan {
+                note += " He's on loan, and whether his goals at \(player.loanClubFull) count isn't known, so league_goals isn't given."
+            } else if goals == nil {
+                note += " FM's stats didn't answer, so league_goals isn't given."
+            }
+            pairs += [("Clauses for goals in the season", .array(rows)), ("Clauses note", .string(note))]
+        }
+        if player.unknownClauses > 0 {
+            let count = player.unknownClauses
+            pairs.append(("Other clauses", .string("\(count) clause\(count == 1 ? "" : "s") FM Starship doesn't know the code of, "
+                                                    + "so \(count == 1 ? "it isn't" : "they aren't") given")))
+        }
+        return pairs.isEmpty ? nil : pairs
     }
 
     /// A match's competition by FM's name: from the fixtures in memory, else his team's own league.
@@ -318,10 +361,14 @@ extension Toolbox {
 
     /// His latest matches in FM's record of his form, for any team, newest first: which competition and opponent a goal or a
     /// rating came from.
-    private func recentMatches(_ history: MatchHistory, player: Player, limit: Int, _ context: CallContext) -> JSON? {
+    private func recentMatches(_ history: MatchHistory, player: Player, limit: Int, competitive: Bool, _ context: CallContext) -> JSON? {
         guard limit > 0, !history.matches.isEmpty else { return nil }
         let names = competitionNames(context.read)
-        let rows: [JSON] = history.matches.prefix(limit).map { match in
+        // With competitive, friendlies by FM's type of competition are left out, and a match whose type isn't known is kept.
+        let friendly = competitive ? friendlyByCompetition(context.read) : [:]
+        func isFriendly(_ match: PlayerMatch) -> Bool? { match.friendly ?? friendly[match.competitionIndex] }
+        let shown = Array((competitive ? history.matches.filter { isFriendly($0) != true } : history.matches).prefix(limit))
+        let rows: [JSON] = shown.map { match in
             let head: [JSON] = [.string(Output.iso(match.date)), Output.text(match.teamName) ?? .null,
                                 Self.competitionName(match, names) ?? .null, Output.text(match.opponentName) ?? .null]
             guard match.played else {
@@ -330,10 +377,15 @@ extension Toolbox {
             return .array(head + [.int(match.minutes), match.rating.map { .double($0) } ?? .null, .int(match.goals),
                                   .int(match.assists), .int(match.yellow), .int(match.red), .null])
         }
-        let note = "Newest first, for every team he played for, friendlies, youth and international matches too. team is the "
+        var note = "Newest first, for every team he played for, "
+            + (competitive ? "youth and international matches too, but no friendlies. " : "friendlies, youth and international matches too. ")
+            + "team is the "
             + "club's name, so a reserve or youth team shows as its club, and it's empty for a national team. FM keeps his last "
             + "\(MatchHistory.kept) matches for each team. didnt_play is set when he didn't play, with FM's reason: unused substitute, "
             + "not in the matchday squad, suspended or injured, or reason not known. An empty competition is one FM Starship couldn't name."
+        if competitive, let unknown = Self.competitiveSentence(unknown: shown.filter { isFriendly($0) == nil }.count) {
+            note += " " + unknown
+        }
         return .object([("columns", .array(Self.recentMatchColumns.map { .string($0) })), ("rows", .array(rows)), ("note", .string(note))])
     }
 

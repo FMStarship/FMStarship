@@ -48,7 +48,7 @@ public final class GameReader {
         var people: [(Int64, Pending)] = []
         var humans: [Int64] = []
         var currencies: [Int64] = []
-        var teams: [(index: UInt32, type: Int, address: Int64)] = []
+        var teams: [(index: UInt32, type: Int, address: Int64, club: Int64)] = []
         var transferManagers: [Int64] = []
         var managers: [Int64] = []
         var tacticSessions: [Int64] = []
@@ -223,9 +223,10 @@ public final class GameReader {
                             part.tacticArrays.append(at)
                         } else if word == loanContractVt || word == bTeamContractVt, word != 0 {
                             part.loanContracts.append(at)
-                        } else if word == teamVt, teamVt != 0, o + 48 <= count {
+                        } else if word == teamVt, teamVt != 0, o + MacLayout.Team.club + 8 <= count {
                             let index = raw.loadUnaligned(fromByteOffset: o + MacLayout.Team.index, as: UInt32.self)
-                            part.teams.append((index, Int(raw[o + MacLayout.Team.type]), at))
+                            let club = raw.loadUnaligned(fromByteOffset: o + MacLayout.Team.club, as: Int64.self)
+                            part.teams.append((index, Int(raw[o + MacLayout.Team.type]), at, club))
                         }
                         o += 8
                     }
@@ -245,6 +246,7 @@ public final class GameReader {
         var pending: [Pending] = []
         var humans = Set<Int64>(), currencies = Set<Int64>(), managers = Set<Int64>()
         var teamIndex: [UInt32: Int] = [:]
+        var teamClubs: [(index: UInt32, type: Int, club: Int64)] = []
         var transferManagers: [Int64] = []
         var tacticSessions = Set<Int64>(), tacticArrays = Set<Int64>(), loanContracts = Set<Int64>()
         for part in parts.compactMap({ $0 }) {
@@ -259,6 +261,7 @@ public final class GameReader {
             for team in part.teams {
                 teamIndex[team.index] = team.type
                 teamTypes[team.address] = team.type
+                if team.club != 0 { teamClubs.append((team.index, team.type, team.club)) }
             }
         }
         clock.lap("sweep")
@@ -294,6 +297,12 @@ public final class GameReader {
         database.nationRecords = nations.keys.sorted()
         readCurrencies(currencies.sorted(), into: database)
         readHumans(humans.sorted(), managers: managers.sorted(), into: database)
+        for human in database.humanClubs {
+            let club = game.readPointer(human.team &+ Int64(MacLayout.Team.club))
+            guard club != 0 else { continue }
+            database.humanTeams[human.team] = Dictionary(teamClubs.filter { $0.club == club }.map { ($0.index, $0.type) },
+                                                         uniquingKeysWith: { first, _ in first })
+        }
         separateSides(pending.map(\.person), in: database)
         if let today = database.gameDate { applyInjuries(pending, today: today) }
         readTactics(sessions: tacticSessions.sorted(), arrays: tacticArrays.sorted(), people: pending.map(\.person), into: database)
@@ -580,9 +589,23 @@ public final class GameReader {
         let begin = GameReader.i64(b, C.clausesBegin), end = GameReader.i64(b, C.clausesEnd)
         if begin != 0, end > begin, UInt64(bitPattern: end &- begin) <= 0x400, let clauses = game.read(begin, count: Int(end &- begin)) {
             for o in stride(from: 0, to: clauses.count - 7, by: 8) {
-                let amount = Int64(GameReader.u32(clauses, o))
+                let amount = Int64(GameReader.u32(clauses, o)), code = GameReader.u16(clauses, o + 6)
+                if code == C.seasonGoalsClause {
+                    // One without an amount or a sensible count isn't read as this clause.
+                    let goals = GameReader.u16(clauses, o + 4)
+                    if amount != 0xffff_ffff, (1...100).contains(goals) {
+                        person.seasonGoalClauses.append(SeasonGoalsClause(goals: goals, amount: amount))
+                    } else {
+                        person.unknownClauses += 1
+                    }
+                    continue
+                }
+                guard C.releaseClauses.contains(code) else {
+                    person.unknownClauses += 1
+                    continue
+                }
                 guard amount != 0xffff_ffff else { continue }
-                switch GameReader.u16(clauses, o + 6) {
+                switch code {
                 case 0: person.releaseClause = amount
                 case 16: person.releaseForeign = amount
                 case 18: person.releaseDomestic = amount

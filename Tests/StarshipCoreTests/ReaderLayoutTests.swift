@@ -75,7 +75,10 @@ final class ReaderLayoutTests: XCTestCase {
         // Only the low 9 bits of a listing's day are the day.
         contract.listed = (day: 0x0200 | 45, year: 2027)
         contract.statusFlags = 0x43
-        contract.clauses = [(2_500_000, 0), (0xffff_ffff, 0), (1_800_000, 16), (900_000, 18), (4_444, 7)]
+        // Goals in the season at 10 and 15, one of them without an amount, and one with no count, as FM writes a clause that
+        // has none: only the first two are read as that clause, the others counted as clauses not known.
+        contract.clauses = [(2_500_000, 0xffff, 0), (0xffff_ffff, 0xffff, 0), (1_800_000, 0xffff, 16), (900_000, 0xffff, 18), (4_444, 0xffff, 7),
+                            (22_310, 10, 10), (5_577, 15, 10), (0xffff_ffff, 20, 10), (9_000, 0xffff, 10), (331, 0xffff, 32)]
         values.person.contract = contract
         let record = make(world, values)
 
@@ -120,6 +123,8 @@ final class ReaderLayoutTests: XCTestCase {
         XCTAssertEqual(player.releaseClause, 2_500_000)
         XCTAssertEqual(player.releaseForeign, 1_800_000)
         XCTAssertEqual(player.releaseDomestic, 900_000)
+        XCTAssertEqual(player.seasonGoalClauses, [SeasonGoalsClause(goals: 10, amount: 22_310), SeasonGoalsClause(goals: 15, amount: 5_577)])
+        XCTAssertEqual(player.unknownClauses, 4, "code 7, 32 and the two goal clauses that don't read as one")
 
         XCTAssertEqual(player.club, "Mockport")
         XCTAssertEqual(player.clubFull, "Mockport Rovers FC")

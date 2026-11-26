@@ -1,0 +1,406 @@
+import Foundation
+
+/// Someone a news item points at: a player or member of staff, by the identity FM names people by.
+public struct NewsPerson: Hashable {
+    public let uid: UInt32
+    public let index: UInt32
+    public let isPlayer: Bool
+    /// As FM's record of the person names them, for one FM Starship doesn't read.
+    public let name: String
+
+    public init(uid: UInt32, index: UInt32, isPlayer: Bool, name: String) {
+        self.uid = uid
+        self.index = index
+        self.isPlayer = isPlayer
+        self.name = name
+    }
+}
+
+/// What an item is about, for the kinds whose fields were found on every item of them. Nothing for the others.
+public enum NewsSubject: Equatable {
+    /// The physio's report: the player, FM's name for the injury in the game's language, its day and its length in days.
+    case injury(player: NewsPerson, injury: String, on: Date?, days: Int)
+    /// Contracts running out soon, by each person's database index.
+    case contractsExpiring(indexes: [UInt32])
+    /// A transfer completed: the person and the other club, without which way it went.
+    case transfer(person: NewsPerson, club: String)
+    /// A player asking for a move to a club.
+    case comeAndGetMe(player: NewsPerson, club: String)
+    /// A coach telling the user a player is unhappy with his training.
+    case unhappyWithTraining(player: NewsPerson)
+    /// A player fined. The item holds no amount FM Starship found.
+    case fine(player: NewsPerson)
+    /// A coach's feedback on a player: whom it's on, not what it says.
+    case coachFeedback(player: NewsPerson)
+    /// Clauses in players' contracts that came into force, each with what's known of the clause.
+    case addOnsActivated([ActivatedAddOn])
+    /// A transfer offer FM confirmed: the person, the other club when the item names it plainly, and the fee in pounds
+    /// when the item's copies of it agree. Which way the transfer goes isn't read.
+    case offerConfirmed(person: NewsPerson, club: String?, fee: Int64?)
+}
+
+/// A clause in a player's contract that came into force.
+public struct ActivatedAddOn: Equatable {
+    public let player: NewsPerson
+    /// For the clause for goals in a season, the goals it needs; nil for a clause whose code isn't known.
+    public let seasonGoals: Int?
+    /// The clause's amount in pounds, as his contract holds it, for the clause for goals in a season only.
+    public let amount: Int64?
+
+    public init(player: NewsPerson, seasonGoals: Int? = nil, amount: Int64? = nil) {
+        self.player = player
+        self.seasonGoals = seasonGoals
+        self.amount = amount
+    }
+}
+
+/// A move in FM's transfer timeline: the person, the day, the team they left and the one they joined, and the fee.
+public struct TransferEvent: Hashable {
+    public let person: NewsPerson
+    public let date: Date
+    /// Each team's database index (`Team.index`) and its club's name.
+    public let fromTeam: UInt32
+    public let from: String
+    public let toTeam: UInt32
+    public let to: String
+    /// In pounds. Nil when the entry holds none.
+    public let fee: Int64?
+
+    public init(person: NewsPerson, date: Date, fromTeam: UInt32, from: String, toTeam: UInt32, to: String, fee: Int64?) {
+        self.person = person
+        self.date = date
+        self.fromTeam = fromTeam
+        self.from = from
+        self.toTeam = toTeam
+        self.to = to
+        self.fee = fee
+    }
+}
+
+/// One item in the user's inbox. FM keeps no text for it, only its class and fields.
+public struct InboxItem {
+    public let serial: UInt32
+    public let date: Date
+    /// FM's class, such as INJURY_REPORT_NEWS_ITEM.
+    public let className: String
+    /// The addressed team's database index, nil for news FM copied in from the world's.
+    public let team: UInt32?
+    /// The person who sent it, nil when it's from no one FM Starship reads.
+    public let sender: NewsPerson?
+    /// Set when it's from an agent rather than a person.
+    public let fromAgent: Bool
+    /// The sender's job as the item gives it, from FM's list of jobs.
+    public let senderJob: String?
+    public let subject: NewsSubject?
+
+    public init(serial: UInt32, date: Date, className: String, team: UInt32?, sender: NewsPerson?, fromAgent: Bool = false,
+                senderJob: String?, subject: NewsSubject? = nil) {
+        self.serial = serial
+        self.date = date
+        self.className = className
+        self.team = team
+        self.sender = sender
+        self.fromAgent = fromAgent
+        self.senderJob = senderJob
+        self.subject = subject
+    }
+
+    /// The class in plain words: INJURY_REPORT_NEWS_ITEM is "injury report".
+    public var kind: String { InboxReader.kind(className) }
+    /// Whether it's a kind a manager acts on: see `InboxReader.importantWords`.
+    public var isImportant: Bool { InboxReader.isImportant(className) }
+}
+
+/// The user's inbox as FM holds it, oldest first, or why it can't be read.
+public enum Inbox {
+    case items([InboxItem])
+    case failed(String)
+}
+
+/// The user's inbox: FM's news items for a human manager, read where FM keeps them, each time it's asked for, as new items
+/// come in without the date moving. Pointers read from memory are only added to with &+, so a bad one can't trap.
+public final class InboxReader {
+    typealias L = MacLayout.Inbox
+    private let game: GameProcess
+    private let rtti: Rtti
+    private var classes: [Int64: String?] = [:]
+    /// The transfer timeline isn't covered by a self-check, and its teams swapped would read as a move the other way, so
+    /// it's only read on the build of game_plugin it was found on, as FixturesReader's unchecked fields are.
+    private let checkedBuild: Bool
+    /// The most items it reads: FM held 150.
+    static let most = 4096
+
+    /// `checkedBuild` stands in for the fingerprint, for tests.
+    public init(game: GameProcess, rtti: Rtti, checkedBuild: Bool? = nil) {
+        self.game = game
+        self.rtti = rtti
+        self.checkedBuild = checkedBuild ?? (GameBuild.fingerprint(pluginPath: game.pluginPath) == RulesEngine.Mac27.fingerprint)
+    }
+
+    /// The inbox of the human manager whose HUMAN_NON_PLAYER is at `manager`. `teams` are the club's teams by database
+    /// index, as `Database.humanTeams` gives them; the items must be addressed to one of them or be world news. Checked as a
+    /// whole: serials rise along the list, dates never go back, none is after `today`, and every item reads. Any failure
+    /// gives `.failed` with why, never part of the list.
+    public func inbox(manager: Int64, teams: [UInt32: Int], today: Date?) -> Inbox {
+        guard manager != 0 else { return .failed("FM Starship doesn't know which manager is the user") }
+        let vector = game.readPointer(manager &+ L.items)
+        guard vector != 0, let head = game.read(vector, count: 24) else { return .failed("FM's inbox list wasn't where FM Starship looks") }
+        let begin = Self.i64(head, 0), end = Self.i64(head, 8), capacity = Self.i64(head, 16)
+        if begin == 0, end == 0 { return .items([]) }
+        guard begin > 0, end >= begin, capacity >= end, (end &- begin) % 8 == 0, (end &- begin) / 8 <= Self.most else {
+            return .failed("FM's inbox list doesn't read as a list")
+        }
+        let count = Int((end &- begin) / 8)
+        guard count > 0 else { return .items([]) }
+        guard let slots = game.read(begin, count: count * 8) else { return .failed("FM's inbox list couldn't be read") }
+
+        var items: [InboxItem] = []
+        for slot in 0..<count {
+            let item = Self.i64(slots, slot * 8)
+            guard item > 0, item % 8 == 0, let b = game.read(item, count: L.header) else {
+                return .failed("item \(slot + 1) of \(count) couldn't be read")
+            }
+            guard let type = className(Self.i64(b, 0)) else {
+                return .failed("item \(slot + 1) of \(count) isn't one of FM's objects")
+            }
+            let day = Self.u16(b, Int(L.day)) & 0x1ff, year = Self.u16(b, Int(L.year))
+            guard let date = GameDate.checked(year: year, dayOfYear: day) else {
+                return .failed("item \(slot + 1) of \(count), \(type), has no date")
+            }
+            let team = Self.u32(b, Int(L.team))
+            guard team == L.world || teams[team] != nil else {
+                return .failed("item \(slot + 1) of \(count), \(type), is addressed to a team that isn't the user's club's")
+            }
+            let serial = Self.u32(b, Int(L.serial))
+            if let last = items.last {
+                guard serial > last.serial else { return .failed("FM's counter doesn't rise along the list at item \(slot + 1)") }
+                guard date >= last.date else { return .failed("the dates go back along the list at item \(slot + 1)") }
+            }
+            if let today, date > today { return .failed("item \(slot + 1) of \(count) is dated after the game date") }
+
+            let from = Self.i64(b, Int(L.sender))
+            let sender = person(from)
+            let fromAgent = sender == nil && from != 0 && className(game.readPointer(from)) == "AGENT"
+            let job = sender == nil ? nil : Names.jobs[Int(b[Int(L.senderJob)])]
+            items.append(InboxItem(serial: serial, date: date, className: type, team: team == L.world ? nil : team,
+                                   sender: sender, fromAgent: fromAgent, senderJob: job, subject: subject(item, type, teams: teams)))
+        }
+        return .items(items)
+    }
+
+    /// The fields of the classes they were found on, each checked to be what it should be. Nil for any other class, or
+    /// when a field isn't. `teams` are the user's club's, by database index.
+    private func subject(_ item: Int64, _ type: String, teams: [UInt32: Int]) -> NewsSubject? {
+        switch type {
+        case "INJURY_REPORT_NEWS_ITEM":
+            typealias I = L.InjuryReport
+            let injury = game.readPointer(item &+ I.injury)
+            guard let player = person(game.readPointer(item &+ I.player)), player.isPlayer, injury != 0,
+                  className(game.readPointer(injury)) == "INJURY", let b = game.read(item &+ I.injuredOn, count: 0x10) else { return nil }
+            let text = game.lengthPrefixedString(game.readPointer(injury &+ MacLayout.Injury.name))
+            let days = Int(Self.u16(b, Int(I.days - I.injuredOn)))
+            let on = GameDate.checked(year: Self.u16(b, 2), dayOfYear: Self.u16(b, 0) & 0x1ff)
+            return .injury(player: player, injury: text.prefix(1).uppercased() + text.dropFirst(), on: on, days: days)
+        case "CONTRACT_EXPIRES_SOON_NEWS":
+            typealias C = L.ContractsExpiring
+            guard let head = game.read(item &+ C.people, count: 16) else { return nil }
+            let begin = Self.i64(head, 0), end = Self.i64(head, 8)
+            guard begin > 0, end > begin, (end &- begin) % 8 == 0, (end &- begin) / 8 <= 500,
+                  let pointers = game.read(begin, count: Int(end &- begin)) else { return nil }
+            var indexes: [UInt32] = []
+            for at in stride(from: 0, to: pointers.count, by: 8) {
+                // Every record starts with the person's club: anything else isn't one of these records.
+                let record = Self.i64(pointers, at)
+                guard record > 0, record % 8 == 0, let fields = game.read(record, count: C.size),
+                      className(game.readPointer(Self.i64(fields, C.club))) == "CLUB" else { return nil }
+                indexes.append(Self.u32(fields, C.index))
+            }
+            return .contractsExpiring(indexes: indexes)
+        case "PLAYER_UNHAPPINESS_TRAINING_NEWS":
+            guard let player = person(game.readPointer(item &+ L.UnhappyWithTraining.player)), player.isPlayer else { return nil }
+            return .unhappyWithTraining(player: player)
+        case "FINE_NEWS":
+            guard let player = person(game.readPointer(item &+ L.Fine.player)), player.isPlayer else { return nil }
+            return .fine(player: player)
+        case "COACH_FEEDBACK_ON_PLAYER_NEWS_ITEM":
+            guard let player = person(game.readPointer(item &+ L.CoachFeedback.player)), player.isPlayer else { return nil }
+            return .coachFeedback(player: player)
+        case "TRANSFER_COMPLETED_NEWS":
+            typealias T = L.TransferCompleted
+            guard let person = person(game.readPointer(item &+ T.person)), let club = club(game.readPointer(item &+ T.team)) else { return nil }
+            return .transfer(person: person, club: club)
+        case "PLAYER_COME_AND_GET_ME_PLEA_NEWS_ITEM":
+            typealias P = L.ComeAndGetMe
+            guard let player = person(game.readPointer(item &+ P.player)), player.isPlayer,
+                  let club = club(game.readPointer(item &+ P.team)) else { return nil }
+            return .comeAndGetMe(player: player, club: club)
+        case "CONTRACT_ADD_ON_ACTIVATED_NEWS":
+            return addOnsActivated(item)
+        case "TRANSFER_OFFER_CONFIRMATION_NEWS":
+            typealias O = L.OfferConfirmation
+            guard let person = person(game.readPointer(item &+ O.person)), let b = game.read(item, count: Int(O.fees.max() ?? 0) + 4) else {
+                return nil
+            }
+            // The other club only when the item's team is one of the user's club's and the other team isn't.
+            let ours = teamIndex(game.readPointer(item &+ O.team)), other = game.readPointer(item &+ O.otherTeam)
+            let plain = ours.map { teams[$0] != nil } == true && teamIndex(other).map { teams[$0] == nil } == true
+            let fees = Set(O.fees.map { Self.u32(b, Int($0)) })
+            let fee = fees.count == 1 ? fees.first.flatMap { $0 > 0 && $0 != UInt32.max ? Int64($0) : nil } : nil
+            return .offerConfirmed(person: person, club: plain ? club(other) : nil, fee: fee)
+        default:
+            return nil
+        }
+    }
+
+    /// The add-ons a CONTRACT_ADD_ON_ACTIVATED_NEWS points at, each a player and his clause. Nil unless every one reads.
+    private func addOnsActivated(_ item: Int64) -> NewsSubject? {
+        typealias A = L.AddOnActivated
+        let record = game.readPointer(item &+ A.record)
+        guard record > 0, record % 8 == 0, className(game.readPointer(game.readPointer(record &+ A.club))) == "CLUB",
+              let head = game.read(record &+ A.addOns, count: 16) else { return nil }
+        let begin = Self.i64(head, 0), end = Self.i64(head, 8)
+        guard begin > 0, end > begin, (end &- begin) % 8 == 0, (end &- begin) / 8 <= 20,
+              let pointers = game.read(begin, count: Int(end &- begin)) else { return nil }
+        var found: [ActivatedAddOn] = []
+        for at in stride(from: 0, to: pointers.count, by: 8) {
+            let addOn = Self.i64(pointers, at)
+            guard addOn > 0, addOn % 8 == 0, let b = game.read(addOn, count: A.size),
+                  let player = person(Self.i64(b, Int(A.player))), player.isPlayer else { return nil }
+            let clause = Int(A.clause)
+            let amount = Self.u32(b, clause), count = Self.u16(b, clause + 4), code = Self.u16(b, clause + 6)
+            if code == A.seasonGoals, (1...100).contains(count), amount != UInt32.max {
+                found.append(ActivatedAddOn(player: player, seasonGoals: count, amount: Int64(amount)))
+            } else {
+                found.append(ActivatedAddOn(player: player))
+            }
+        }
+        return .addOnsActivated(found)
+    }
+
+    /// Every entry of FM's transfer timeline in memory, each once: the timeline of the human manager's notable moves, which
+    /// FM shows on the manager's profile. It's a sweep for the class, as nothing found holds the list: on Molde's save it held
+    /// 10 of the club's moves, not its free and smaller ones. A copy FM has let go of reads the same as the entry, so copies
+    /// count once; one that doesn't read as an entry is left out. Nil when this build of FM has no such class, or on a
+    /// build of game_plugin it wasn't found on.
+    public func transferEvents() -> [TransferEvent]? {
+        typealias T = MacLayout.TransferTimeline
+        guard checkedBuild, let table = rtti.vtables(T.className).first(where: { $0.offsetToTop == 0 }) else { return nil }
+        let vtable = game.pluginBase &+ Int64(table.addressPoint)
+        let lock = NSLock()
+        var found: [Int64] = []
+        let pieces = game.pieces(size: 1 << 23, overlap: 0, writableOnly: true)
+        DispatchQueue.concurrentPerform(iterations: pieces.count) { i in
+            let (address, count) = pieces[i]
+            let hits: [Int64] = game.withBytes(address, count: count) { raw in
+                var hits: [Int64] = []
+                var o = Int((8 - address % 8) % 8)
+                while o + 8 <= count {
+                    if raw.loadUnaligned(fromByteOffset: o, as: Int64.self) == vtable { hits.append(address &+ Int64(o)) }
+                    o += 8
+                }
+                return hits
+            } ?? []
+            guard !hits.isEmpty else { return }
+            lock.lock()
+            found += hits
+            lock.unlock()
+        }
+        var events = Set<TransferEvent>()
+        for at in found {
+            guard let b = game.read(at, count: T.size),
+                  let date = GameDate.checked(year: Self.u16(b, T.year), dayOfYear: Self.u16(b, T.day) & 0x1ff),
+                  let person = person(Self.i64(b, T.person)) else { continue }
+            let from = Self.i64(b, T.fromTeam), to = Self.i64(b, T.toTeam)
+            guard let fromTeam = teamIndex(from), let toTeam = teamIndex(to), fromTeam != toTeam,
+                  let fromClub = club(from), let toClub = club(to) else { continue }
+            let fee = Self.u32(b, T.fee)
+            events.insert(TransferEvent(person: person, date: date, fromTeam: fromTeam, from: fromClub, toTeam: toTeam, to: toClub,
+                                        fee: fee == 0 || fee == UInt32.max ? nil : Int64(fee)))
+        }
+        return events.sorted { ($0.date, $0.person.uid, $0.fromTeam) < ($1.date, $1.person.uid, $1.fromTeam) }
+    }
+
+    /// A team's database index, when `team` is one of FM's teams.
+    private func teamIndex(_ team: Int64) -> UInt32? {
+        guard team != 0, className(game.readPointer(team)) == "TEAM",
+              let b = game.read(team &+ Int64(MacLayout.Team.index), count: 4) else { return nil }
+        return Self.u32(b, 0)
+    }
+
+    private static func u16(_ b: [UInt8], _ o: Int) -> Int { Int(b[o]) | Int(b[o + 1]) << 8 }
+    private static func u32(_ b: [UInt8], _ o: Int) -> UInt32 { b.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: o, as: UInt32.self) } }
+    private static func i64(_ b: [UInt8], _ o: Int) -> Int64 { b.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: o, as: Int64.self) } }
+
+    /// A person by the identity subobject a news item points at, which FM's RTTI names by the whole record's class.
+    private func person(_ identity: Int64) -> NewsPerson? {
+        guard identity != 0 else { return nil }
+        let isPlayer: Bool
+        switch className(game.readPointer(identity)) {
+        case "ACTUAL_PLAYER": isPlayer = true
+        case "ACTUAL_NON_PLAYER", "HUMAN_NON_PLAYER": isPlayer = false
+        default: return nil
+        }
+        guard let id = game.read(identity &+ Int64(MacLayout.Identity.index), count: 8) else { return nil }
+        let person = identity &- Int64(MacLayout.Player.identity - MacLayout.Player.person)
+        typealias P = MacLayout.Person
+        var name = game.nameEntry(game.readPointer(person &+ Int64(P.commonName)))
+        if name.isEmpty {
+            name = [P.firstName, P.secondName].map { game.nameEntry(game.readPointer(person &+ Int64($0))) }
+                .filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        return NewsPerson(uid: Self.u32(id, 4), index: Self.u32(id, 0), isPlayer: isPlayer, name: name)
+    }
+
+    /// A team's club's name, when `team` is one of FM's teams.
+    private func club(_ team: Int64) -> String? {
+        guard team != 0, className(game.readPointer(team)) == "TEAM" else { return nil }
+        let name = GameReader.clubName(team: team, in: game)
+        return name.isEmpty ? nil : name
+    }
+
+    /// The class of the object with this vtable, as written in FM's code: INJURY_REPORT_NEWS_ITEM.
+    private func className(_ vtable: Int64) -> String? {
+        if let known = classes[vtable] { return known }
+        let name = rtti.className(vtable: vtable).map(Self.plain)
+        classes[vtable] = name
+        return name
+    }
+
+    /// A class name as RTTI spells it, "N2db23INJURY_REPORT_NEWS_ITEME" or "4CLUB", without the namespaces.
+    static func plain(_ mangled: String) -> String {
+        var rest = Substring(mangled)
+        if rest.first == "N" { rest = rest.dropFirst() }
+        var last = ""
+        while let first = rest.first, first.isNumber {
+            let digits = rest.prefix(while: \.isNumber)
+            guard let length = Int(digits), length > 0 else { break }
+            let start = digits.endIndex
+            guard rest.distance(from: start, to: rest.endIndex) >= length else { break }
+            let stop = rest.index(start, offsetBy: length)
+            last = String(rest[start..<stop])
+            rest = rest[stop...]
+        }
+        return last.isEmpty ? mangled : last
+    }
+
+    /// The words in FM's class names of the kinds a manager acts on: injuries, transfers, bids and offers, come-and-get-me
+    /// pleas, unhappiness, fines, contracts and the board. Staff meeting advice, press, odds, previews and the rest aren't.
+    public static let importantWords: Set<String> = ["INJURY", "INJURED", "TRANSFER", "OFFER", "BID", "PLEA", "UNHAPPINESS",
+                                                     "UNHAPPY", "FINE", "CONTRACT", "BOARD"]
+
+    /// Whether an item of this class is one a manager acts on, by the words in its name.
+    public static func isImportant(_ className: String) -> Bool {
+        !importantWords.isDisjoint(with: className.split(separator: "_").map(String.init))
+    }
+
+    /// FM's class in plain words: INJURY_REPORT_NEWS_ITEM is "injury report", BOARD_CONFIDENCE_UPDATE_NEWS "board
+    /// confidence update".
+    public static func kind(_ className: String) -> String {
+        var name = className
+        for suffix in ["_NEWS_ITEM", "_NEWS", "_ITEM"] where name.hasSuffix(suffix) && name.count > suffix.count {
+            name = String(name.dropLast(suffix.count))
+            break
+        }
+        return name.lowercased().replacingOccurrences(of: "_", with: " ")
+    }
+}
