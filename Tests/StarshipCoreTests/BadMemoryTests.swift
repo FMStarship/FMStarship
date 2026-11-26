@@ -38,11 +38,11 @@ final class BadMemoryTests: XCTestCase {
     func testFarApartBoundsReadAsNoClausesAndNoInjuries() throws {
         let game = FakeGame()
         // Far enough apart that `end - begin` overflows.
-        let list = game.record("Injury list", size: 16)
+        let list = game.record("Injury list", size: 0x30)
         list.set("begin", 0, Int64.min + 8)
         list.set("end", 8, Int64.max - 8)
         var player = FakeGame.PlayerValues()
-        player.injuries = list.address
+        player.history = list.address
         player.person.contract?.clausesAt = (Int64.min + 8, Int64.max - 8)
         game.player(player)
 

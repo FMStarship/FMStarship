@@ -1320,6 +1320,63 @@ case "finance":
         }
     }
 
+case "state":
+    // What the reader and the rules engine give for one club's players (default Molde FK): condition and sharpness as
+    // stored when FM updated them today, else from FM's getters, morale, playing time, bans and home-grown status. The
+    // stored fitness and FM's getters are printed side by side, so a patch that moves either shows.
+    let (db, engine) = try GameReader.connect(to: game, status: { _ in })
+    let club = args.count > 2 ? args[2] : "Molde FK"
+    let states = PlayerStateReader(game: game, database: db)
+    if let engine { print("getter check:", GameReader.checkFitnessGetters(db, engine: engine) ?? "passed") }
+    print("date", db.gameDate as Any, "| off:", db.stateOff.isEmpty ? "none" : db.stateOff.map { "\($0.key.rawValue) (\($0.value))" }.joined(separator: ", "),
+          "| engine", engine == nil ? "off" : "on")
+    func percent(_ value: Int?) -> String { value.map { String(format: "%5.1f%%", Double($0) / 100) } ?? "    - " }
+    for p in db.players where p.clubFull == club || p.loanClubFull == club {
+        let today = p.fitness(engine), fm = engine?.fitness(player: p)
+        let named = states.bans(of: p)
+        let bans = (named ?? []).map { ban in
+            "[\(ban.left) of \(ban.matches) left, \(ban.competition.isEmpty ? "?" : ban.competition), FA \(ban.association) \(ban.associationName) scope \(ban.scope), "
+                + "\(ban.reason?.rawValue ?? "?") \(ban.opponent), \(ban.issued), \(ban.domestic ? "domestic" : "foreign"), "
+                + "\(ban.countsForClub ? "counts" : "not counted")]"
+        }
+        print(String(format: "%-26@ %@ cond %@ sharp %@ (FM's getters %@ %@)%@ morale %@ time %@ home-grown %-6@ %@", p.name as NSString, p.squad,
+                     percent(today?.condition), percent(today?.sharpness), percent(fm?.condition), percent(fm?.sharpness),
+                     p.fitnessNeedsCatchUp ? " caught up" : "", p.morale.map { String($0) } ?? "-", p.playingTime.map { String($0) } ?? "-",
+                     (engine?.homeGrown(player: p)?.rawValue ?? "-") as NSString, named == nil ? "bans not read" : bans.joined(separator: " ")))
+    }
+
+case "scopes":
+    // FM's stats scopes 0 to 7 for one club's players (default Molde FK), next to this year's matches in their form history
+    // by competition, so a patch that renumbers the scopes shows: the league's, cup's and continental scopes' appearances
+    // must match those competitions' matches, where FM still keeps them all. `detail` lists each player's matches too.
+    let (db, engine) = try GameReader.connect(to: game, status: { _ in })
+    guard let engine, let reader = FixturesReader(game: game, rtti: Rtti(game)) else { print("rules or fixtures off"); exit(1) }
+    let club = args.count > 2 ? args[2] : "Molde FK"
+    let detail = args.count > 3 && args[3] == "detail"
+    let year = db.gameDate.map { GameDate.calendar.component(.year, from: $0) }
+    let names = reader.competitionNames()
+    func day(_ date: Date) -> String { ISO8601DateFormatter.string(from: date, timeZone: .gmt, formatOptions: [.withFullDate]) }
+    for p in db.players where p.clubFull == club || p.loanClubFull == club {
+        let history = (engine.matchHistory(player: p)?.matches ?? []).filter { GameDate.calendar.component(.year, from: $0.date) == year }
+        func competition(_ m: PlayerMatch) -> String { names[m.competitionIndex] ?? (m.competitionName.isEmpty ? "#\(m.competitionIndex)" : m.competitionName) }
+        let scopes = (0...7).map { scope -> String in
+            guard let s = engine.seasonStats(player: p, season: scope) else { return "\(scope):-" }
+            return s.apps == 0 ? "\(scope):0" : String(format: "%d:%d(%d)/%dg/%da/%.2f", scope, s.starts, s.subs, s.goals, s.assists, s.rating)
+        }
+        var byCompetition: [String: (apps: Int, goals: Int, assists: Int)] = [:]
+        for m in history where m.played {
+            let sum = byCompetition[competition(m)] ?? (0, 0, 0)
+            byCompetition[competition(m)] = (sum.apps + 1, sum.goals + m.goals, sum.assists + m.assists)
+        }
+        let kept = byCompetition.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value.apps)/\($0.value.goals)g/\($0.value.assists)a" }
+        print(String(format: "%-24@ %@ | %@", p.name as NSString, scopes.joined(separator: " "), kept.joined(separator: ", ")))
+        guard detail else { continue }
+        print("    squad", p.squad, p.loanClubFull.isEmpty ? "" : "| on loan at \(p.loanClubFull)")
+        for m in history {
+            print("    ", day(m.date), m.teamName, "v", m.opponentName, "|", competition(m), "|", m.played ? "\(m.minutes)' \(m.goals)g \(m.assists)a" : "unused")
+        }
+    }
+
 case "dump":
     let address = Int64(args[2].replacingOccurrences(of: "0x", with: ""), radix: 16)!
     let count = args.count > 3 ? Int(args[3])! : 256
@@ -1329,6 +1386,52 @@ case "dump":
         let text = slice.map { (32...126).contains($0) ? String(UnicodeScalar($0)) : "." }.joined()
         print(String(format: "%04x ", row) + slice.map { String(format: "%02x", $0) }.joined(separator: " ") + "  " + text)
     }
+
+case "humanteams":
+    // Each human club's team address, for `fx`, with its competition.
+    let rtti = Rtti(game)
+    guard let details = rtti.vtables("CLUB_HUMAN_MANAGER_DETAILS").first(where: { $0.offsetToTop == 0 }) else { print("no CLUB_HUMAN_MANAGER_DETAILS"); exit(1) }
+    let vt = game.pluginBase + Int64(details.addressPoint)
+    var teams = Set<Int64>()
+    for piece in game.pieces(size: 1 << 23, overlap: 0, writableOnly: true) {
+        guard let bytes = game.read(piece.address, count: piece.count) else { continue }
+        let hits = bytes.withUnsafeBytes { raw -> [Int64] in
+            (0..<raw.count / 8).compactMap { raw.loadUnaligned(fromByteOffset: $0 * 8, as: Int64.self) == vt ? piece.address + Int64($0 * 8) : nil }
+        }
+        for at in hits { teams.insert(game.readPointer(at + 64)) }  // MacLayout.Human.team
+    }
+    for team in teams.sorted() where team != 0 {
+        let comp = game.readPointer(team + 80)  // MacLayout.Team.competition
+        print("team", hex(team), GameReader.clubName(team: team, in: game), "|", game.lengthPrefixedString(game.readPointer(comp + 72)))
+    }
+
+case "fx":
+    // FixturesReader for one team, end to end: its fixtures and results, its league table and the self-check. TEAM is
+    // a team's address, from `humanteams`; YEAR picks the matches to list, the game's year if left out.
+    guard args.count > 2, let team = Int64(args[2].replacingOccurrences(of: "0x", with: ""), radix: 16) else { print("usage: fmprobe fx TEAM [YEAR]"); exit(2) }
+    guard let reader = FixturesReader(game: game, rtti: Rtti(game)) else { print("no sicomps FIXTURE or FIXTURE_RESULT vtable"); exit(1) }
+    let started = Date()
+    let found = reader.teamMatches(team: team)
+    print(String(format: "%d matches in %.1fs", found.fixtures.count, Date().timeIntervalSince(started)))
+    let year = args.count > 3 ? Int(args[3]) : found.fixtures.last(where: \.played).map { GameDate.calendar.component(.year, from: $0.date) }
+    for f in found.fixtures where year == nil || GameDate.calendar.component(.year, from: f.date) == year {
+        let day = ISO8601DateFormatter.string(from: f.date, timeZone: .gmt, formatOptions: [.withFullDate])
+        let time = f.kickOff.map { String(format: "%02d:%02d", $0 / 60, $0 % 60) } ?? "--:--"
+        let score = f.scoreUnknown ? "?-?" : f.homeGoals.map { "\($0)-\(f.awayGoals ?? 0)" } ?? "v"
+        let aggregate = f.homeAggregate.map { " (agg \($0)-\(f.awayAggregate ?? 0))" } ?? ""
+        print(day, time, f.homeName, score, f.awayName + aggregate, "|", f.competition, f.stage, f.round.map { "round \($0)" } ?? "",
+              "| season", f.season, "| att", f.attendance ?? 0, "| goals", f.goals.count)
+    }
+    if let table = found.table {
+        print(table.competition)
+        for row in table.rows {
+            let o = row.overall
+            print(row.position, row.name, "P\(o.played) W\(o.won) D\(o.drawn) L\(o.lost) \(o.goalsFor)-\(o.goalsAgainst) \(o.points)pts")
+        }
+    } else {
+        print("no league table")
+    }
+    print("self-check:", found.check)
 
 default:
     print("unknown command")

@@ -15,7 +15,7 @@ final class HiddenOffTests: XCTestCase {
     /// Every tool, with arguments that bring out what it can show.
     private static let calls: [(String, JSON)] = [
         ("game_status", [:]), ("squad", [:]), ("squad", ["squad": "all"]), ("squad", ["club": "Rivals FC"]), ("staff", [:]),
-        ("person", ["uid": 13]), ("person", ["uid": 21]), ("person", ["uid": 12]), ("person", ["uid": 500]), ("person", ["uid": 502]),
+        ("person", ["uid": 13]), ("person", ["uid": 4]), ("person", ["uid": 21]), ("person", ["uid": 12]), ("person", ["uid": 500]), ("person", ["uid": 502]),
         ("search_players", [:]), ("search_players", ["club": "Testing", "sort": "Age"]), ("search_players", ["clause_max": 5_000_000]),
         ("search_staff", [:]), ("search_staff", ["rank_by": "Fitness"]),
         ("shortlists", [:]), ("shortlist", ["name": "Targets"]), ("shortlist", ["name": "Coaches"]),
@@ -25,10 +25,20 @@ final class HiddenOffTests: XCTestCase {
         ("find_bargains", ["kind": "contracts_ending", "only_join": false]), ("find_bargains", ["kind": "free_agents"]),
         ("find_bargains", ["kind": "release_clauses", "only_join": false]), ("find_bargains", ["kind": "transfer_listed"]),
         ("find_bargains", ["kind": "wonderkids", "only_join": false]),
+        ("recommend_staff", ["role": "Coach", "only_join": false]), ("recommend_staff", ["role": "Assistant Manager"]),
+        ("recommend_staff", ["role": "Director of Football", "only_join": false]), ("recommend_staff", ["role": "Manager", "level": "youth"]),
+        ("fixtures", [:]), ("fixtures", ["from": "2026-09-01"]), ("fixtures", ["club": "Rivals FC", "from": "2026-09-01"]),
+        ("results", [:]), ("results", ["date": "2026-09-20"]), ("results", ["date": "2026-09-13"]), ("league_table", [:]),
+        ("development", [:]), ("development", ["uid": 12]), ("development", ["uid": 1]), ("selection", [:]),
+        // The player/manager, as a player and as staff.
+        ("person", ["uid": 600]), ("person", ["uid": 600, "kind": "staff"]), ("compare", ["uids": [600, 500]]),
+        ("compare", ["uids": [600, 21], "kind": "player"]), ("shortlist", ["name": "Playing staff"]),
+        ("shortlist", ["name": "Playing targets"]),
     ]
 
     private static let abilityNames = ["CA", "PA", "Growth room", "Current ability", "Potential ability", "Likely peak",
-                                       "Room to grow", "vs your best", "vs best", "Best eleven"]
+                                       "Room to grow", "vs your best", "vs best", "Best eleven", "CA from", "CA to", "CA change",
+                                       "PA change"]
     /// The names of what's hidden, except a member of staff's Adaptability, which FM shows. Some of the hidden ones in a staff
     /// record share a name with something shown, such as a player's Marking, so names are looked for where values are named.
     private static let hiddenNames = Names.hidden + Names.personality.filter { !Names.staffShownPersonality.contains($0) }
@@ -60,6 +70,16 @@ final class HiddenOffTests: XCTestCase {
         let harness = Harness(hidden: hidden, reveal: reveal)
         try harness.saveShortlist("Targets", isStaff: false, uids: [12, 21])
         try harness.saveShortlist("Coaches", isStaff: true, uids: [501, 502])
+        try harness.saveDevelopment(World.history())
+        return harness
+    }
+
+    /// With the player/manager, a player and a member of staff under one uid, and shortlists of both kinds holding him.
+    private func sweepHarness(_ hidden: Bool, _ reveal: Reveal) throws -> Harness {
+        let harness = try harness(hidden, reveal)
+        World.addPlayerCoach(to: harness.source.database)
+        try harness.saveShortlist("Playing staff", isStaff: true, uids: [World.playerCoach, 502])
+        try harness.saveShortlist("Playing targets", isStaff: false, uids: [World.playerCoach, 21])
         return harness
     }
 
@@ -74,6 +94,8 @@ final class HiddenOffTests: XCTestCase {
                 || (tool == "shortlist" && answer["kind"] == "staff") || (tool == "compare" && arguments.text.contains("500"))
             let sent = Self.valueNames(answer, staffOnly: false)
             for name in names where sent.contains(name) {
+                // Recommended staff's "vs your best" is the job's score against the club's best, which CA plays no part in.
+                if tool == "recommend_staff", name == "vs your best" { continue }
                 let staffName = StaffFilter.hiddenRuleAttributes.contains(name) && !Names.hidden.contains(name) && !Names.personality.contains(name)
                 if staffName, !staff { continue }
                 XCTFail("\(what) sends \(name): \(result.text)", file: file, line: line)
@@ -86,13 +108,13 @@ final class HiddenOffTests: XCTestCase {
 
     func testHiddenAttributesOffSendsNothingHiddenFromAnyTool() throws {
         for reveal in Reveal.allCases {
-            let harness = try harness(false, reveal)
+            let harness = try sweepHarness(false, reveal)
             assertNothing(Self.abilityNames + Self.hiddenNames, numbers: World.hiddenNumbers, in: harness)
         }
     }
 
     func testAbilityOffSendsNoCAOrPAFromAnyTool() throws {
-        let harness = try harness(true, .hidden)
+        let harness = try sweepHarness(true, .hidden)
         assertNothing(Self.abilityNames, numbers: #"\b(171|183|137|197|139|177)\b"#, in: harness)
     }
 

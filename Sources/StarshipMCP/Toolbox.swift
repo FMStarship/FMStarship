@@ -106,12 +106,27 @@ final class CallContext {
     /// The analysis seen from a club, kept while the read, the settings and the club stay the same.
     func session(for club: ChosenClub) -> AnalysisSession { toolbox.session(read: read, club: club, visibility: visibility) }
 
-    func person(_ uid: Int) throws -> Person {
-        guard uid >= 0, uid <= Int(UInt32.max), let person = toolbox.people(read)[UInt32(uid)] else {
-            throw ToolError("Nobody in this save has uid \(uid).")
+    /// The player or member of staff with this uid. A player/manager or player/coach is both under one uid: `kind`
+    /// ("player" or "staff") picks a side, and with none he's the player.
+    func person(_ uid: Int, kind: String? = nil) throws -> Person {
+        guard uid >= 0, uid <= Int(UInt32.max) else { throw ToolError("Nobody in this save has uid \(uid).") }
+        let people = toolbox.people(read)
+        let player = people.players[UInt32(uid)], staff = people.staff[UInt32(uid)]
+        switch kind {
+        case "player":
+            if let player { return player }
+            throw ToolError(staff == nil ? "Nobody in this save has uid \(uid)." : "uid \(uid) is a member of staff, not a player.")
+        case "staff":
+            if let staff { return staff }
+            throw ToolError(player == nil ? "Nobody in this save has uid \(uid)." : "uid \(uid) is a player, not a member of staff.")
+        default:
+            guard let person = player ?? staff else { throw ToolError("Nobody in this save has uid \(uid).") }
+            return person
         }
-        return person
     }
+
+    /// The staff side of a player who is also a member of staff, as a player/manager is.
+    func staffSide(of player: Player) -> Staff? { toolbox.people(read).staff[player.uid] }
 }
 
 /// FM Starship's tools for an agent. Every call reads the user's settings first, so Hidden attributes and Ability are
@@ -134,7 +149,20 @@ public final class Toolbox: ToolProvider {
     private var sessionKey: SessionKey?
     private var cachedSession: AnalysisSession?
     private var peopleRead: Int?
-    private var peopleByUID: [UInt32: Person] = [:]
+    private var playersByUID: [UInt32: Player] = [:]
+    private var staffByUID: [UInt32: Staff] = [:]
+    private var indexRead: Int?
+    private var peopleByIndex: [UInt32: Player] = [:]
+    private var matchesRead: Int?
+    private var matchesByTeam: [Int64: (matches: TeamMatches?, at: Date)] = [:]
+    private var namesRead: Int?
+    private var namesByIndex: [UInt32: String] = [:]
+    private var reportsRead: Int?
+    private var reportsFound: [ScoutReport]?
+    /// The time now, which a test can move on.
+    var clock: () -> Date = Date.init
+    /// Where the app keeps its development records, which `development` only reads. A test points it at a folder of its own.
+    var developmentStore = DevelopmentStore()
 
     /// `settings` gives the settings as they are now: the live server reads FM Starship's settings file each call.
     public init(source: GameSource, settings: @escaping () -> Settings, shortlistRoots: @escaping () -> [URL]) {
@@ -185,15 +213,80 @@ public final class Toolbox: ToolProvider {
         return session
     }
 
-    func people(_ read: GameRead) -> [UInt32: Person] {
-        if peopleRead != read.number || peopleByUID.isEmpty {
-            var all: [UInt32: Person] = [:]
-            for person in read.database.staff { all[person.uid] = person }
-            for person in read.database.players { all[person.uid] = person }
-            peopleByUID = all
+    /// Players and staff by uid, kept apart as the app keeps them: a player/manager is in both under one uid.
+    func people(_ read: GameRead) -> (players: [UInt32: Player], staff: [UInt32: Staff]) {
+        if peopleRead != read.number || (playersByUID.isEmpty && staffByUID.isEmpty) {
+            var players: [UInt32: Player] = [:], staff: [UInt32: Staff] = [:]
+            for person in read.database.staff { staff[person.uid] = person }
+            for person in read.database.players { players[person.uid] = person }
+            playersByUID = players
+            staffByUID = staff
             peopleRead = read.number
         }
-        return peopleByUID
+        return (playersByUID, staffByUID)
+    }
+
+    /// Players by the index FM's goal lists name them by.
+    func playersByIndex(_ read: GameRead) -> [UInt32: Player] {
+        if indexRead != read.number || peopleByIndex.isEmpty {
+            var all: [UInt32: Player] = [:]
+            for player in read.database.players { all[player.index] = player }
+            peopleByIndex = all
+            indexRead = read.number
+        }
+        return peopleByIndex
+    }
+
+    /// A team's matches, swept for once for each read of the save, except on match day, and never kept after a failed check,
+    /// which a sweep part way through a match can give.
+    func cachedMatches(_ read: GameRead, team: Int64, source: MatchSource) -> TeamMatches? {
+        if matchesRead != read.number {
+            matchesByTeam = [:]
+            matchesRead = read.number
+        }
+        let now = clock()
+        if let known = matchesByTeam[team],
+           Self.stillStands(known.matches, today: read.database.gameDate, age: now.timeIntervalSince(known.at)) {
+            return known.matches
+        }
+        let found = source.matches(team: team)
+        if case .failed = found?.check {
+            matchesByTeam[team] = nil
+        } else {
+            matchesByTeam[team] = (found, now)
+        }
+        return found
+    }
+
+    /// Competitions by database index, swept for once for each read of the save: a new competition comes with a new date.
+    func competitionNames(_ read: GameRead) -> [UInt32: String] {
+        guard let source = read.matches else { return [:] }
+        if namesRead != read.number {
+            namesByIndex = source.competitionNames()
+            namesRead = read.number
+        }
+        return namesByIndex
+    }
+
+    /// FM's opposition reports, swept for once for each read of the save: FM writes them as the days go by. Nil when they
+    /// can't be read.
+    func scoutReports(_ read: GameRead) -> [ScoutReport]? {
+        guard let source = read.selection else { return nil }
+        if reportsRead != read.number {
+            reportsFound = source.scoutReports(players: playersByIndex(read))
+            reportsRead = read.number
+        }
+        return reportsFound
+    }
+
+    /// How long a sweep stands while it holds a match due today or earlier that isn't played yet.
+    static let matchDayWait: TimeInterval = 60
+
+    /// A sweep stands as long as the read, unless it holds a match that's due and not played: the game date doesn't move
+    /// while FM plays it, so the user may have played it since. Then it stands for `matchDayWait`.
+    static func stillStands(_ matches: TeamMatches?, today: Date?, age: TimeInterval) -> Bool {
+        guard let matches, let today, matches.fixtures.contains(where: { !$0.played && $0.date <= today }) else { return true }
+        return age < matchDayWait
     }
 
     // MARK: Game status
@@ -233,19 +326,22 @@ public final class Toolbox: ToolProvider {
             ])
         }
         let rules: String = read.engine == nil
-            ? "off: FM Starship hasn't been checked on this build of FM, so season stats, form, who'd join, role stars and injury days are switched off rather than guessed"
+            ? "off: FM Starship hasn't been checked on this build of FM, so season stats, form, who'd join, role stars, injury days and home-grown status are switched off rather than guessed"
             : "on"
         let age = connection.readAt.map { Int(Date().timeIntervalSince($0).rounded()) }
+        let next = context.humanClubs.first.flatMap { nextFixture(read, club: $0, today: db.gameDate) }
         return .object(dropping: [
             ("fm", "running with FM Starship"),
             ("build", Output.text(db.build)),
             ("game_date", db.gameDate.map { .string(Output.iso($0)) }),
             ("clubs", .array(clubs)),
             ("club_used", context.humanClubs.first.map { .string($0.name) }),
+            (next?.0 ?? "next_fixture", next?.1),
             ("players", .int(db.players.count)),
             ("staff", .int(db.staff.count)),
             ("read_seconds_ago", age.map { .int($0) }),
             ("rules", .string(rules)),
+            ("player_state", Self.stateStatus(db, read.engine, read.bookings)),
             ("self_checks", db.checkProblems.map { .string("failed: \($0)") }),
         ] + settings(currencyKnown: true))
     }

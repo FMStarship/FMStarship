@@ -67,6 +67,15 @@ public struct StaffRecommender {
         return NetFormat.fixed(units.wageValue(room) * units.perPound / 1000, min: 0, max: 1, truncating: true)
     }
 
+    /// `startingMaxWage` as the amount it caps the search at, such as "£12,300 p/w". Empty when there's no cap.
+    public var startingMaxWageText: String {
+        guard let thousands = parseInvariantDouble(startingMaxWage) else { return "" }
+        let units = session.display.units, amount = thousands * 1000
+        let number = amount >= 1_000_000 ? NetFormat.fixed(amount / 1_000_000, min: 0, max: 2, truncating: true) + "M"
+            : NetFormat.groupedMoney(amount)
+        return units.symbol + number + " " + units.wageSuffix
+    }
+
     public var keenEnabled: Bool { GameRules.engine != nil }
     public var onlyJoinEnabled: Bool { session.checks.canCheckStaffInterest }
     public var onlyJoinTitle: String {
@@ -167,8 +176,9 @@ public struct StaffRecommender {
         ]
     }
 
-    /// `head` is the line about the people you already have. Nil when cancelled.
-    public func find(_ options: StaffSearchOptions, isCancelled: () -> Bool = { false },
+    /// `head` is the line about the people you already have. Nil when cancelled. `wanted` is how many to find and `deepest`
+    /// how far down the ranking to look; the screen leaves both out.
+    public func find(_ options: StaffSearchOptions, wanted: Int? = nil, deepest: Int? = nil, isCancelled: () -> Bool = { false },
                      status: (String) -> Void = { _ in }) -> AnalysisTable? {
         let role = options.role
         let club = session.club.name
@@ -199,9 +209,12 @@ public struct StaffRecommender {
         }
 
         status(join ? "Finding staff who'd join you..." : "Finding staff...")
-        guard let found = search(options, wanted: StaffRecommender.wanted, isCancelled: isCancelled) else { return nil }
+        guard let found = search(options, wanted: wanted ?? StaffRecommender.wanted, deepest: deepest, isCancelled: isCancelled) else {
+            return nil
+        }
         let shown = found.people
         table.interestChecked = found.interestChecked
+        table.stoppedAtDeepest = found.stoppedAtDeepest
 
         for x in shown {
             let score = role.score(x, area: area)
@@ -236,8 +249,9 @@ public struct StaffRecommender {
 
     /// The best people for a job, best first, who pass the options. Nil when cancelled. Only those scoring
     /// `atLeast` or more count, and nobody in `excluding`; `deepest` stops a job nobody wants reading the whole world.
+    /// `stoppedAtDeepest` is true when it did, short of `wanted`.
     func search(_ options: StaffSearchOptions, wanted: Int, atLeast: Double? = nil, excluding: Set<UInt32> = [], deepest: Int? = nil,
-                isCancelled: () -> Bool = { false }) -> (people: [Staff], interestChecked: Bool)? {
+                isCancelled: () -> Bool = { false }) -> (people: [Staff], interestChecked: Bool, stoppedAtDeepest: Bool)? {
         let role = options.role
         let club = session.club.name
         let checks = session.checks
@@ -260,6 +274,7 @@ public struct StaffRecommender {
         var ranked = scored.filter { $0.score > 0 && $0.score >= atLeast ?? 0 }
             .stableSorted { a, b in a.score != b.score ? a.score > b.score : a.staff.ca > b.staff.ca }
             .map(\.staff)
+        let cut = deepest.map { ranked.count > $0 } ?? false
         if let deepest { ranked = Array(ranked.prefix(deepest)) }
         // Lazy: asking the game how keen someone is costs real time, and only the top of the list gets read.
         let keen = ranked.lazy.filter { person in
@@ -267,21 +282,26 @@ public struct StaffRecommender {
             return want >= minWant
         }
 
-        guard join else { return (Array(keen.prefix(max(wanted, StaffRecommender.unfiltered))), !options.onlyJoin || onlyJoinEnabled) }
+        func unfiltered(_ count: Int) -> [Staff] { Array(keen.prefix(count)) }
+        guard join else {
+            let count = max(wanted, StaffRecommender.unfiltered), people = unfiltered(count)
+            return (people, !options.onlyJoin || onlyJoinEnabled, cut && people.count < count)
+        }
         var shown: [Staff] = []
         for batch in keen.chunked(StaffRecommender.batchSize) {
             if isCancelled() { return nil }
             guard checks.checkStaff(batch: batch, isCancelled: isCancelled) else {
-                return (Array(keen.prefix(StaffRecommender.unfiltered)), false)
+                let people = unfiltered(StaffRecommender.unfiltered)
+                return (people, false, cut && people.count < StaffRecommender.unfiltered)
             }
             for person in batch {
                 if let answer = checks.staffKnown(person), answer.wouldJoin(level: level) {
                     shown.append(person)
-                    if shown.count >= wanted { return (shown, true) }
+                    if shown.count >= wanted { return (shown, true, false) }
                 }
             }
         }
-        return isCancelled() ? nil : (shown, true)
+        return isCancelled() ? nil : (shown, true, cut)
     }
 
     /// The options Recommended staff opens with, so an overview's pick is that screen's top row.

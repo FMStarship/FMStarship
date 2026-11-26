@@ -31,12 +31,23 @@ public final class RulesEngine: GameRulesEngine {
         package static let bagClear: Int64 = 0x4447e28
         package static let injuryDaysKey: UInt64 = 0x5050_4d69  // "PPMi" in the bag FM fills for its injury text
         package static let shapeName: Int64 = 0x4ab2570
+        package static let conditionSlot = 0x450 / 8
+        package static let sharpnessSlot = 0x458 / 8
+        package static let trainedAtClub: Int64 = 0xd1e590
+        package static let trainedInNation: Int64 = 0xd1c1c4
+        package static let disciplineGlobal: Int64 = 0x57b5998
+        package static let countUntilNextBan: Int64 = 0x3d07978
     }
 
     public static let transfer: UInt64 = 4
     public static let loan: UInt64 = 3
     /// The stats scope that totals a player's season for his club.
     public static let clubTotal = 5
+    /// The scopes that keep the club total's league, cup and continental matches apart, at the club he plays for now (his
+    /// loan club while he's on loan). Checked in FM 27.1.0 on 20 Nov 2026 against the matches FM keeps for each of Molde's
+    /// players: the Norwegian cup's and the Champions League's matched them, and the three add up to the club total. Other
+    /// cups and continental competitions are expected in the same scopes but weren't checked.
+    public static let league = 1, cup = 2, continental = 3
     /// First team, reserves, youth.
     public static let staffLevels = [1, 3, 4]
 
@@ -52,6 +63,10 @@ public final class RulesEngine: GameRulesEngine {
     private let staffFunction: Int64
     private let statFunction: Int64
     private let statsContainerFunction: Int64
+    private let conditionFunction: Int64
+    private let sharpnessFunction: Int64
+    /// `GAME_DISCIPLINE`'s vtable, which the object at the end of `Mac27.disciplineGlobal`'s path must have. 0 when not found.
+    private let disciplineVtable: Int64
     /// Team to HUMAN_NON_PLAYER object, for the staff rule.
     public var managers: [Int64: Int64] = [:]
     /// Team to the staff member whose eye the role stars are seen through.
@@ -59,6 +74,7 @@ public final class RulesEngine: GameRulesEngine {
     /// The human clubs that are women's sides, from `Database.womensTeams`.
     public var womensTeams: Set<Int64> = []
     private let interestAnswers = InterestAnswers()
+    private let teamNames = TeamNames()
     private let roleLock = NSLock()
     private var roleMasks: [Int: UInt64] = [:]
     private let failureLock = NSLock()
@@ -84,6 +100,14 @@ public final class RulesEngine: GameRulesEngine {
         statsContainerFunction = rtti.word(vtable.addressPoint + Mac27.statsContainerSlot * 8)
         staffFunction = rtti.vtables("PERSON_NON_PLAYER_INTERESTED_FILTER_RULE").first { $0.offsetToTop == 0 }
             .map { rtti.word($0.addressPoint + Mac27.staffRuleSlot * 8) } ?? 0
+        let player = rtti.vtables("ACTUAL_PLAYER").first { $0.offsetToTop == 0 }
+        func getter(_ slot: Int) -> Int64 {
+            let function = player.map { rtti.word($0.addressPoint + slot * 8) } ?? 0
+            return function > game.pluginBase && function < game.pluginBase + game.pluginSize ? function : 0
+        }
+        conditionFunction = getter(Mac27.conditionSlot)
+        sharpnessFunction = getter(Mac27.sharpnessSlot)
+        disciplineVtable = rtti.vtables("GAME_DISCIPLINE").first { $0.offsetToTop == 0 }.map { game.pluginBase + Int64($0.addressPoint) } ?? 0
     }
 
     private func status(_ player: Player, team: Int64) throws -> UInt64 {
@@ -364,6 +388,88 @@ public final class RulesEngine: GameRulesEngine {
             .map { String(format: "%.1f", Double($0.rating) / 10) }.joined(separator: " ")
     }
 
+    /// The player's recent matches, each with his minutes, rating, goals, assists, cards and xG. Plain data from the
+    /// same record as `form`, so it's on where form is.
+    public func matchHistory(player: Player) -> MatchHistory? {
+        FixturesReader.history(player: player.block, in: game) { self.teamNames.name($0, in: self.game) }
+    }
+
+    /// Condition and sharpness through FM's own getters, which first make the call FM makes to bring a player up to date.
+    /// On 27.1.0 they gave the stored values unchanged for 4,000 players FM last updated 1 to 15+ days before, so for those
+    /// it's FM's last update. Anything the call changes only happens in the sandbox's copy.
+    public func fitness(player: Player) -> Fitness? {
+        guard conditionFunction != 0, sharpnessFunction != 0 else { return nil }
+        do {
+            func ask(_ function: Int64) throws -> Int {
+                try sandbox.call(function, [UInt64(bitPattern: player.block), 1]) { Int(Int16(truncatingIfNeeded: a64_get_x($0, 0))) }
+            }
+            let fitness = Fitness(condition: try ask(conditionFunction), sharpness: try ask(sharpnessFunction))
+            guard Fitness.range.contains(fitness.condition), Fitness.range.contains(fitness.sharpness) else { return nil }
+            return fitness
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
+    }
+
+    /// FM's own two tests, as its home-grown rule runs them: trained at the club, else trained in the club's nation.
+    public func homeGrown(player: Player) -> HomeGrown? {
+        let club = player.clubObject
+        guard club != 0 else { return nil }
+        let nation = game.readPointer(club &+ Int64(MacLayout.Club.nation))
+        let out = UInt64(A64_SCRATCH)
+        do {
+            func ask(_ function: Int64, _ place: Int64) throws -> Bool {
+                try sandbox.call(game.pluginBase + function, [UInt64(bitPattern: player.block), UInt64(bitPattern: place), out]) { a64_get_x($0, 0) & 0xff != 0 }
+            }
+            if try ask(Mac27.trainedAtClub, club) { return .club }
+            guard nation != 0 else { return nil }
+            return try ask(Mac27.trainedInNation, nation) ? .nation : .no
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
+    }
+
+    /// FM's one `GAME_DISCIPLINE`, by the path FM's own code takes to it, and only when it has that class's vtable.
+    public var discipline: Int64? {
+        typealias D = MacLayout.Discipline
+        guard disciplineVtable != 0 else { return nil }
+        let holder = game.readPointer(game.readPointer(game.pluginBase &+ Mac27.disciplineGlobal) &+ D.holder)
+        let object = holder > 0 ? game.readPointer(holder &+ D.object) : 0
+        guard object > 0, game.readPointer(object) == disciplineVtable else { return nil }
+        return object
+    }
+
+    /// `DISCIPLINE::get_count_until_next_ban`, which FM's own "one booking from a ban" check calls. It's handed a copy of
+    /// the player's count as FM's memory holds it now, since the sandbox keeps the pages it has copied and FM may have
+    /// played a match since. Nil, with the failure kept, when the call doesn't finish.
+    public func nextBan(rules: Int, bookingCount: [UInt8]?) -> NextBan? {
+        guard let discipline, (0...Int(UInt16.max)).contains(rules) else { return nil }
+        if let bookingCount, bookingCount.count != MacLayout.BookingCount.size { return nil }
+        let count = UInt64(A64_SCRATCH), out = count + 0x40
+        do {
+            return try sandbox.call(game.pluginBase + Mac27.countUntilNextBan,
+                                    [UInt64(bitPattern: discipline), bookingCount == nil ? 0 : count, UInt64(rules), out, out + 8, 0, out + 16, out + 24],
+                                    stack: [UInt64.max, 0, 0, 0], prepare: { cpu in
+                if let bookingCount { a64_write_bytes(cpu, count, bookingCount, bookingCount.count) }
+                for slot in 0..<4 { a64_write(cpu, out + UInt64(slot * 8), 0, 8) }
+            }) { cpu in
+                NextBan(left: Int(a64_read(cpu, out, 2)), length: Int(a64_read(cpu, out + 8, 1)),
+                        count: Int(a64_read(cpu, out + 16, 2)), lastBanAt: Int(a64_read(cpu, out + 24, 2)))
+            }
+        } catch {
+            failureLock.lock()
+            failure = "\(error)"
+            failureLock.unlock()
+            return nil
+        }
+    }
+
     /// Days until the player is back, by FM's own reckoning. FM writes this into a "bag" of values for its
     /// injury text, so the two bag functions are watched rather than run, and the one value picked out.
     public func injuryReturnDays(player: Player) -> Int? {
@@ -413,5 +519,18 @@ final class InterestAnswers {
         guard let answer = ask() else { return nil }
         lock.withLock { answers[key] = answer }
         return answer
+    }
+}
+
+/// Team names, read once each: a squad's histories name the same few opponents many times.
+final class TeamNames: @unchecked Sendable {
+    private let lock = NSLock()
+    private var names: [Int64: String] = [:]
+
+    func name(_ team: Int64, in game: GameProcess) -> String {
+        if let known = lock.withLock({ names[team] }) { return known }
+        let name = GameReader.clubName(team: team, in: game)
+        lock.withLock { names[team] = name }
+        return name
     }
 }

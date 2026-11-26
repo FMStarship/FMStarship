@@ -7,7 +7,12 @@ import XCTest
 /// just enough RTTI for the reader to find the classes it sweeps for. Every name and number in it is made up.
 final class FakeGame {
     /// The classes whose records the reader finds by their vtables.
-    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER"]
+    static let classes = ["ACTUAL_PLAYER", "ACTUAL_NON_PLAYER", "ACTUAL_PLAYER_AND_NON_PLAYER", "TEAM", "TRANSFER_MANAGER", "SCOUT_TEAM_REPORT_NEWS"]
+    /// `FixturesReader`'s, which RTTI spells in the sicomps namespace.
+    static let sicompsClasses = ["FIXTURE", "FIXTURE_RESULT", "LEAGUE_STAGE"]
+    /// Classes of the reader's names in the sicomps namespace, which FM doesn't have, laid out ahead of the real ones: the
+    /// reader must still pick its own.
+    static let decoys = ["TEAM", "ACTUAL_PLAYER"]
 
     private let image: UnsafeMutableRawPointer
     private let imageSize = 0x1000
@@ -31,11 +36,14 @@ final class FakeGame {
         image = FakeGame.map(imageSize)
         heap = FakeGame.map(heapSize)
         let base = FakeGame.address(image)
-        for (i, name) in FakeGame.classes.enumerated() {
+        let spelt = FakeGame.decoys.map { ("sicomps \($0)", "N7sicomps\($0.count)\($0)E") }
+            + FakeGame.classes.map { ($0, Rtti.mangled($0)[0]) }
+            + FakeGame.sicompsClasses.map { ($0, "N7sicomps\($0.count)\($0)E") }
+        for (i, (name, spelling)) in spelt.enumerated() {
             // Itanium RTTI, as `Rtti` walks it: the word before a vtable's address point points at the type_info, whose
             // second word points at the class's mangled name. The word before that is the offset to the top, here 0.
             let slot = i * 0x100
-            let mangled = Array(Rtti.mangled(name)[0].utf8)
+            let mangled = Array(spelling.utf8)
             (image + slot + 8).copyMemory(from: mangled, byteCount: mangled.count)
             image.storeBytes(of: base + Int64(slot + 8), toByteOffset: slot + 0x48, as: Int64.self)
             image.storeBytes(of: base + Int64(slot + 0x40), toByteOffset: slot + 0x68, as: Int64.self)
@@ -55,6 +63,9 @@ final class FakeGame {
         }
         return memory
     }
+
+    /// The vtable `record` gives a class's records, for a test to look for.
+    func vtable(_ name: String) -> Int64? { vtables[name] }
 
     private static func address(_ pointer: UnsafeMutableRawPointer) -> Int64 { Int64(Int(bitPattern: pointer)) }
     private static func pointer(_ address: Int64) -> UnsafeMutableRawPointer { UnsafeMutableRawPointer(bitPattern: Int(address))! }
@@ -82,6 +93,9 @@ final class FakeGame {
     private func store<T>(_ value: T, _ address: Int64) {
         FakeGame.pointer(address).storeBytes(of: value, as: T.self)
     }
+
+    /// A value changed where FM keeps it, as FM changes it while the game runs: no check that it's a field of its own.
+    func poke<T>(_ value: T, at address: Int64) { store(value, address) }
 
     /// A record of this size, starting with the vtable of `vtable`'s class if it has one.
     func record(_ kind: String, size: Int, vtable: String? = nil) -> FakeRecord {
@@ -130,10 +144,12 @@ final class FakeGame {
         return record.address
     }
 
-    /// `area` is the record FM groups nations by. FM Starship only uses it to tell areas apart.
-    func nation(_ name: String, code: String, continent: Int64, area: Int64) -> Int64 {
+    /// `area` is the record FM groups nations by. FM Starship only uses it to tell areas apart. `index` is what a ban
+    /// names its association by.
+    func nation(_ name: String, code: String, continent: Int64, area: Int64, index: UInt32 = 0) -> Int64 {
         typealias N = MacLayout.Nation
         let record = self.record("Nation", size: max(N.name, N.code, N.continent, N.area) + 8)
+        record.set("index", N.index, index)
         record.set("name", N.name, string(name))
         record.set("code", N.code, string(code))
         record.set("continent", N.continent, continent)
@@ -194,6 +210,7 @@ final class FakeGame {
         var end: (day: UInt16, year: UInt16) = (0, 0)
         var listed: (day: UInt16, year: UInt16) = (0, 0)
         var statusFlags: UInt8 = 0
+        var playingTime: Int8 = 0
         /// Each clause's amount, and FM's number for its kind.
         var clauses: [(amount: UInt32, kind: UInt16)] = []
         /// Where the clauses start and end, in place of `clauses`, for a test of what a leftover record can hold.
@@ -228,8 +245,13 @@ final class FakeGame {
         var topRoles = [UInt8](repeating: 0, count: 6)
         var traits: UInt64 = 0
         var currentTeam: Int64 = 0
-        /// The record holding the player's injuries and recent matches. None by default.
-        var injuries: Int64 = 0
+        /// The record of injuries, recent matches and bans, from `history`.
+        var history: Int64 = 0
+        var condition: Int16 = 10_000
+        var sharpness: Int16 = 10_000
+        /// The day FM last brought condition and sharpness up to date.
+        var fitnessUpdated: (day: UInt16, year: UInt16) = (1, 2026)
+        var morale: Int8 = 10
     }
 
     struct StaffValues {
@@ -276,7 +298,12 @@ final class FakeGame {
         record.set("pa", a + L.pa, values.pa)
         record.set("topRoles", a + L.topRoles, bytes: values.topRoles)
         record.set("currentTeam", L.currentTeam, values.currentTeam)
-        record.set("injuries", L.injuries, values.injuries)
+        record.set("injuries", L.injuries, values.history)
+        record.set("condition", L.condition, values.condition)
+        record.set("sharpness", L.sharpness, values.sharpness)
+        record.set("fitnessDay", L.fitnessUpdated, values.fitnessUpdated.day)
+        record.set("fitnessYear", L.fitnessUpdated + 2, values.fitnessUpdated.year)
+        record.set("morale", L.morale, values.morale)
         record.set("traits", person + MacLayout.Person.traits, values.traits)
     }
 
@@ -335,6 +362,7 @@ final class FakeGame {
         record.set("listedDay", C.listedDay, values.listed.day)
         record.set("listedYear", C.listedYear, values.listed.year)
         record.set("statusFlags", C.statusFlags, values.statusFlags)
+        record.set("playingTime", C.playingTime, values.playingTime)
         record.set("secondJob", C.secondJob, values.secondJob)
         var begin: Int64 = 0, end: Int64 = 0
         if !values.clauses.isEmpty {

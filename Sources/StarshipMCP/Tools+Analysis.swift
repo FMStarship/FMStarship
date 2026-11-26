@@ -112,10 +112,20 @@ extension Toolbox {
     func compare(_ args: Arguments, _ context: CallContext) throws -> JSON {
         let uids = try args.array("uids") ?? []
         guard (2...4).contains(uids.count) else { throw ToolError("compare takes two to four uids.") }
-        let people = try uids.map { item -> Person in
+        let numbers = try uids.map { item -> Int in
             guard let uid = item.int else { throw ToolError("Each uid must be a whole number.") }
-            return try context.person(uid)
+            return uid
         }
+        // A player/manager is a player and a member of staff under one uid, so with no kind given he's on the side the
+        // others are all on: with staff, as staff.
+        var kind = try args.choice("kind", ["player", "staff"])
+        if kind == nil {
+            let all = self.people(context.read)
+            if !numbers.allSatisfy({ all.players[UInt32(clamping: $0)] != nil }), numbers.allSatisfy({ all.staff[UInt32(clamping: $0)] != nil }) {
+                kind = "staff"
+            }
+        }
+        let people = try numbers.map { try context.person($0, kind: kind) }
         guard people.allSatisfy({ $0 is Player }) || people.allSatisfy({ $0 is Staff }) else {
             throw ToolError("compare takes players or staff, not both.")
         }
@@ -165,6 +175,115 @@ extension Toolbox {
             throw ToolError("The search was stopped.")
         }
         return .object([("club", .string(club.name))] + Output.table(table, limit: limit, extra: Self.keenness(session)))
+    }
+
+    /// The jobs Recommended staff looks for, once each: a job the app has a tab for at each team level is one name here.
+    static let staffRoleNames: [String] = StaffRoles.all.map(\.name).reduce(into: []) { names, name in
+        if !names.contains(name) { names.append(name) }
+    }
+    /// The app's "For your" box, and its "Wants the job" box, in order.
+    static let staffLevels = ["first_team", "reserves", "youth"]
+    static let staffKeenness = ["open_to_it", "keen", "favourite", "anyone"]
+    /// How far down a job's ranking FM is asked who'd join: each one asked is several of FM's rules, and the server answers
+    /// one call at a time. The app's staff overview stops at 480.
+    static let staffDeepest = 600
+
+    func recommendStaff(_ args: Arguments, _ context: CallContext) throws -> JSON {
+        let club = try context.ownClub(try args.string("club"))
+        guard let name = try args.choice("role", Self.staffRoleNames) else {
+            throw ToolError("recommend_staff needs a role, one of: \(Self.staffRoleNames.joined(separator: ", ")).")
+        }
+        let chosen = try args.choice("level", Self.staffLevels).flatMap { Self.staffLevels.firstIndex(of: $0) }
+        let session = context.session(for: club)
+        let recommender = StaffRecommender(session: session)
+        let level = chosen ?? 0
+        if level > 0, let limits = recommender.limits, limits.teamFor(level) < 0 {
+            throw ToolError("\(club.name) has no \(level == 1 ? "reserve" : "youth") team in FM.")
+        }
+        // A job that repeats at each team level is its own tab there; any other takes the level from the "For your" box.
+        let tabs = recommender.tabs.map(\.role).filter { $0.name == name }
+        guard let role = tabs.first(where: { $0.level == level }) ?? tabs.first(where: { $0.level < 0 }) else {
+            throw ToolError(level == 0 ? "The first team's \(name.lowercased()) is the user. Give level reserves or youth."
+                                       : "\(club.name) has no \(name.lowercased()) place at that team level.")
+        }
+        var options = StaffSearchOptions(role: role, level: role.level >= 0 ? role.level : level)
+        let wageMax = try args.number("wage_max")
+        // The app's screen opens with the box at the wage room.
+        options.maxWage = wageMax.map { String($0 / 1000) } ?? recommender.startingMaxWage
+        options.maxAge = try args.int("age_max").map(String.init) ?? ""
+        if let keen = try args.choice("wants_job", Self.staffKeenness) { options.keen = Self.staffKeenness.firstIndex(of: keen) ?? 0 }
+        options.onlyJoin = try args.bool("only_join") ?? true
+        let limit = try args.int("limit", in: 1...25) ?? 10
+        let checks = session.checks
+        let failedBefore = checks.failures
+        guard var table = recommender.find(options, wanted: limit, deepest: Self.staffDeepest) else {
+            throw ToolError("The search was stopped.")
+        }
+        // People FM couldn't answer for in this call; it remembers only the answers it gave.
+        let failed = max(checks.failures - failedBefore, 0)
+
+        let team = recommender.levelNames[options.level]
+        // As the screen writes the level: "first team", otherwise the team's own name.
+        let teamText = options.level == 0 ? "first team" : team
+        var interest: String
+        if !recommender.onlyJoinEnabled {
+            let why = context.read.engine == nil ? "FM's rules are off on this build of FM"
+                : "FM only answers that for a club the user manages, and FM Starship found no manager at \(club.name)"
+            interest = "FM couldn't be asked who'd join: \(why). This list isn't narrowed to people who'd come, and Would join is empty."
+        } else if options.onlyJoin {
+            if !table.interestChecked {
+                let asked = failed > 0 ? "any of the \(failed) people it was asked about" : "anyone it was asked about"
+                interest = "FM gave no answer about who'd join for \(asked), so this list isn't narrowed to people who'd come, and Would join "
+                    + "is empty. Don't present it as people who'd come. If asking again gives the same, FM can't answer it for "
+                    + "\(club.name) on this build of FM."
+            } else {
+                interest = table.rows.isEmpty
+                    ? failed == 0 && !table.stoppedAtDeepest ? "Nobody FM says would join \(club.name)'s \(teamText) passes these settings."
+                        : "None of those FM answered for would join \(club.name)'s \(teamText)."
+                    : "Everyone listed is someone FM says would join \(club.name)'s \(teamText)."
+                if failed > 0 {
+                    interest += " FM didn't answer for \(failed) of the people it was asked about, so they're left out; asking again may "
+                        + "get their answers."
+                }
+            }
+        } else {
+            // The screen only fills Would join for people FM was asked about, so the rows sent out are asked about here.
+            let shown = table.rows.prefix(limit).compactMap { $0.person as? Staff }
+            checks.checkAllStaff(shown)
+            if let column = table.columns.firstIndex(where: { $0.title == "Would join" }) {
+                for index in table.rows.indices.prefix(limit) {
+                    guard let person = table.rows[index].person as? Staff, column < table.rows[index].cells.count else { continue }
+                    table.rows[index].cells[column] = checks.staffText(person)
+                }
+            }
+            let unanswered = shown.filter { checks.staffKnown($0) == nil }.count
+            interest = "Not narrowed to who'd join. Would join is FM's answer for each one listed, for the first team, reserves and youth"
+                + (unanswered == 0 ? "." : "; FM didn't answer for \(unanswered) of them, whose Would join is empty.")
+        }
+        if table.stoppedAtDeepest {
+            interest += " FM was asked about the best \(Self.staffDeepest) for the job who pass these settings and no further, so there may "
+                + "be more further down: a lower wage_max or an age_max reaches others."
+        }
+        table.status = table.status.replacingOccurrences(of: "'Anyone' for wanting the job", with: "wants_job anyone")
+            .replacingOccurrences(of: "untick 'Only staff who'd join'", with: "only_join false")
+
+        var pairs: [(String, JSON)] = [("club", .string(club.name)), ("role", .string(name)), ("team", .string(team))]
+        pairs += Output.table(table, limit: limit)
+        pairs.append(("interest", .string(interest)))
+        if wageMax == nil, !options.maxWage.isEmpty {
+            pairs.append(("wage_max", .string("Left out, so up to the club's wage room, \(recommender.startingMaxWageText), "
+                + "as the app's screen starts. Give wage_max to look further.")))
+        }
+        // As the screen's note: what this build of FM couldn't tell.
+        var missing: [String] = []
+        if recommender.limits == nil { missing.append("the board's staff limits") }
+        if StaffRoles.preferenceIndex(role.name) >= 0, !table.rows.isEmpty,
+           let column = table.columns.firstIndex(where: { $0.title == "Wants job" }),
+           table.rows.allSatisfy({ column >= $0.cells.count || $0.cells[column].isEmpty }) {
+            missing.append("how keen they are on the job and the job they prefer" + (args.has("wants_job") ? ", so wants_job wasn't used" : ""))
+        }
+        if !missing.isEmpty { pairs.append(("not_available", .string("Not available on this version: " + missing.joined(separator: ", ") + "."))) }
+        return .object(pairs)
     }
 
     func findBargains(_ args: Arguments, _ context: CallContext) throws -> JSON {

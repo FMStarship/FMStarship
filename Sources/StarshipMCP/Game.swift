@@ -9,11 +9,114 @@ public struct GameRead {
     public let engine: GameRulesEngine?
     /// Tells this read from the next, which may have the same date.
     public let number: Int
+    /// Fixtures, results and league tables, read when a tool asks for them. Nil where they can't be read.
+    public let matches: MatchSource?
+    /// Players' state as FM's memory holds it when a tool answers, and what their bans are for. Nil where it can't be read
+    /// again, so a player's state is the read's and his bans aren't known.
+    public let states: PlayerStateSource?
+    /// Players' yellow cards toward a ban, by FM's own count. Nil where they can't be read.
+    public let bookings: BookingSource?
+    /// The user's matchday squad as FM holds it when a tool answers, and FM's scout reports. Nil where they can't be read again.
+    public let selection: SelectionSource?
 
-    public init(database: Database, engine: GameRulesEngine?, number: Int = 0) {
+    public init(database: Database, engine: GameRulesEngine?, number: Int = 0, matches: MatchSource? = nil, states: PlayerStateSource? = nil,
+                bookings: BookingSource? = nil, selection: SelectionSource? = nil) {
         self.database = database
         self.engine = engine
         self.number = number
+        self.matches = matches
+        self.states = states
+        self.bookings = bookings
+        self.selection = selection
+    }
+}
+
+/// The matchday squad and the scout's reports, as `SelectionReader` gives them.
+public protocol SelectionSource: AnyObject {
+    /// The tactic as FM holds it now: the user can change the line-up without the date moving. Nil when it can't be read again.
+    func tactic(again tactic: Tactic, players: [UInt32: Player]) -> Tactic?
+    /// FM's opposition reports, newest first. Nil when this build of FM doesn't have the class they're found by.
+    func scoutReports(players: [UInt32: Player]) -> [ScoutReport]?
+}
+
+/// The running game's, through a `SelectionReader` made on the first question.
+final class LiveSelection: SelectionSource {
+    private let game: GameProcess
+    private var reader: SelectionReader?
+
+    init(game: GameProcess) {
+        self.game = game
+    }
+
+    private var found: SelectionReader {
+        if let reader { return reader }
+        let made = SelectionReader(game: game, rtti: Rtti(game))
+        reader = made
+        return made
+    }
+
+    func tactic(again tactic: Tactic, players: [UInt32: Player]) -> Tactic? { found.tactic(again: tactic, players: players) }
+
+    func scoutReports(players: [UInt32: Player]) -> [ScoutReport]? {
+        found.findsReports ? found.scoutReports(players: players) : nil
+    }
+}
+
+/// A player's yellow cards toward a ban, as `BookingsReader` gives them.
+public protocol BookingSource: AnyObject {
+    /// On with what its check found, or off and why, for `game_status`. Asking runs the check.
+    var status: String { get }
+    /// Why it's off for this read, nil while it's on.
+    var off: String? { get }
+    /// Each rule set's count for him with FM's answer. Nil when it's off or his counts can't be read.
+    func bookings(of player: Player) -> [Booking]?
+}
+
+extension BookingsReader: BookingSource {}
+
+/// A player's state for an answer about him, as `PlayerStateReader` gives it.
+public protocol PlayerStateSource: AnyObject {
+    /// Reads his condition, sharpness, morale, playing time and bans again: FM can play a match without the date moving.
+    func refresh(_ player: Player)
+    /// His bans, with what FM Starship could work out about each. Nil when they're off or weren't read.
+    func bans(of player: Player) -> [Ban]?
+}
+
+extension PlayerStateReader: PlayerStateSource {}
+
+/// A team's fixtures, results and league table, swept for when a tool asks: a couple of seconds for one team, so not
+/// with the save.
+public protocol MatchSource: AnyObject {
+    /// Nil when this build of FM doesn't have the classes they're found by.
+    func matches(team: Int64) -> TeamMatches?
+    /// Every competition with a fixture in FM's memory, by database index, which is all a player's match record holds.
+    func competitionNames() -> [UInt32: String]
+}
+
+/// The running game's, through `FixturesReader`, which is set up on the first question about a match.
+final class LiveMatches: MatchSource {
+    private let game: GameProcess
+    private var reader: FixturesReader??
+
+    init(game: GameProcess) {
+        self.game = game
+    }
+
+    func matches(team: Int64) -> TeamMatches? {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        guard let found = reader ?? nil else { return nil }
+        return found.teamMatches(team: team)
+    }
+
+    func competitionNames() -> [UInt32: String] {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.competitionNames() ?? [:]
+    }
+
+    /// Each competition's record by database index, for naming the rule sets yellow cards count under.
+    func competitionRecords() -> [UInt32: Int64] {
+        if reader == nil { reader = .some(FixturesReader(game: game, rtti: Rtti(game))) }
+        return (reader ?? nil)?.competitionRecords() ?? [:]
     }
 }
 
@@ -77,7 +180,12 @@ public final class LiveGame: GameSource {
             clubsAtRead = clubs(database, in: process)
             readAt = Date()
             reads += 1
-            return GameRead(database: database, engine: engine, number: reads)
+            let matches = LiveMatches(game: process)
+            return GameRead(database: database, engine: engine, number: reads, matches: matches,
+                            states: PlayerStateReader(game: process, database: database),
+                            bookings: BookingsReader(game: process, database: database, engine: engine,
+                                                     competitionRecords: { matches.competitionRecords() }),
+                            selection: LiveSelection(game: process))
         } catch ReadError.noPlayers {
             throw GameProblem.noSave
         } catch {
@@ -137,6 +245,8 @@ final class GameConnection {
         Units.apply()
         database.prepare()
         guard let engine = read.engine else { return }
+        // FM's getters must give the stored values for players brought up to date today, or condition and sharpness are off.
+        GameReader.checkFitnessGetters(database, engine: engine)
         let players = database.players.filter { $0.block > 0 && $0.season == nil }
         // Only a fresh look at the first few: if the game answers none of them, it won't answer the rest.
         let probe = players.prefix(32)

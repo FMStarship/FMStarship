@@ -68,6 +68,25 @@ public protocol GameRulesEngine: AnyObject {
     func seasonStats(player: Player, season: Int) -> SeasonStats?
     func form(player: Player) -> String?
     func injuryReturnDays(player: Player) -> Int?
+    /// The player's recent matches, from the same record as `form`.
+    func matchHistory(player: Player) -> MatchHistory?
+    /// Condition and sharpness as FM's own getters give them today.
+    func fitness(player: Player) -> Fitness?
+    /// Whether he's home-grown for his club, by FM's own tests. Nil for a player with no club.
+    func homeGrown(player: Player) -> HomeGrown?
+    /// FM's `GAME_DISCIPLINE`, which holds its disciplinary rule sets by rules index. Nil where it isn't found.
+    var discipline: Int64? { get }
+    /// FM's own answer for one rule set: how many more yellow cards bring a ban, and how long. `bookingCount` is the
+    /// player's `MacLayout.BookingCount` under it as FM's memory holds it now, or nil for a player with none yet.
+    func nextBan(rules: Int, bookingCount: [UInt8]?) -> NextBan?
+}
+
+extension GameRulesEngine {
+    public func matchHistory(player: Player) -> MatchHistory? { nil }
+    public func fitness(player: Player) -> Fitness? { nil }
+    public func homeGrown(player: Player) -> HomeGrown? { nil }
+    public var discipline: Int64? { nil }
+    public func nextBan(rules: Int, bookingCount: [UInt8]?) -> NextBan? { nil }
 }
 
 public enum GameRules {

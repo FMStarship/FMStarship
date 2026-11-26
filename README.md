@@ -135,7 +135,12 @@ launcher, as Remove does, so Steam still starts FM; `--uninstall-all` removes th
 FM Starship comes with `fmstarship-mcp`, a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI agent you
 use, such as Hermes Agent, Claude Desktop or Claude Code, can ask about your save itself instead of you sending it exports and
 screenshots. It can look at your squads and staff, anyone in the game with FM Starship's filters, one person in full, your
-shortlists, and FM Starship's club, squad and staff overviews, recommended signings and bargains.
+shortlists, your fixtures, results and league table with each player's minutes, rating, goals, assists, cards and xG in a match
+and why the others didn't play, the starting eleven and bench you've picked for the next match with a warning for anyone banned
+or injured for it, FM's scout's predicted line-up of your next opponent, each player's season with league, cup and continental matches kept apart, and his recent matches by competition and opponent,
+each player's condition, sharpness, morale, playing time, suspensions, yellow cards toward a ban and home-grown status, how your players have developed
+between the times FM Starship read your save, and FM Starship's club, squad and staff overviews, recommended signings,
+recommended staff and bargains.
 
 - **It only reads.** It has no way to change anything in FM or your save, and it writes no files.
 - **It stays on your Mac.** Your agent's app starts it and talks to it through stdin and stdout. It opens no network connection and
@@ -186,8 +191,11 @@ claude mcp add --scope user fmstarship -- "/Applications/FM Starship.app/Content
 For the skill: `cp -R "/Applications/FM Starship.app/Contents/Resources/skills/fm-starship" ~/.claude/skills/`
 
 The first question after FM starts takes about 5 seconds on a big save, while the save is read, and so does the first question
-after the game date moves on, when it's read again. Other answers are instant. It doesn't know fixtures, results, the league
-table, team stats, condition, morale, suspensions or registration status yet.
+after the game date moves on, when it's read again. The first question about a club's matches takes a couple of seconds more.
+Other answers are instant. Fixtures and results are only given once a club's league results add up to its row in the league
+table, and FM keeps each player's last 20 matches for a team, so an older match can miss players. That check has only been tried
+on a league with one stage: in a league with play-offs, a split or groups it's unverified, and may switch them off. It doesn't
+know a match's team stats, such as shots, possession or team xG, FM's words for condition and morale, or squad registration yet.
 
 ## Updates
 
@@ -281,7 +289,7 @@ more about where it began.
 | Season stats, board staff limits, preferred job | FM's own functions |
 | Exact injury return days | FM's own function |
 | Formation names, in the game's language | FM's own function |
-| Your tactic: formation, roles with and without the ball, your XI | Read from memory |
+| Your tactic: formation, roles with and without the ball, your XI and bench | Read from memory |
 | Club dashboard: what needs a decision, who's coming through, what the health check wants done | Built on the answers above |
 | Squad and Staff overviews: each place, how it stands against the league, and the best person who'd join | Built on the answers above |
 | Best eleven: your tactic's places and roles with the best the club has in each, against your own picks | FM's own role ratings |
@@ -369,6 +377,10 @@ how each value was first found:
 | `staffNumbersGlobal`, slots | `fmprobe huntlimits`: the per-team tables must add up to the club's real staff |
 | `staffModeFlags` | The two bytes the staff-number functions compare against 2 and 3 |
 | `shapeName` | Takes eleven sorted place numbers in `x0` and returns a string through `x8`. `fmprobe shapenames` shows when it's right |
+| `conditionSlot`, `sharpnessSlot` | `ACTUAL_PLAYER` vtable slots whose code is `ldrsh w0, [x19, #0x254]` (condition) and `#0x250` (sharpness) after a call through `GAME_ACTUAL_PLAYER` slot 0x278 |
+| `trainedAtClub`, `trainedInNation` | The two `bl` targets in slot 2 of `OWN_PLAYER_RULE_PLAYER_IS_HOMEGROWN_PLAYER_FOR_CLUB`, which answers 2 for the first and 1 for the second |
+| `disciplineGlobal` | The global FM's code reads `GAME_DISCIPLINE` through, as `[[global] + 0x158] + 0x70` (`MacLayout.Discipline`). The object at the end has `GAME_DISCIPLINE`'s vtable, the one a vtable scan finds |
+| `countUntilNextBan` | Called in a loop over a player's `PLAYER_BOOKING_COUNT`s by FM's "one booking from a ban" check (`+0xd6d7b0` on 27.1.0, which takes a `db::COMP` and flags an answer of 1; the strings `TSF_UPCOMING_SUSPENSION` and `PLAYER_HAS_HIGH_NUMBER_OF_BOOKINGS` are a lead to it, not checked). Takes (discipline, count, rules index, out left, out length, fixture, out count, out last ban) with `[-1, 0, 0, 0]` on the stack. `BookingsReader`'s check is the test: its count must be the one read, and the latest ban for bookings must have come at its last step |
 
 The optimizer reads FM's own tactic data from `game_plugin.bundle/Contents/Resources/shared/data/simatch.fmf`, so it follows
 patches: the `.tac` presets, `styles.xml` (favoured attributes, preferred roles, features of play) and the role complexity
@@ -395,6 +407,18 @@ FM Starship's own parts, and how to check them after a patch:
   falls back to its ten position groups, and Help > Compatibility says so. To find them again, search memory for your
   XI's player indexes in order (`fmprobe cluster`), then see which class holds them (`fmprobe census`, `fmprobe fields`).
   `fmprobe tactic` prints what the app read. Stars are the check: FM's tactics screen shows the two phases' average, rounded up.
+  The array holds 26 player indexes: the XI, then the substitutes in bench order, with the gaps the tactics screen keeps. FM
+  names only as many substitutes as the competition allows, from the top (9 in Eliteserien and the Norwegian cup on 27.1.0).
+  The MCP server's `selection` reads the array again where the read found it, as the user can change the line-up without the
+  date moving, and checks that nobody is in it twice and everyone in it plays for the club.
+- **Why a player didn't play** is the reason byte of his form entry (`MacLayout.FormEntry.reason`): 12 named on the bench and
+  not brought on, 0 left out of the matchday squad, 5 suspended, 6 injured. On Molde's save every first-team player had an entry
+  for every match, and these matched three matchday squads FM still held in memory. 4, 13 and 0x4c (seen the match after an
+  injury) aren't known, so they go out unmarked.
+- **The next opponent's predicted line-up** is FM's opposition report, the news item `SCOUT_TEAM_REPORT_NEWS`, swept for when
+  `selection` is asked (`SelectionReader`). It holds a `GAME_TACTIC_INFO` whose array reads as ours does, and its date at +0x88.
+  Nothing found in it names the team, so the server takes the newest report whose eleven mostly plays for the next opponent,
+  dated after the last match with them and by the day of this one. It's the scout's prediction, not the AI's pick.
 - **Squad overview and Staff overview** are `OverviewReport`s: each place, how it stands against the league, and the best
   person who'd join. Staff jobs come from FM's own board table, `StaffLimits.Club`. Its entries were matched to jobs by comparing
   them with who holds each job at 600 clubs, which `fmprobe staffmap 7 600` repeats if a patch reorders them.
@@ -410,6 +434,57 @@ FM Starship's own parts, and how to check them after a patch:
   When the rules are off, `TacticLibrary` falls back on the presets in the player's own install, whose file names carry the names
   (`4--4-2-3-1 DM AM Wide _ 4-4-2 2DM - gegenpress.tac`), and a shape no preset uses gets a plain count of its lines: `4-1-1-4-0`.
   The routine reads a language file from disk for an Asymmetric name, which the sandbox can't do, so lopsided shapes are counted too.
+- **Fixtures, results and league tables** are read by `FixturesReader`, on the first question about a club, not with the save.
+  It sweeps memory for the `sicomps::FIXTURE` and `FIXTURE_RESULT` objects naming the club's team, and reads the league's table
+  through `TEAM → COMP → sicomps::ACTUAL_COMP → LEAGUE_STAGE`, with offsets in `MacLayout`. Its self-check is the table: the
+  club's league results this season must add up to its row, or fixtures, results and the table switch off. The table is the
+  league stage whose rows hold the club, and only fixtures of the stage most of the club's league fixtures that season share are
+  added up, a stand-in until it's known which table a fixture's `STAGE_NAME` belongs to. Leagues with several stages (play-offs,
+  splits, groups) are unverified: one look with `fmprobe fx` on such a save would settle it. Attendance, kick-off and aggregate
+  aren't covered by the check, so they're only read on the build of `game_plugin` that `Mac27.fingerprint` names. A player's matches
+  come from the same record as his form. `tools/match_builds.py` lists these classes among the reader's. To find them again,
+  `fmprobe humanteams` gives each human club's team, and `fmprobe fx TEAM` reads that team's matches and table, and runs the
+  self-check.
+- **Players' state** is read with the save: condition, sharpness, the day FM last brought them up to date, and morale from the
+  player's record, playing time happiness from his contract, and bans as FM stores them, from the same head read of the record
+  that holds his injuries, with offsets in `MacLayout`. That costs the read two more reads for each ban, and `clock` logs its
+  time as "player state". Each field has a self-check: when more than one player in a hundred at a club has a value it can't
+  have (condition or sharpness outside 0-10000, morale outside 1-20, playing time outside -100 to 100, a ban with no real date),
+  or a big save has only one value, or no ban at all, that field is off for the read. Condition is at +0x254 and sharpness at
+  +0x250: they were told apart right after a match, when FM writes both for everyone who played, condition falling with the
+  minutes and sharpness going to 100, as the user's screens agreed. Before a match the two can be within 0.1 of each other, so
+  check them after one. On any day but the one they were brought up to date, they come from FM's getters (`conditionSlot`,
+  `sharpnessSlot`), and are off without the rules engine. On 27.1.0 the getters gave the stored values unchanged for players
+  FM last updated days before, so for other clubs' players they're FM's last update. The MCP server asks the getters for 50 players brought up to date today, which must give
+  the stored values: if not, a slot or an offset has moved, and condition and sharpness are off. FM can play a match without the
+  date moving, so the MCP server reads each player's state again for each answer about him (`GameReader.refreshState`), with
+  the read's verdict still deciding what's on. Home-grown status is FM's own two tests. `fmprobe state [CLUB]` prints all of it
+  for one club, with the stored fitness beside the getters', and runs the getter check.
+- **Season stats by competition** are FM's own stats function (`RulesEngine.seasonStats`) asked for scopes other than the club
+  total (5): 1 is the league, 2 the cup and 3 the continental competitions, at the club the player plays for now (his loan club
+  while on loan). On 27.1.0 the three add up to the club total, and the Norwegian cup's and the Champions League's matched the
+  matches FM keeps for each of Molde's players; other cups and continental competitions weren't checked. Friendlies (0, which
+  also held the U19 cup) and internationals aren't split out: for one player FM showed 6 internationals this season, the six it
+  keeps, where scope 4 gave 8 and scope 7 gave 4. A stats call that fails shows as "not available", not as no matches. The MCP server asks for each again when it answers, as FM can play a
+  match without the date moving. A player's recent matches come from his form record, which only holds a competition's database
+  index: `FixturesReader.competitionNames` names every competition with a fixture in memory in one sweep, and a reserve league
+  that has none is named by the team's own league. `League stats` names the league from the player's newest league matches
+  FM keeps at the club he plays for now, no more of them than scope 1 counts, leaving out youth teams (U23 to U18, whose
+  league was in no scope on Molde's save), and stopping at the oldest match of a team whose list is full. `fmprobe scopes [CLUB] [detail]` prints scopes 0 to 7 next to each player's
+  matches this year by competition, so a patch that renumbers them shows.
+- **Match load** is FM's "N kamper (M/90·N minutter) siste 14 dager": a player's kept matches dated today − 14 days or later
+  that he played in, and his minutes, summed by the MCP server from his form record with no more reads. It matched FM for two
+  players on 12 Sep 2029; whether FM counts friendlies wasn't settled then.
+- **What a ban is for** is worked out by `PlayerStateReader`, only when the MCP server answers about a player, so the app's and
+  the plugin's reads don't pay for it. FM hangs a ban on an association and one of its rule sets, which can cover several
+  competitions, and doesn't say which rule set is which, so this is FM Starship's reasoning rather than FM's. A red card's match
+  names its competition. A ban for bookings takes the competition of the match the player was last booked in, in the week up to
+  the ban, when that's his team's league or a competition a red card names; else what other bans under the same association's
+  same rule set were for, among the competitions his team plays in, where that leaves one. A rule set that has given a ban in a
+  team's own league is taken as that association's league rules, so another ban under it from the association of his team's
+  league (as FM's bans show it, else of his club's nation) is for his team's league. What's left says "competition not known".
+  The squad rows count only bans for a competition his team plays in, its league or one in his recent matches for it, as FM's
+  squad screen does; `person` has the rest.
 - **The dashboard** is `ClubDashboard` plus the two overviews, which it starts itself so their answers are ready when you open them.
 - **The look** lives in `AppColors` (colours by job, from a `Theme.Palette`, or the system's for the System theme), `DesignSystem.swift`
   (panels, pills, `Flow`, range bars) and `TableSupport.swift` (both grids). DESIGN.md is the reference. Grids never cut text off: `AnalysisGrid`
