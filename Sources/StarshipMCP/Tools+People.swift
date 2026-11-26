@@ -397,8 +397,25 @@ extension Toolbox {
                     "loan": .string(Self.loanText(player, answer))]
         }
         if let staff = person as? Staff, let answer = session.checks.staffCheck(staff) {
-            return ["club": .string(session.club.name), "first_team": .bool(answer.firstTeam), "reserves": .bool(answer.reserves),
-                    "youth": .bool(answer.youth)]
+            let checks = session.checks
+            var pairs: [(String, JSON)] = [("club", .string(session.club.name)), ("first_team", .bool(answer.firstTeam)),
+                                           ("reserves", .bool(answer.reserves)), ("youth", .bool(answer.youth))]
+            // The team FM's staff search asked about at each level, which isn't always the one the level is named for.
+            let names = (0..<3).map { checks.levelTeamName(level: $0) }
+            if checks.levelTeams.allSatisfy({ $0 != nil }) {
+                pairs.append(("teams_asked", .object(zip(["first_team", "reserves", "youth"], names).map { ($0, $1.map { .string($0) } ?? .null) })))
+                var notes: [String] = []
+                if checks.reservesAreYouth, let youth = names[2] {
+                    notes.append("FM's reserves and youth levels are the same team, the \(youth), so they're one answer")
+                }
+                for level in 1...2 where !checks.wouldJoinFits(level: level) {
+                    let word = level == 1 ? "reserves" : "youth"
+                    notes.append("FM's staff search has no level for the club's " + StaffRoles.levelNames(StaffLimits.read(team: session.club.team))[level]
+                                 + "; its \(word) answer is for the " + (names[level] ?? "team it finds, and there is none, so it's always no"))
+                }
+                if !notes.isEmpty { pairs.append(("teams_note", .string(notes.joined(separator: ". ") + "."))) }
+            }
+            return .object(pairs)
         }
         return nil
     }

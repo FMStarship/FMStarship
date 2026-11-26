@@ -41,6 +41,8 @@ public struct StaffRecommender {
     private static let wanted = 25
     private static let unfiltered = 50
     private static let batchSize = 48
+    /// How many of a batch's joiners are asked about the job at once.
+    private static let jobChunk = 8
     private static let boardJobs: Set<String> = ["Chairperson", "Owner", "Director", "Managing Director", "President"]
 
     private let session: AnalysisSession
@@ -78,6 +80,12 @@ public struct StaffRecommender {
 
     public var keenEnabled: Bool { GameRules.engine != nil }
     public var onlyJoinEnabled: Bool { session.checks.canCheckStaffInterest }
+    /// Whether FM can also say if each one would take `role`'s job at `level`: the Takes job column. It needs the team the job
+    /// is at, which without the board's limits is FM's own team at that level.
+    public func jobCheckEnabled(role: StaffRole, level: Int) -> Bool {
+        StaffRecommender.jobQuestion(role: role, level: level).map { session.checks.canCheckStaffJob(level: $0.level) }
+            ?? session.checks.canCheckStaffJob
+    }
     public var onlyJoinTitle: String {
         onlyJoinEnabled ? "Only staff who'd join" : "Only staff who'd join (needs you as the club's manager)"
     }
@@ -88,6 +96,51 @@ public struct StaffRecommender {
             if role.level > 0, let limits, limits.teamFor(role.level) < 0 { return nil }
             return (role.level > 0 ? "\(levelNames[role.level]) \(role.name)" : role.name, role)
         }
+    }
+
+    /// What FM is asked about the job itself: its number for the job, and the team level it's at. A job that belongs to a
+    /// team is at the level asked for; any other is the club's, which FM places with the first team. Nil for a job FM has
+    /// no number for.
+    public static func jobQuestion(role: StaffRole, level: Int) -> (job: Int, level: Int)? {
+        StaffRoles.jobCode(role.name).map { ($0, role.teamJob >= 0 ? level : 0) }
+    }
+
+    /// Whether Would join at `level` is about the team `role`'s job is at. A club-wide job isn't at a team, so Would join at
+    /// the level asked for is used as it is; a team's job goes by `GameChecks.wouldJoinFits`.
+    public func wouldJoinFits(role: StaffRole, level: Int) -> Bool {
+        role.teamJob < 0 || session.checks.wouldJoinFits(level: level)
+    }
+
+    /// For `role` at `level`, what Would join is about, when FM's staff search finds another team there than the one named
+    /// here, as for Molde, whose reserves level is its U19 and not Molde 2; nil when it's the same team, and for a club-wide
+    /// job. `listedByJob` is whether the list went by Takes job, as `AnalysisTable.jobChecked` says.
+    public func levelNote(role: StaffRole, level: Int, listedByJob: Bool) -> String? {
+        guard levelNames.indices.contains(level), !wouldJoinFits(role: role, level: level) else { return nil }
+        let named = "your \(levelNames[level])", levelWord = level == 1 ? "reserves" : "youth"
+        var note = "FM's staff search has no level for \(named): "
+        if let asked = session.checks.levelTeamName(level: level) {
+            note += "its \(levelWord) answer is for your \(asked), so Would join names the \(asked)."
+        } else {
+            note += "it finds no team at its \(levelWord) level, so its answer there is always No."
+        }
+        let question = StaffRecommender.jobQuestion(role: role, level: level)
+        if listedByJob {
+            note += " Takes job is FM's rule asked about the job where it is, as FM weighs it when you offer it, and the list goes "
+                + "by that, among people FM says would join your first team."
+        } else if let question, session.checks.staffJobNotWeighed(job: question.job, level: question.level) {
+            note += " FM answers without weighing up the job for your club, so Takes job is empty and nothing here says who'd join "
+                + "\(named)."
+        } else if let question, session.checks.canCheckStaffJob(level: question.level) {
+            note += " Takes job is FM's rule asked about the job where it is, as FM weighs it when you offer it."
+        } else {
+            note += " FM can't be asked about the job there, so nothing here says who'd join \(named)."
+        }
+        return note
+    }
+
+    /// Whose preference Wants job is for this job, when it isn't the job's own.
+    public func wantsJobNote(_ role: StaffRole) -> String? {
+        keenEnabled ? StaffRoles.preferenceNote(role.name) : nil
     }
 
     /// The area box only shows for coaches.
@@ -105,7 +158,7 @@ public struct StaffRecommender {
     }
 
     private func levelText(_ level: Int) -> String {
-        level == 0 ? "first team" : levelNames[level]
+        level > 0 && levelNames.indices.contains(level) ? levelNames[level] : "first team"
     }
 
     private func free(_ places: Int) -> String {
@@ -172,7 +225,7 @@ public struct StaffRecommender {
             TableColumn("Name", 18), TableColumn("Age", 5), TableColumn("Job now", 15), TableColumn("Club", 15),
             TableColumn(role.stars ? "Stars" : "Score", 7), TableColumn("FM stars", 7), TableColumn("Key attributes", 20),
             TableColumn("Wage", 8), TableColumn("Wants job", 12), TableColumn("Prefers", 15), TableColumn("Would join", 12),
-            TableColumn("vs your best", 8),
+            TableColumn("Takes job", 8), TableColumn("vs your best", 8),
         ]
     }
 
@@ -188,6 +241,7 @@ public struct StaffRecommender {
         let level = role.level >= 0 ? role.level : options.level
         let join = options.onlyJoin && onlyJoinEnabled
         let preference = StaffRoles.preferenceIndex(role.name)
+        let question = StaffRecommender.jobQuestion(role: role, level: level)
 
         // A job that belongs to one team, such as assistant manager, counts only that team's: the reserves' assistant isn't
         // the first team's. Club-wide jobs count everyone at the club. Teams go by level, as in Staff review, so it works
@@ -214,6 +268,7 @@ public struct StaffRecommender {
         }
         let shown = found.people
         table.interestChecked = found.interestChecked
+        table.jobChecked = found.jobChecked
         table.stoppedAtDeepest = found.stoppedAtDeepest
 
         for x in shown {
@@ -231,6 +286,7 @@ public struct StaffRecommender {
                 want.map { "\($0) - \(Names.keenness($0))" } ?? "",
                 checks.preferredJob(x),
                 checks.staffText(x),
+                question.map { checks.staffJobText(x, job: $0.job, level: $0.level) } ?? "",
                 mine.isEmpty ? "new" : NetFormat.signedOneDecimal(score - best),
             ], person: x))
         }
@@ -240,7 +296,14 @@ public struct StaffRecommender {
         } else {
             let team = role.level > 0 ? levelNames[role.level] + " " : ""
             var who = ""
-            if join && found.interestChecked { who = role.level > 0 ? " who'd join you" : " who'd join your \(levelText(level))" }
+            if join && found.interestChecked {
+                if !wouldJoinFits(role: role, level: level) {
+                    who = " who'd take the job"
+                } else {
+                    who = role.level > 0 ? " who'd join you" : " who'd join your \(levelText(level))"
+                    if found.jobChecked { who += " and take the job" }
+                }
+            }
             table.status = "The best \(shown.count) for \(team)\(role.name.lowercased())\(who), best first. Double-click for the full profile."
         }
         // Not `fit`: FM stars come from CA, but "vs your best" here is the role score, which CA plays no part in.
@@ -249,9 +312,10 @@ public struct StaffRecommender {
 
     /// The best people for a job, best first, who pass the options. Nil when cancelled. Only those scoring
     /// `atLeast` or more count, and nobody in `excluding`; `deepest` stops a job nobody wants reading the whole world.
-    /// `stoppedAtDeepest` is true when it did, short of `wanted`.
+    /// `stoppedAtDeepest` is true when it did, short of `wanted`. With only staff who'd join, `jobChecked` is true when FM
+    /// was also asked whether they'd take this job, and only those it says would are listed.
     func search(_ options: StaffSearchOptions, wanted: Int, atLeast: Double? = nil, excluding: Set<UInt32> = [], deepest: Int? = nil,
-                isCancelled: () -> Bool = { false }) -> (people: [Staff], interestChecked: Bool, stoppedAtDeepest: Bool)? {
+                isCancelled: () -> Bool = { false }) -> (people: [Staff], interestChecked: Bool, jobChecked: Bool, stoppedAtDeepest: Bool)? {
         let role = options.role
         let club = session.club.name
         let checks = session.checks
@@ -285,23 +349,55 @@ public struct StaffRecommender {
         func unfiltered(_ count: Int) -> [Staff] { Array(keen.prefix(count)) }
         guard join else {
             let count = max(wanted, StaffRecommender.unfiltered), people = unfiltered(count)
-            return (people, !options.onlyJoin || onlyJoinEnabled, cut && people.count < count)
+            return (people, !options.onlyJoin || onlyJoinEnabled, false, cut && people.count < count)
         }
-        var shown: [Staff] = []
+        let question = StaffRecommender.jobQuestion(role: role, level: level).flatMap { checks.canCheckStaffJob(level: $0.level) ? $0 : nil }
+        // Where FM's staff search finds another team at this level than the one named here, its Would join there is about that
+        // team, so it isn't used: the list goes by Takes job at the team the job is at, among people FM says would join the
+        // first team (FM's own job pick, which every level starts with, can turn someone down whatever the job, and every
+        // other level makes the first team's checks and more). Without Takes job the list can't be narrowed to who'd join.
+        let fits = wouldJoinFits(role: role, level: level)
+        func notNarrowed() -> (people: [Staff], interestChecked: Bool, jobChecked: Bool, stoppedAtDeepest: Bool) {
+            let people = unfiltered(StaffRecommender.unfiltered)
+            return (people, false, false, cut && people.count < StaffRecommender.unfiltered)
+        }
+        if !fits && question == nil { return notNarrowed() }
+        // False once FM answers without weighing the job up, which it does for a whole club: then it's who'd join alone.
+        var asksJob = question != nil
+        var shown: [Staff] = [], joiners: [Staff] = []
         for batch in keen.chunked(StaffRecommender.batchSize) {
             if isCancelled() { return nil }
             guard checks.checkStaff(batch: batch, isCancelled: isCancelled) else {
                 let people = unfiltered(StaffRecommender.unfiltered)
-                return (people, false, cut && people.count < StaffRecommender.unfiltered)
+                return (people, false, false, cut && people.count < StaffRecommender.unfiltered)
             }
-            for person in batch {
-                if let answer = checks.staffKnown(person), answer.wouldJoin(level: level) {
-                    shown.append(person)
-                    if shown.count >= wanted { return (shown, true, false) }
+            let joining = batch.filter { person in
+                checks.staffKnown(person).map { $0.wouldJoin(level: fits ? level : 0) } == true
+            }
+            joiners += joining
+            if let question, asksJob {
+                // In rank order, a few at a time, stopping at `wanted`: each question is one more of FM's rules. Someone FM
+                // didn't answer for about the job is left out, as for who'd join: no answer is never a yes.
+                for chunk in joining.chunked(StaffRecommender.jobChunk) {
+                    checks.checkStaffJob(Array(chunk), job: question.job, level: question.level, isCancelled: isCancelled)
+                    let answers = chunk.map { checks.staffJobKnown($0, job: question.job, level: question.level) }
+                    if answers.contains(.notAsked) {
+                        asksJob = false
+                        break
+                    }
+                    for (person, answer) in zip(chunk, answers) where answer == .takes {
+                        shown.append(person)
+                        if shown.count >= wanted { return (shown, true, true, false) }
+                    }
                 }
             }
+            if !asksJob {
+                if !fits { return notNarrowed() }
+                shown = Array(joiners.prefix(wanted))
+                if shown.count >= wanted { return (shown, true, false, false) }
+            }
         }
-        return isCancelled() ? nil : (shown, true, cut)
+        return isCancelled() ? nil : (shown, true, asksJob, cut)
     }
 
     /// The options Recommended staff opens with, so an overview's pick is that screen's top row.

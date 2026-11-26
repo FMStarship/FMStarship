@@ -7,7 +7,8 @@ public typealias StaffInterest = (firstTeam: Bool, reserves: Bool, youth: Bool)
 
 /// Asks `GameRules.engine` and remembers the answers. Each one means running game code, so a list reads what
 /// is already known (`known`, `text`) and a background pass does the asking (`check`, `checkAll`).
-/// Without an engine everything answers nil or "", which the app shows as "not available".
+/// Without an engine everything answers nil or "", which the app shows as "not available". `staffText` names the teams FM's
+/// staff rule asks about only once `staffCheck` or `checkAllStaff` has asked FM for them, and FM's level names until then.
 public final class RulesState: @unchecked Sendable {
     public static let shared = RulesState()
 
@@ -37,6 +38,9 @@ public final class RulesState: @unchecked Sendable {
     private let lock = NSLock()
     private var interestCache: [Key: PlayerInterest] = [:]
     private var staffCache: [Key: StaffInterest] = [:]
+    /// By team: the team FM's staff rule asks about at each of `staffLevels`, which Interest names. Kept only when FM answered
+    /// for every level.
+    private var levelTeams: [Int64: [TeamAtLevel]] = [:]
     private var injuryDays: [UInt32: Int] = [:]
     private var clubObjects: [String: Int64] = [:]
     private var managers: [Int64: Int64] = [:]
@@ -48,6 +52,7 @@ public final class RulesState: @unchecked Sendable {
         lock.withLock {
             interestCache.removeAll()
             staffCache.removeAll()
+            levelTeams.removeAll()
             injuryDays.removeAll()
         }
     }
@@ -162,7 +167,14 @@ public final class RulesState: @unchecked Sendable {
 
     private static let boardJobs: Set<String> = ["Chairperson", "President", "Director", "Owner", "Managing Director"]
 
+    /// Also asks FM for the teams Interest names, off the main thread, so that `staffText` doesn't have to.
     public func staffCheck(_ staff: Staff) -> StaffInterest? {
+        guard GameRules.engine != nil, team != 0, manager != 0, staff.block != 0 else { return nil }
+        _ = staffLevelTeams()
+        return askStaff(staff)
+    }
+
+    private func askStaff(_ staff: Staff) -> StaffInterest? {
         let team = self.team
         guard let engine = GameRules.engine, team != 0, manager != 0, staff.block != 0 else { return nil }
         let key = Key(index: staff.index, team: team)
@@ -183,18 +195,40 @@ public final class RulesState: @unchecked Sendable {
         return answer
     }
 
+    /// The team FM's staff rule asks about at each level for the chosen club, first team, reserves and youth, asking FM the
+    /// first time. Nil when FM can't tell for every level, which is asked again next time.
+    private func staffLevelTeams() -> [TeamAtLevel]? {
+        let team = self.team
+        guard team != 0 else { return nil }
+        if let known = lock.withLock({ levelTeams[team] }) { return known }
+        guard let engine = GameRules.engine else { return nil }
+        let found = Self.staffLevels.compactMap { engine.staffLevelTeam(team: team, level: $0) }
+        guard found.count == Self.staffLevels.count else { return nil }
+        lock.withLock { levelTeams[team] = found }
+        return found
+    }
+
+    /// `staffLevelTeams` as far as it's known, without asking FM: for what's drawn on the main thread.
+    public var knownStaffLevelTeams: [TeamAtLevel]? {
+        let team = self.team
+        return lock.withLock { levelTeams[team] }
+    }
+
+    /// The teams FM says they'd join, named as the teams FM asked about: for Molde, FM's reserves level is its U19. It never asks
+    /// FM, as it's drawn on the main thread: until `staffCheck` has found the teams, it uses FM's level names.
     public func staffText(_ staff: Staff) -> String {
         guard let known = staffKnown(staff) else { return "" }
-        let levels = [known.firstTeam ? "First team" : nil, known.reserves ? "Reserves" : nil, known.youth ? "Youth" : nil]
-        let text = levels.compactMap { $0 }.joined(separator: ", ")
-        return text.isEmpty ? "No" : text
+        return TeamAtLevel.joinText(answers: [known.firstTeam, known.reserves, known.youth],
+                                    teams: knownStaffLevelTeams.map { $0 as [TeamAtLevel?] })
     }
 
     public func checkAllStaff(_ staff: [Staff], workers: Int = RulesState.defaultWorkers,
                               cancelled: () -> Bool = { false }, progress: (Int, Int) -> Void = { _, _ in }) {
+        // The teams Interest names, asked once here off the main thread so that `staffText` doesn't have to.
+        _ = staffLevelTeams()
         let todo = staff.filter { staffKnown($0) == nil }
         Self.forEach(todo, workers: workers, reportEvery: 100, cancelled: cancelled, progress: progress) {
-            _ = staffCheck($0)
+            _ = askStaff($0)
         }
     }
 

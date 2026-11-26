@@ -55,6 +55,38 @@ public enum JoinInterest: Int, Comparable, Sendable {
     public static func < (lhs: JoinInterest, rhs: JoinInterest) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
+/// FM's staff rule asked about one job: it takes it, it turns it down, or it answered without weighing the job up at all,
+/// which it does for a whole club in some game modes. Not asked is no answer about the job, and asking again gives the same.
+public enum StaffJobAnswer: Equatable {
+    case takes, refuses, notAsked
+}
+
+/// One of a club's teams as FM's staff rule finds it for a level: the team and its type, as `Names.squadName` names it. An
+/// object of 0 is no team at that level.
+public struct TeamAtLevel: Equatable {
+    public var object: Int64
+    public var type: Int
+
+    public init(object: Int64, type: Int) {
+        self.object = object
+        self.type = type
+    }
+
+    /// Would join as a list of the teams FM said yes for, in level order, each team once: "First team, U19". `answers` are
+    /// FM's answers at its three levels and `teams` the team each was about; without the teams, FM's own level names.
+    public static func joinText(answers: [Bool], teams: [TeamAtLevel?]?) -> String {
+        var names: [String] = [], seen: Set<Int64> = []
+        for (level, yes) in answers.enumerated() where yes {
+            guard let teams, level < teams.count, let team = teams[level], team.object != 0 else {
+                names.append(["First team", "Reserves", "Youth"][min(level, 2)])
+                continue
+            }
+            if seen.insert(team.object).inserted { names.append(level == 0 ? "First team" : Names.squadName(team.type)) }
+        }
+        return names.isEmpty ? "No" : names.joined(separator: ", ")
+    }
+}
+
 /// The features that FM Starship gets by running the game's own code on a copy of its memory.
 /// Everything here is optional: a nil engine or a nil answer means "not available on this build",
 /// and the app must show that rather than a guess.
@@ -62,6 +94,13 @@ public protocol GameRulesEngine: AnyObject {
     var supportsInjuryDays: Bool { get }
     func interest(player: Player, team: Int64) -> (transfer: JoinInterest, loan: JoinInterest)?
     func staffInterest(staff: Staff, team: Int64, level: Int) -> Bool?
+    /// Whether `staffJobInterest` can be asked on this build.
+    var supportsStaffJobInterest: Bool { get }
+    /// `staffInterest` asked about one job, `job` from `Names.jobs`, at one of the club's teams, `at`, instead of the job and
+    /// team FM picks for the person itself. Nil when the call failed.
+    func staffJobInterest(staff: Staff, team: Int64, job: Int, at: Int64) -> StaffJobAnswer?
+    /// The team `staffInterest` asks about at `level`. Nil when it can't be told.
+    func staffLevelTeam(team: Int64, level: Int) -> TeamAtLevel?
     func preferredJob(staff: Staff) -> Int?
     func jobPreferences(staff: Staff) -> [UInt8]?
     func roleRows(player: Player, team: Int64) -> [RoleRow]?
@@ -91,6 +130,9 @@ public protocol GameRulesEngine: AnyObject {
 }
 
 extension GameRulesEngine {
+    public var supportsStaffJobInterest: Bool { false }
+    public func staffJobInterest(staff: Staff, team: Int64, job: Int, at: Int64) -> StaffJobAnswer? { nil }
+    public func staffLevelTeam(team: Int64, level: Int) -> TeamAtLevel? { nil }
     public func matchHistory(player: Player) -> MatchHistory? { nil }
     public func fitness(player: Player) -> Fitness? { nil }
     public func homeGrown(player: Player) -> HomeGrown? { nil }

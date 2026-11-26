@@ -8,6 +8,11 @@ final class RecommendedStaffState: ObservableObject {
         let table: AnalysisTable
         let recommender: StaffRecommender
         let maxWage: String
+        let role: StaffRole
+        /// What Would join is about when FM's level is another team, worked out with the search, as it can ask the game.
+        let levelNote: String?
+        /// `StaffRecommender.jobCheckEnabled` for the role and level searched, which can ask the game too.
+        let jobCheckEnabled: Bool
     }
 
     unowned let model: AppModel
@@ -44,7 +49,10 @@ final class RecommendedStaffState: ObservableObject {
             // The max-wage box starts at the wage room.
             if first { options.maxWage = recommender.startingMaxWage }
             guard let table = recommender.find(options, isCancelled: { token.isCancelled }, status: status) else { return nil }
-            return Output(table: table, recommender: recommender, maxWage: options.maxWage)
+            let level = options.role.level >= 0 ? options.role.level : options.level
+            return Output(table: table, recommender: recommender, maxWage: options.maxWage, role: options.role,
+                          levelNote: recommender.levelNote(role: options.role, level: level, listedByJob: table.jobChecked),
+                          jobCheckEnabled: recommender.jobCheckEnabled(role: options.role, level: level))
         }, done: { [weak self] output in
             self?.recommender = output.recommender
             if first { self?.options.maxWage = output.maxWage }
@@ -138,6 +146,12 @@ struct RecommendedStaffScreen: View {
         if let note = missingNote {
             Text(note).font(.callout).foregroundStyle(.secondary)
         }
+        if let output = job.output, let note = output.recommender.wantsJobNote(output.role) {
+            Text(note).font(.callout).foregroundStyle(.secondary)
+        }
+        if let note = job.output?.levelNote {
+            Text(note).font(.callout).foregroundStyle(.secondary)
+        }
     }
 
     /// What the game couldn't tell us. The columns stay, empty, and this says why.
@@ -145,6 +159,7 @@ struct RecommendedStaffScreen: View {
         guard let output = job.output else { return nil }
         var missing: [String] = []
         if output.recommender.limits == nil { missing.append("the board's staff limits") }
+        if output.recommender.onlyJoinEnabled, !output.jobCheckEnabled { missing.append("whether they'd take this job") }
         let wantsJob = output.table.columns.firstIndex { $0.title == "Wants job" } ?? -1
         let rows = output.table.rows
         if !rows.isEmpty, wantsJob >= 0, rows.allSatisfy({ wantsJob < $0.cells.count && $0.cells[wantsJob].isEmpty }) {
